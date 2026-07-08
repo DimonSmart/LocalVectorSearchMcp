@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local runtime index for this MCP server
+.local-vector-search-mcp/
