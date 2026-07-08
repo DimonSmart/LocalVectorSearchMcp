@@ -21,6 +21,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text.Json.Serialization.Metadata;
 
 var isMaintenance = args.Contains("--reindex") || args.Contains("--status");
 
@@ -71,7 +72,11 @@ namespace DimonSmart.LocalVectorSearchMcp.Server
 
         private static System.Text.Json.JsonSerializerOptions CreateDefault()
         {
-            var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true };
+            var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+            {
+                WriteIndented = true,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+            };
             options.Converters.Add(new SearchModeJsonConverter());
             options.Converters.Add(new ReindexScopeJsonConverter());
             return options;
