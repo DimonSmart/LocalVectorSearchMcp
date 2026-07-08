@@ -78,6 +78,13 @@ dotnet run --project src/DimonSmart.LocalVectorSearchMcp.Server -- --config ./lo
 dotnet run --project src/DimonSmart.LocalVectorSearchMcp.Server -- --config ./local-vector-search-mcp.yml --status
 ```
 
+Install the released .NET tool:
+
+```bash
+dotnet tool install --global DimonSmart.LocalVectorSearchMcp
+local-vector-search-mcp --config ./local-vector-search-mcp.yml --status
+```
+
 ## MCP Config
 
 From source:
@@ -110,6 +117,22 @@ Published executable:
       "args": [
         "--config",
         "C:/Projects/MyProject/local-vector-search-mcp.yml"
+      ]
+    }
+  }
+}
+```
+
+On Linux, use the executable from the `linux-x64` release archive:
+
+```json
+{
+  "mcpServers": {
+    "local-vector-search": {
+      "command": "/opt/local-vector-search-mcp/local-vector-search-mcp",
+      "args": [
+        "--config",
+        "/home/user/project/local-vector-search-mcp.yml"
       ]
     }
   }

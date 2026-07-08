@@ -1,0 +1,264 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  HUSKY: 0
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore DimonSmart.LocalVectorSearchMcp.sln
+
+      - name: Check formatting
+        run: dotnet format DimonSmart.LocalVectorSearchMcp.sln --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build DimonSmart.LocalVectorSearchMcp.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test DimonSmart.LocalVectorSearchMcp.sln --configuration Release --no-build --verbosity normal
+
+  publish-binaries:
+    name: Publish ${{ matrix.runtime }}
+    needs: build-test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            runtime: win-x64
+            binary: local-vector-search-mcp.exe
+            asset-suffix: win-x64.zip
+          - os: ubuntu-latest
+            runtime: linux-x64
+            binary: local-vector-search-mcp
+            asset-suffix: linux-x64.tar.gz
+    steps:
+      - name: Set version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then exit 1; fi
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish server
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP "local-vector-search-mcp-${{ matrix.runtime }}"
+          dotnet publish src/DimonSmart.LocalVectorSearchMcp.Server/DimonSmart.LocalVectorSearchMcp.Server.csproj `
+            --configuration Release `
+            --runtime "${{ matrix.runtime }}" `
+            --self-contained true `
+            --output $publishDir `
+            /p:PublishSingleFile=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:DebugType=None `
+            /p:DebugSymbols=false `
+            /p:Version=$env:VERSION `
+            /p:AssemblyVersion="$env:VERSION.0" `
+            /p:FileVersion="$env:VERSION.0" `
+            /p:InformationalVersion=$env:GITHUB_REF_NAME
+
+          $publishedName = if ($IsWindows) { "DimonSmart.LocalVectorSearchMcp.Server.exe" } else { "DimonSmart.LocalVectorSearchMcp.Server" }
+          $publishedBinary = Join-Path $publishDir $publishedName
+          $binary = Join-Path $publishDir "${{ matrix.binary }}"
+          if (-not (Test-Path $publishedBinary)) {
+            throw "Published binary not found: $publishedBinary"
+          }
+          Move-Item -LiteralPath $publishedBinary -Destination $binary
+          if (Get-ChildItem -Path $publishDir -Filter "*.pdb" -Recurse) {
+            throw "Publish output contains PDB files."
+          }
+          if (-not $IsWindows) {
+            chmod +x $binary
+          }
+
+          $asset = "LocalVectorSearchMcp-$env:GITHUB_REF_NAME-${{ matrix.asset-suffix }}"
+          $archivePath = Join-Path $env:RUNNER_TEMP $asset
+          if ($IsWindows) {
+            Compress-Archive -Path (Join-Path $publishDir "*") -DestinationPath $archivePath
+          }
+          else {
+            tar -czf $archivePath -C $publishDir .
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content -Path "$archivePath.sha256" -NoNewline
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalVectorSearchMcp-${{ github.ref_name }}-${{ matrix.runtime }}
+          path: |
+            ${{ runner.temp }}/LocalVectorSearchMcp-${{ github.ref_name }}-${{ matrix.asset-suffix }}
+            ${{ runner.temp }}/LocalVectorSearchMcp-${{ github.ref_name }}-${{ matrix.asset-suffix }}.sha256
+          if-no-files-found: error
+
+  pack-nuget:
+    name: Pack and publish .NET tool
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Set version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then exit 1; fi
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack and verify tool
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "packages"
+          dotnet pack src/DimonSmart.LocalVectorSearchMcp.Server/DimonSmart.LocalVectorSearchMcp.Server.csproj `
+            --configuration Release `
+            --output $packageDir `
+            /p:Version=$env:VERSION `
+            /p:AssemblyVersion="$env:VERSION.0" `
+            /p:FileVersion="$env:VERSION.0" `
+            /p:InformationalVersion=$env:GITHUB_REF_NAME
+
+          $packagePath = Join-Path $packageDir "DimonSmart.LocalVectorSearchMcp.$env:VERSION.nupkg"
+          if (-not (Test-Path $packagePath)) {
+            throw "Package not found: $packagePath"
+          }
+          $toolDir = Join-Path $env:RUNNER_TEMP "local-vector-search-mcp-tool"
+          dotnet tool install DimonSmart.LocalVectorSearchMcp `
+            --tool-path $toolDir `
+            --add-source $packageDir `
+            --version $env:VERSION
+          if (-not (Test-Path (Join-Path $toolDir "local-vector-search-mcp"))) {
+            throw "Installed tool executable not found."
+          }
+          "PACKAGE_PATH=$packagePath" >> $env:GITHUB_ENV
+
+      - name: NuGet login
+        uses: NuGet/login@v1
+        id: nuget_login
+        with:
+          user: DimonSmart
+
+      - name: Publish to NuGet.org
+        shell: pwsh
+        run: |
+          dotnet nuget push "$env:PACKAGE_PATH" `
+            --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" `
+            --source "https://api.nuget.org/v3/index.json" `
+            --skip-duplicate
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DimonSmart.LocalVectorSearchMcp-${{ github.ref_name }}-nuget
+          path: ${{ runner.temp }}/packages/*.nupkg
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs:
+      - publish-binaries
+      - pack-nuget
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.nupkg' \) -exec cp {} release-assets/ \;
+          (cd release-assets && sha256sum -- * > SHA256SUMS.txt)
+
+          previous_tag="$(git tag --list 'v*.*.*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${GITHUB_REF_NAME}$" | head -n 1 || true)"
+          if [[ -n "$previous_tag" ]]; then
+            changes="$(git log --pretty=format:'* %s (%h)' "${previous_tag}..${GITHUB_REF_NAME}")"
+          else
+            changes="$(git log --pretty=format:'* %s (%h)' "${GITHUB_REF_NAME}")"
+          fi
+          [[ -n "$changes" ]] || changes='* Initial release.'
+
+          cat > release-notes.md <<EOF
+          ## LocalVectorSearchMcp ${GITHUB_REF_NAME}
+
+          Local MCP server for Markdown lexical, vector, and hybrid search.
+
+          ### Install as .NET tool
+
+          \`\`\`bash
+          dotnet tool install --global DimonSmart.LocalVectorSearchMcp --version ${VERSION}
+          \`\`\`
+
+          ### Portable binaries
+
+          * Windows x64: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-win-x64.zip\`
+          * Linux x64: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-linux-x64.tar.gz\`
+
+          ### Changes
+
+          ${changes}
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: release-assets/*
