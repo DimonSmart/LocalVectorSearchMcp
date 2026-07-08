@@ -1,0 +1,40 @@
+server:
+  name: local-vector-search-mcp
+
+storage:
+  path: ./.local-vector-search-mcp/csharpfar-specs-index.db
+
+embedding:
+  provider: openai-compatible
+  endpoint: http://localhost:11434/v1
+  apiKey: ollama
+  model: bge-m3:latest
+  dimensions: null
+  batchSize: 16
+  allowRemoteEndpoint: false
+  timeoutSeconds: 120
+
+chunking:
+  maxChunkBytes: 4096
+  maxElements: 20
+  includeHeadingContext: true
+  includeFrontMatter: true
+
+search:
+  defaultMode: hybrid
+  semanticCandidatePoolSize: 50
+  lexicalCandidatePoolSize: 50
+  maxResults: 10
+  rrfK: 60
+
+knowledgeBases:
+  - name: csharpfar-specs
+    root: C:/Private/CSharpFar/.specs
+    include:
+      - "**/*.md"
+    exclude:
+      - "**/bin/**"
+      - "**/obj/**"
+      - "**/.git/**"
+      - "**/node_modules/**"
+      - "**/.local-vector-search-mcp/**"
