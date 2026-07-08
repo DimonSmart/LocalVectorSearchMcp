@@ -1,7 +1,7 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using Microsoft.Data.Sqlite;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 
 public sealed class SqliteConnectionFactory(LocalVectorSearchMcpConfig config)
 {

@@ -1,9 +1,10 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Yaml;
 
 public sealed class WireEnumYamlConverter : IYamlTypeConverter
 {

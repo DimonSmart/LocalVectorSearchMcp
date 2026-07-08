@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using System.Text.RegularExpressions;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core;

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Search;
 
 public sealed class SearchModeJsonConverter : JsonConverter<SearchMode>
 {

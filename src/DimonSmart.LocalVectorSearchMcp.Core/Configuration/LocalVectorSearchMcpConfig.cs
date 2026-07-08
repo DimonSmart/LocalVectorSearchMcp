@@ -1,4 +1,10 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+
+namespace DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 
 public sealed record LocalVectorSearchMcpConfig
 {

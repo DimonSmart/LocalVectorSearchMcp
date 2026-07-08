@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Storage;
 
 public static class StableHash
 {

@@ -1,9 +1,10 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Embeddings;
 
 public sealed class OpenAiCompatibleEmbeddingProvider(HttpClient httpClient, LocalVectorSearchMcpConfig config) : IEmbeddingProvider
 {

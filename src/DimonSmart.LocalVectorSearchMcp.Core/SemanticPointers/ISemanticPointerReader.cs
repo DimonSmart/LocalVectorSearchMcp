@@ -1,4 +1,4 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 
 public interface ISemanticPointerReader
 {

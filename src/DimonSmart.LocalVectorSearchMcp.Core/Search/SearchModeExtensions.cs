@@ -1,4 +1,4 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Search;
 
 public static class SearchModeExtensions
 {

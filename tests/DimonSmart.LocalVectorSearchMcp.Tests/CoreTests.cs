@@ -1,5 +1,18 @@
 using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
+using DimonSmart.LocalVectorSearchMcp.Tests.Helpers;
 using System.Text.Json;
 
 namespace DimonSmart.LocalVectorSearchMcp.Tests;

@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public static class MarkdownTextNormalizer
 {

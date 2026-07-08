@@ -1,6 +1,8 @@
 using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 
 public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
 {

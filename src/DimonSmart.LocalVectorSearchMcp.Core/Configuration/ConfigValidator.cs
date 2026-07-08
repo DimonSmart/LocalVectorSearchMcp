@@ -1,4 +1,6 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
+
+namespace DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 
 public static class ConfigValidator
 {

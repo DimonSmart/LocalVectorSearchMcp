@@ -1,5 +1,19 @@
 using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
+using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Fakes;
+using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 
 public sealed class IntegrationTests

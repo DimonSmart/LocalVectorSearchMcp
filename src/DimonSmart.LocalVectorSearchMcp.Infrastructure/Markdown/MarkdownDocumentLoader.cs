@@ -1,6 +1,8 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 
 public sealed class MarkdownDocumentLoader : IMarkdownDocumentLoader
 {

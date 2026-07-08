@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
+namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 
 internal sealed class TemporaryDirectory : IDisposable
 {

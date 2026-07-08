@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 
 public sealed class EmbeddingTextBuilder
 {

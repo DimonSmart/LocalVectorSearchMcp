@@ -1,9 +1,14 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using Microsoft.Data.Sqlite;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 
 public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, LocalVectorSearchMcpConfig config) : IKnowledgeRepository, IVectorIndexService, IFullTextSearchService
 {

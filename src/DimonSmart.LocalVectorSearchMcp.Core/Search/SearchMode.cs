@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Search;
 
 [JsonConverter(typeof(SearchModeJsonConverter))]
 public enum SearchMode

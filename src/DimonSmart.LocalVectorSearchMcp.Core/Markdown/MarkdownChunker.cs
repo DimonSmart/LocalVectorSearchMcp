@@ -1,6 +1,8 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using System.Text;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public sealed class MarkdownChunker(ChunkingConfig config, EmbeddingTextBuilder textBuilder) : IMarkdownChunker
 {

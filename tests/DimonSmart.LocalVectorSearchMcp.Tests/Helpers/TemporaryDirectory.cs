@@ -1,4 +1,4 @@
-namespace DimonSmart.LocalVectorSearchMcp.Tests;
+namespace DimonSmart.LocalVectorSearchMcp.Tests.Helpers;
 
 internal sealed class TemporaryDirectory : IDisposable
 {

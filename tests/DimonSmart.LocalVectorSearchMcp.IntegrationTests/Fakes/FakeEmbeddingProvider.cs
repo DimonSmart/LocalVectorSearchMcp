@@ -1,6 +1,6 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 
-namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
+namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests.Fakes;
 
 internal sealed class FakeEmbeddingProvider : IEmbeddingProvider
 {

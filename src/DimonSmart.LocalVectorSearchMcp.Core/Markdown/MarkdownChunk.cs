@@ -1,4 +1,6 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+
+namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public sealed record MarkdownChunk(
     string KnowledgeBase,

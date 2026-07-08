@@ -1,4 +1,4 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 
 public sealed record StatusResponse(
     string DatabasePath,

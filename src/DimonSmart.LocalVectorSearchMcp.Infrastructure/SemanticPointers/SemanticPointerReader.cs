@@ -1,6 +1,8 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.SemanticPointers;
 
 public sealed class SemanticPointerReader(KnowledgeBasePathGuard pathGuard, IKnowledgeRepository repository) : ISemanticPointerReader
 {

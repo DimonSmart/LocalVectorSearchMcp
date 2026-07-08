@@ -1,4 +1,4 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Storage;
 
 public sealed record StorageConfig
 {

@@ -1,4 +1,9 @@
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+
+namespace DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 
 public interface IKnowledgeRepository
 {

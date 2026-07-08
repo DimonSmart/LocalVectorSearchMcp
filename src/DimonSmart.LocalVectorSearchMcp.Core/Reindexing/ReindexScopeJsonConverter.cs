@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 
 public sealed class ReindexScopeJsonConverter : JsonConverter<ReindexScope>
 {

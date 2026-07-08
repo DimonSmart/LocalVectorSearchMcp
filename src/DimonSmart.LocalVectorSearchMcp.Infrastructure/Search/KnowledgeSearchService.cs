@@ -1,6 +1,11 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 
-namespace DimonSmart.LocalVectorSearchMcp.Infrastructure;
+namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
 
 public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IEmbeddingProvider embeddingProvider, IVectorIndexService vectorSearch, IFullTextSearchService fullTextSearch, IKnowledgeRepository repository) : IKnowledgeSearchService
 {
