@@ -9,6 +9,6 @@ public sealed class SemanticPointerReader(KnowledgeBasePathGuard pathGuard, IKno
     public Task<MarkdownSlice> ReadAsync(string path, SemanticPointer pointer, int maxElements, int maxBytes, CancellationToken cancellationToken)
     {
         var normalizedPath = pathGuard.ValidateRelativePath(path);
-        return repository.ReadSliceAsync(normalizedPath, pointer, Math.Clamp(maxElements, 1, 100), Math.Clamp(maxBytes, 1024, 50000), cancellationToken);
+        return repository.ReadSliceAsync(normalizedPath, pointer, Math.Clamp(maxElements, 1, 100), Math.Clamp(maxBytes, 256, 100_000), cancellationToken);
     }
 }
