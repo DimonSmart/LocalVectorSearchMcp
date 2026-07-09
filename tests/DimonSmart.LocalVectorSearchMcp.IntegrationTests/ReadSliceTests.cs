@@ -129,6 +129,7 @@ public sealed class ReadSliceTests
             new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()),
             new FakeEmbeddingProvider(),
             repository,
+            repository,
             repository);
         await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
         return new ReadSliceTestContext(temp, repository, cancellationToken);

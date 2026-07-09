@@ -7,6 +7,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
@@ -44,9 +45,10 @@ try
             return;
         }
 
-        var repository = host.Services.GetRequiredService<IKnowledgeRepository>();
-        await repository.InitializeAsync(CancellationToken.None);
-        var status = await repository.GetStatusAsync(CancellationToken.None);
+        var indexInitializer = host.Services.GetRequiredService<IIndexInitializer>();
+        var statusReader = host.Services.GetRequiredService<IIndexStatusReader>();
+        await indexInitializer.InitializeAsync(CancellationToken.None);
+        var status = await statusReader.GetStatusAsync(CancellationToken.None);
         Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(status, JsonOptions.Default));
         return;
     }
@@ -96,7 +98,12 @@ namespace DimonSmart.LocalVectorSearchMcp.Server
             services.AddSingleton<KnowledgeBasePathGuard>();
             services.AddSingleton<SqliteConnectionFactory>();
             services.AddSingleton<SqliteKnowledgeRepository>();
-            services.AddSingleton<IKnowledgeRepository>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
+            services.AddSingleton<IIndexInitializer>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
+            services.AddSingleton<IDocumentIndexStore>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
+            services.AddSingleton<IChunkSearchDocumentReader>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
+            services.AddSingleton<ISearchIndexStateReader>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
+            services.AddSingleton<IIndexedMarkdownSliceReader>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
+            services.AddSingleton<IIndexStatusReader>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
             services.AddSingleton<IIndexManifestService>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
             services.AddSingleton<IVectorIndexService>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
             services.AddSingleton<IFullTextSearchService>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
@@ -113,7 +120,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Server
     public sealed record ReadToolRequest(string Path, string Pointer, int? MaxElements = null, int? MaxBytes = null);
 
     [McpServerToolType]
-    public sealed class KnowledgeMcpTools(IKnowledgeBaseIndexer indexer, IKnowledgeRepository repository, IKnowledgeSearchService searchService, ISemanticPointerReader reader)
+    public sealed class KnowledgeMcpTools(IKnowledgeBaseIndexer indexer, IIndexInitializer indexInitializer, IIndexStatusReader statusReader, IKnowledgeSearchService searchService, ISemanticPointerReader reader)
     {
         [McpServerTool(Name = "kb_reindex"), Description("Indexes or reindexes the current project's configured Markdown root.")]
         public Task<ReindexResponse> ReindexAsync(ReindexToolRequest request, CancellationToken cancellationToken)
@@ -124,8 +131,8 @@ namespace DimonSmart.LocalVectorSearchMcp.Server
         [McpServerTool(Name = "kb_status"), Description("Returns local vector search index status.")]
         public async Task<StatusResponse> StatusAsync(CancellationToken cancellationToken)
         {
-            await repository.InitializeAsync(cancellationToken);
-            return await repository.GetStatusAsync(cancellationToken);
+            await indexInitializer.InitializeAsync(cancellationToken);
+            return await statusReader.GetStatusAsync(cancellationToken);
         }
 
         [McpServerTool(Name = "kb_search"), Description("Searches the local Markdown knowledge base using lexical, semantic or hybrid search.")]

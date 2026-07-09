@@ -55,7 +55,7 @@ public sealed class IntegrationTests
         var indexer = CreateIndexer(config, repository, provider);
         await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
 
-        var search = new KnowledgeSearchService(config, provider, repository, repository, repository);
+        var search = new KnowledgeSearchService(config, provider, repository, repository, repository, repository);
         var response = await search.SearchAsync(new SearchRequest("hybrid", SearchMode.Hybrid, 5), cancellationToken);
 
         Assert.Single(response.Results);
@@ -252,7 +252,7 @@ public sealed class IntegrationTests
         LocalVectorSearchMcpConfig config,
         SqliteKnowledgeRepository repository,
         IEmbeddingProvider? provider = null)
-        => new(config, new MarkdownDocumentLoader(), new MarkdownElementParser(), new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()), provider ?? new FakeEmbeddingProvider(config.Embedding.Dimensions ?? 3), repository, repository);
+        => new(config, new MarkdownDocumentLoader(), new MarkdownElementParser(), new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()), provider ?? new FakeEmbeddingProvider(config.Embedding.Dimensions ?? 3), repository, repository, repository);
 
     private static async Task<string?> ReadManifestValueAsync(LocalVectorSearchMcpConfig config, string key, CancellationToken cancellationToken)
     {
