@@ -16,5 +16,6 @@ internal static class KnownCliExceptionFilter
             or IndexNotReadyException
             or VectorIndexException
             or FullTextSearchException
+            or SemanticPointerFormatException
             or SemanticPointerNotFoundException;
 }

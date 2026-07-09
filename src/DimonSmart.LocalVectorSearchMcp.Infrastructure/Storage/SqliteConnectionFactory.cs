@@ -10,6 +10,11 @@ public sealed class SqliteConnectionFactory(LocalVectorSearchMcpConfig config)
         Directory.CreateDirectory(Path.GetDirectoryName(config.Storage.Path)!);
         var connection = new SqliteConnection($"Data Source={config.Storage.Path}");
         connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "pragma foreign_keys = on;";
+        command.ExecuteNonQuery();
+
         return connection;
     }
 }

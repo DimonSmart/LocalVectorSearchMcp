@@ -12,14 +12,14 @@ public sealed class MarkdownDocumentLoader : IMarkdownDocumentLoader
     {
         var root = Path.GetFullPath(knowledgeBase.Root);
         var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
-        try
+        foreach (var pattern in knowledgeBase.Include)
         {
-            matcher.AddIncludePatterns(knowledgeBase.Include);
-            matcher.AddExcludePatterns(knowledgeBase.Exclude);
+            AddPattern(value => { matcher.AddInclude(value); }, "include", pattern);
         }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+
+        foreach (var pattern in knowledgeBase.Exclude)
         {
-            throw new ConfigurationException("Invalid knowledgeBase include/exclude pattern.");
+            AddPattern(value => { matcher.AddExclude(value); }, "exclude", pattern);
         }
 
         var files = matcher.GetResultsInFullPath(root)
@@ -43,5 +43,19 @@ public sealed class MarkdownDocumentLoader : IMarkdownDocumentLoader
         }
 
         return documents;
+    }
+
+    private static void AddPattern(Action<string> addPattern, string section, string pattern)
+    {
+        try
+        {
+            addPattern(pattern);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            throw new ConfigurationException(
+                $"Invalid knowledgeBase.{section} pattern: '{pattern}'.",
+                exception);
+        }
     }
 }

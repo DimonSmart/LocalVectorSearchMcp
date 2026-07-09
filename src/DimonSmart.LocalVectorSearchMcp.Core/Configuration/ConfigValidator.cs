@@ -14,9 +14,16 @@ public static class ConfigValidator
         if (config.KnowledgeBase.Include.Concat(config.KnowledgeBase.Exclude).Any(string.IsNullOrWhiteSpace)) throw new ConfigurationException("knowledgeBase include and exclude patterns must not be blank.");
         if (config.Embedding.Provider != "openai-compatible") throw new ConfigurationException("embedding.provider must be openai-compatible.");
         if (string.IsNullOrWhiteSpace(config.Embedding.ApiKey)) throw new ConfigurationException("embedding.apiKey is required.");
+        if (string.IsNullOrWhiteSpace(config.Embedding.Model)) throw new ConfigurationException("embedding.model is required.");
+        if (config.Embedding.Dimensions is <= 0) throw new ConfigurationException("embedding.dimensions must be greater than 0 when specified.");
         if (config.Embedding.BatchSize < 1) throw new ConfigurationException("embedding.batchSize must be greater than 0.");
+        if (config.Embedding.TimeoutSeconds < 1) throw new ConfigurationException("embedding.timeoutSeconds must be greater than 0.");
         if (config.Chunking.MaxChunkBytes < 1) throw new ConfigurationException("chunking.maxChunkBytes must be greater than 0.");
         if (config.Chunking.MaxElements < 1) throw new ConfigurationException("chunking.maxElements must be greater than 0.");
+        if (config.Search.SemanticCandidatePoolSize < 1) throw new ConfigurationException("search.semanticCandidatePoolSize must be greater than 0.");
+        if (config.Search.LexicalCandidatePoolSize < 1) throw new ConfigurationException("search.lexicalCandidatePoolSize must be greater than 0.");
+        if (config.Search.MaxResults < 1) throw new ConfigurationException("search.maxResults must be greater than 0.");
+        if (config.Search.RrfK < 1) throw new ConfigurationException("search.rrfK must be greater than 0.");
         if (!Uri.TryCreate(config.Embedding.Endpoint, UriKind.Absolute, out var endpoint)) throw new ConfigurationException("embedding.endpoint must be an absolute URI.");
         if (!config.Embedding.AllowRemoteEndpoint && !IsLoopbackHost(endpoint)) throw new ConfigurationException("embedding.endpoint must be loopback unless allowRemoteEndpoint is true.");
 
