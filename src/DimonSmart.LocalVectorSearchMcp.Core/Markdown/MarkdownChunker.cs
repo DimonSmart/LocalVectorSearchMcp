@@ -6,7 +6,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public sealed class MarkdownChunker(ChunkingConfig config, EmbeddingTextBuilder textBuilder) : IMarkdownChunker
 {
-    public const string Version = "1";
+    public const string Version = "2";
 
     public IReadOnlyList<MarkdownChunk> BuildChunks(MarkdownSourceDocument document, IReadOnlyList<MarkdownElement> elements)
     {
@@ -38,7 +38,8 @@ public sealed class MarkdownChunker(ChunkingConfig config, EmbeddingTextBuilder 
     {
         var text = BuildText(elements);
         var headingPath = elements.LastOrDefault(e => e.HeadingPath is not null)?.HeadingPath;
-        var embeddingText = textBuilder.Build(document.RelativePath, headingPath, text);
+        var headingPathForEmbedding = config.IncludeHeadingContext ? headingPath : null;
+        var embeddingText = textBuilder.Build(document.RelativePath, headingPathForEmbedding, text);
         return new MarkdownChunk(document.RelativePath, elements[0].Pointer, elements, text, headingPath, embeddingText, StableHash.HashText(embeddingText));
     }
 

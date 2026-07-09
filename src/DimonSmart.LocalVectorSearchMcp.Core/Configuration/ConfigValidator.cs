@@ -15,6 +15,8 @@ public static class ConfigValidator
         if (config.Embedding.Provider != "openai-compatible") throw new ConfigurationException("embedding.provider must be openai-compatible.");
         if (string.IsNullOrWhiteSpace(config.Embedding.ApiKey)) throw new ConfigurationException("embedding.apiKey is required.");
         if (config.Embedding.BatchSize < 1) throw new ConfigurationException("embedding.batchSize must be greater than 0.");
+        if (config.Chunking.MaxChunkBytes < 1) throw new ConfigurationException("chunking.maxChunkBytes must be greater than 0.");
+        if (config.Chunking.MaxElements < 1) throw new ConfigurationException("chunking.maxElements must be greater than 0.");
         if (!Uri.TryCreate(config.Embedding.Endpoint, UriKind.Absolute, out var endpoint)) throw new ConfigurationException("embedding.endpoint must be an absolute URI.");
         if (!config.Embedding.AllowRemoteEndpoint && !IsLoopbackHost(endpoint)) throw new ConfigurationException("embedding.endpoint must be loopback unless allowRemoteEndpoint is true.");
 

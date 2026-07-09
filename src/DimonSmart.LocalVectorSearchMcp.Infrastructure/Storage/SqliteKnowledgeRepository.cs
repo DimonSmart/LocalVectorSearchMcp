@@ -406,7 +406,11 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         ["chunker_version"] = MarkdownChunker.Version,
         ["embedding_text_builder_version"] = EmbeddingTextBuilder.Version,
         ["embedding_model"] = config.Embedding.Model,
-        ["embedding_dimensions"] = EffectiveEmbeddingDimensions.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        ["embedding_dimensions"] = EffectiveEmbeddingDimensions.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["chunking_max_chunk_bytes"] = config.Chunking.MaxChunkBytes.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["chunking_max_elements"] = config.Chunking.MaxElements.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["chunking_include_heading_context"] = config.Chunking.IncludeHeadingContext.ToString().ToLowerInvariant(),
+        ["chunking_include_front_matter"] = config.Chunking.IncludeFrontMatter.ToString().ToLowerInvariant()
     };
 
     private static async Task<IReadOnlyDictionary<string, string>> ReadManifestAsync(SqliteConnection db, CancellationToken cancellationToken)
