@@ -1,4 +1,3 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
@@ -29,6 +28,10 @@ public sealed class CoreTests
         Assert.Equal(SemanticPointerKind.Paragraph, SemanticPointerParser.GetKind(new SemanticPointer("2.1.p3")));
         Assert.Equal(new SemanticPointer("2.1"), SemanticPointerParser.GetContainingSectionPointer(new SemanticPointer("2.1.p3")));
     }
+
+    [Fact]
+    public void SemanticPointerParser_InvalidPointer_ThrowsSemanticPointerFormatException()
+        => Assert.Throws<SemanticPointerFormatException>(() => SemanticPointerParser.Parse("../x"));
 
     [Fact]
     public void MarkdownTextNormalizer_NormalizesLineEndingsAndBlankLines()

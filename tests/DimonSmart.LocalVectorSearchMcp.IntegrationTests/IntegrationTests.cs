@@ -1,4 +1,3 @@
-using DimonSmart.LocalVectorSearchMcp.Core;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
@@ -248,6 +247,36 @@ public sealed class IntegrationTests
         Assert.Empty(await repository.FullTextSearch.SearchAsync("deleted-marker", 10, cancellationToken));
     }
 
+    [Fact]
+    public async Task DeleteMissingDocuments_RemovesAllRelatedRowsByCascade()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(temp.Path, "notes.md"),
+            "# Notes\ncascade-marker\n",
+            cancellationToken);
+        var config = TestConfig(temp.Path);
+        var repository = SqliteTestServices.Create(config);
+        await CreateIndexer(config, repository)
+            .ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+
+        var before = await ReadIndexRowCountsAsync(config, cancellationToken);
+        Assert.True(before.Documents > 0);
+        Assert.True(before.Elements > 0);
+        Assert.True(before.Chunks > 0);
+        Assert.True(before.FtsRows > 0);
+        Assert.True(before.VectorRows > 0);
+
+        var deleted = await repository.DocumentStore.DeleteMissingDocumentsAsync(
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            cancellationToken);
+        var after = await ReadIndexRowCountsAsync(config, cancellationToken);
+
+        Assert.Equal(1, deleted);
+        Assert.Equal((0L, 0L, 0L, 0L, 0L), after);
+    }
+
     private static KnowledgeBaseIndexer CreateIndexer(
         LocalVectorSearchMcpConfig config,
         SqliteTestServices repository,
@@ -279,8 +308,7 @@ public sealed class IntegrationTests
         CancellationToken cancellationToken)
     {
         await using var db = new SqliteConnectionFactory(config).Open();
-        db.EnableExtensions();
-        db.LoadExtension("vec0");
+        SqliteVectorExtensionLoader.Load(db);
 
         static async Task<long> CountAsync(Microsoft.Data.Sqlite.SqliteConnection db, string table, CancellationToken cancellationToken)
         {

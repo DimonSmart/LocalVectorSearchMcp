@@ -1,7 +1,6 @@
-using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using System.Text.RegularExpressions;
 
-namespace DimonSmart.LocalVectorSearchMcp.Core;
+namespace DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 
 public static partial class SemanticPointerParser
 {
@@ -9,7 +8,7 @@ public static partial class SemanticPointerParser
     {
         if (!IsValid(value))
         {
-            throw new FormatException($"Invalid semantic pointer: {value}");
+            throw new SemanticPointerFormatException($"Invalid semantic pointer: {value}");
         }
 
         return new SemanticPointer(value);

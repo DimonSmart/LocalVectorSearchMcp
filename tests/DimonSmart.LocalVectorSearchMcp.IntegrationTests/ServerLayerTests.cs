@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Server;
@@ -7,6 +8,10 @@ namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 
 public sealed class ServerLayerTests
 {
+    [Fact]
+    public void KnownCliExceptionFilter_RecognizesSemanticPointerFormatException()
+        => Assert.True(KnownCliExceptionFilter.IsKnown(new SemanticPointerFormatException("bad")));
+
     [Fact]
     public void JsonOptions_SerializesWireEnumsAsLowercase()
     {
