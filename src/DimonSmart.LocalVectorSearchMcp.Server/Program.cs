@@ -39,7 +39,7 @@ try
         if (args.Contains("--reindex"))
         {
             var indexer = host.Services.GetRequiredService<IKnowledgeBaseIndexer>();
-            var response = await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, args.Contains("--force")), CancellationToken.None);
+            var response = await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, args.Contains("--force")), CancellationToken.None);
             Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(response, JsonOptions.Default));
             return;
         }
@@ -108,17 +108,17 @@ namespace DimonSmart.LocalVectorSearchMcp.Server
         }
     }
 
-    public sealed record ReindexToolRequest(string? KnowledgeBase = null, ReindexScope Scope = ReindexScope.Changed, bool Force = false);
-    public sealed record SearchToolRequest(string Query, string? KnowledgeBase = null, SearchMode? Mode = null, int? TopK = null);
-    public sealed record ReadToolRequest(string Path, string Pointer, string? KnowledgeBase = null, int? MaxElements = null, int? MaxBytes = null);
+    public sealed record ReindexToolRequest(ReindexScope Scope = ReindexScope.Changed, bool Force = false);
+    public sealed record SearchToolRequest(string Query, SearchMode? Mode = null, int? TopK = null);
+    public sealed record ReadToolRequest(string Path, string Pointer, int? MaxElements = null, int? MaxBytes = null);
 
     [McpServerToolType]
     public sealed class KnowledgeMcpTools(IKnowledgeBaseIndexer indexer, IKnowledgeRepository repository, IKnowledgeSearchService searchService, ISemanticPointerReader reader)
     {
-        [McpServerTool(Name = "kb_reindex"), Description("Indexes or reindexes configured local Markdown knowledge bases.")]
+        [McpServerTool(Name = "kb_reindex"), Description("Indexes or reindexes the current project's configured Markdown root.")]
         public Task<ReindexResponse> ReindexAsync(ReindexToolRequest request, CancellationToken cancellationToken)
         {
-            return indexer.ReindexAsync(new ReindexRequest(request.KnowledgeBase, request.Scope, request.Force), cancellationToken);
+            return indexer.ReindexAsync(new ReindexRequest(request.Scope, request.Force), cancellationToken);
         }
 
         [McpServerTool(Name = "kb_status"), Description("Returns local vector search index status.")]
@@ -132,14 +132,14 @@ namespace DimonSmart.LocalVectorSearchMcp.Server
         public Task<SearchResponse> SearchAsync(SearchToolRequest request, CancellationToken cancellationToken)
         {
             int? topK = request.TopK is null ? null : Math.Clamp(request.TopK.Value, 1, 50);
-            return searchService.SearchAsync(new SearchRequest(request.Query, request.KnowledgeBase, request.Mode, topK), cancellationToken);
+            return searchService.SearchAsync(new SearchRequest(request.Query, request.Mode, topK), cancellationToken);
         }
 
         [McpServerTool(Name = "kb_read"), Description("Reads indexed Markdown content from a document starting at a semantic pointer.")]
         public Task<MarkdownSlice> ReadAsync(ReadToolRequest request, CancellationToken cancellationToken)
         {
             var pointer = SemanticPointerParser.Parse(request.Pointer);
-            return reader.ReadAsync(request.KnowledgeBase, request.Path, pointer, request.MaxElements ?? 20, request.MaxBytes ?? 12000, cancellationToken);
+            return reader.ReadAsync(request.Path, pointer, request.MaxElements ?? 20, request.MaxBytes ?? 12000, cancellationToken);
         }
     }
 }

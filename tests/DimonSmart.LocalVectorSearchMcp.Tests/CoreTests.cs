@@ -40,7 +40,7 @@ public sealed class CoreTests
     [Fact]
     public void MarkdownElementParser_ParsesFrontMatterHeadingsParagraphsAndCode()
     {
-        var doc = new MarkdownSourceDocument("kb", "docs/a.md", "c:/kb/docs/a.md", "---\ntitle: A\n---\n# One\nText\n\n## Two\n```csharp\nvar x = 1;\n```\n", "h", DateTimeOffset.UtcNow);
+        var doc = new MarkdownSourceDocument("docs/a.md", "c:/kb/docs/a.md", "---\ntitle: A\n---\n# One\nText\n\n## Two\n```csharp\nvar x = 1;\n```\n", "h", DateTimeOffset.UtcNow);
         var elements = new MarkdownElementParser().Parse(doc);
 
         Assert.Contains(elements, e => e.Kind == MarkdownElementKind.FrontMatter && e.Pointer.Value == "frontmatter");
@@ -52,7 +52,7 @@ public sealed class CoreTests
     [Fact]
     public void MarkdownChunker_BuildsStableChunksWithHeadingContext()
     {
-        var doc = new MarkdownSourceDocument("kb", "a.md", "c:/kb/a.md", "# H\nText\n", "h", DateTimeOffset.UtcNow);
+        var doc = new MarkdownSourceDocument("a.md", "c:/kb/a.md", "# H\nText\n", "h", DateTimeOffset.UtcNow);
         var elements = new MarkdownElementParser().Parse(doc);
         var chunker = new MarkdownChunker(new ChunkingConfig { MaxChunkBytes = 4096, MaxElements = 20 }, new EmbeddingTextBuilder());
 
@@ -79,7 +79,7 @@ public sealed class CoreTests
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var search = JsonSerializer.Deserialize<SearchRequest>("""{"query":"q","mode":"SEMANTIC"}""", options);
         var reindex = JsonSerializer.Deserialize<ReindexRequest>("""{"scope":"ALL","force":true}""", options);
-        var result = new SearchResultItem("kb", "a.md", "1.p1", "a.md::1.p1", 1, SearchMode.Lexical, null, "text", new ReadHint("a.md", "1.p1", 20, 12000));
+        var result = new SearchResultItem("a.md", "1.p1", "a.md::1.p1", 1, SearchMode.Lexical, null, "text", new ReadHint("a.md", "1.p1", 20, 12000));
 
         var json = JsonSerializer.Serialize(result, options);
 
@@ -98,14 +98,30 @@ public sealed class CoreTests
               path: index.db
             search:
               defaultMode: HYBRID
-            knowledgeBases:
-              - name: kb
-                root: {temp.Path.Replace("\\", "/")}
+            knowledgeBase:
+              root: {temp.Path.Replace("\\", "/")}
             """);
 
         var config = LocalVectorSearchConfigLoader.Load(["--config", configPath]);
 
         Assert.Equal(SearchMode.Hybrid, config.Search.DefaultMode);
+    }
+
+    [Fact]
+    public void ConfigLoader_RejectsLegacyKnowledgeBasesList()
+    {
+        using var temp = new TemporaryDirectory();
+        var configPath = Path.Combine(temp.Path, "config.yml");
+        File.WriteAllText(configPath, """
+            knowledgeBases:
+              - name: old
+                root: .
+            """);
+
+        var exception = Assert.Throws<ConfigurationException>(
+            () => LocalVectorSearchConfigLoader.Load(["--config", configPath]));
+
+        Assert.Contains("Use singular knowledgeBase", exception.Message);
     }
 
     [Fact]
@@ -115,9 +131,9 @@ public sealed class CoreTests
         var config = TestConfig(temp.Path);
         var guard = new KnowledgeBasePathGuard(config);
 
-        Assert.Equal("docs/a.md", guard.ValidateRelativePath("kb", "docs/a.md"));
-        Assert.Throws<KnowledgeBaseAccessException>(() => guard.ValidateRelativePath("kb", "../a.md"));
-        Assert.Throws<KnowledgeBaseAccessException>(() => guard.ValidateRelativePath("kb", Path.GetFullPath("a.md")));
+        Assert.Equal("docs/a.md", guard.ValidateRelativePath("docs/a.md"));
+        Assert.Throws<KnowledgeBaseAccessException>(() => guard.ValidateRelativePath("../a.md"));
+        Assert.Throws<KnowledgeBaseAccessException>(() => guard.ValidateRelativePath(Path.GetFullPath("a.md")));
     }
 
     [Fact]
@@ -132,6 +148,6 @@ public sealed class CoreTests
     private static LocalVectorSearchMcpConfig TestConfig(string root) => new()
     {
         Storage = new StorageConfig { Path = Path.Combine(root, "index.db") },
-        KnowledgeBases = [new KnowledgeBaseConfig { Name = "kb", Root = root }]
+        KnowledgeBase = new KnowledgeBaseConfig { Root = root }
     };
 }

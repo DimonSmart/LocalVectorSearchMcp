@@ -1,3 +1,3 @@
 namespace DimonSmart.LocalVectorSearchMcp.Core.Search;
 
-public sealed record SearchRequest(string Query, string? KnowledgeBase, SearchMode? Mode, int? TopK);
+public sealed record SearchRequest(string Query, SearchMode? Mode, int? TopK);

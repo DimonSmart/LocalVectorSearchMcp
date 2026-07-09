@@ -3,6 +3,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Yaml;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using System.Text.RegularExpressions;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Configuration;
 
@@ -17,6 +18,10 @@ public static class LocalVectorSearchConfigLoader
         }
 
         var yaml = File.ReadAllText(path);
+        if (Regex.IsMatch(yaml, @"(?m)^knowledgeBases\s*:"))
+        {
+            throw new ConfigurationException("knowledgeBases list is no longer supported. Use singular knowledgeBase instead.");
+        }
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
             .WithTypeConverter(new WireEnumYamlConverter())
@@ -53,9 +58,11 @@ public static class LocalVectorSearchConfigLoader
         => config with
         {
             Storage = config.Storage with { Path = ToAbsolute(config.Storage.Path, baseDirectory) },
-            KnowledgeBases = config.KnowledgeBases.Select(kb => kb with { Root = ToAbsolute(kb.Root, baseDirectory) }).ToList()
+            KnowledgeBase = config.KnowledgeBase with { Root = ToAbsolute(config.KnowledgeBase.Root, baseDirectory) }
         };
 
     private static string ToAbsolute(string path, string baseDirectory)
-        => Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(baseDirectory, path));
+        => string.IsNullOrWhiteSpace(path)
+            ? path
+            : Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(baseDirectory, path));
 }

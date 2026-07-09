@@ -27,14 +27,13 @@ search:
   maxResults: 10
   rrfK: 60
 
-knowledgeBases:
-  - name: csharpfar-specs
-    root: C:/Private/CSharpFar/.specs
-    include:
-      - "**/*.md"
-    exclude:
-      - "**/bin/**"
-      - "**/obj/**"
-      - "**/.git/**"
-      - "**/node_modules/**"
-      - "**/.local-vector-search-mcp/**"
+knowledgeBase:
+  root: C:/Private/CSharpFar/.specs
+  include:
+    - "**/*.md"
+  exclude:
+    - "**/bin/**"
+    - "**/obj/**"
+    - "**/.git/**"
+    - "**/node_modules/**"
+    - "**/.local-vector-search-mcp/**"

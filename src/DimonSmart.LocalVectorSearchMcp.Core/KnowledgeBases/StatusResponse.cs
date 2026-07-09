@@ -7,4 +7,4 @@ public sealed record StatusResponse(
     string EmbeddingTextBuilderVersion,
     string EmbeddingModel,
     int? EmbeddingDimensions,
-    IReadOnlyList<KnowledgeBaseStatus> KnowledgeBases);
+    ProjectIndexStatus Project);

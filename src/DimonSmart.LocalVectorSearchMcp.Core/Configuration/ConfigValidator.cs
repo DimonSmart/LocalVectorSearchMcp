@@ -7,20 +7,17 @@ public static class ConfigValidator
     public static void Validate(LocalVectorSearchMcpConfig config)
     {
         if (string.IsNullOrWhiteSpace(config.Storage.Path)) throw new ConfigurationException("storage.path is required.");
-        if (config.KnowledgeBases.Count == 0) throw new ConfigurationException("At least one knowledge base must be configured.");
+        if (string.IsNullOrWhiteSpace(config.KnowledgeBase.Root)) throw new ConfigurationException("knowledgeBase.root is required.");
+        if (!Path.IsPathFullyQualified(config.KnowledgeBase.Root)) throw new ConfigurationException("knowledgeBase.root must be absolute after path resolution.");
+        if (!Directory.Exists(config.KnowledgeBase.Root)) throw new ConfigurationException("knowledgeBase.root does not exist.");
+        if (config.KnowledgeBase.Include.Count == 0) throw new ConfigurationException("knowledgeBase.include must contain at least one pattern.");
+        if (config.KnowledgeBase.Include.Concat(config.KnowledgeBase.Exclude).Any(string.IsNullOrWhiteSpace)) throw new ConfigurationException("knowledgeBase include and exclude patterns must not be blank.");
         if (config.Embedding.Provider != "openai-compatible") throw new ConfigurationException("embedding.provider must be openai-compatible.");
         if (string.IsNullOrWhiteSpace(config.Embedding.ApiKey)) throw new ConfigurationException("embedding.apiKey is required.");
         if (config.Embedding.BatchSize < 1) throw new ConfigurationException("embedding.batchSize must be greater than 0.");
         if (!Uri.TryCreate(config.Embedding.Endpoint, UriKind.Absolute, out var endpoint)) throw new ConfigurationException("embedding.endpoint must be an absolute URI.");
         if (!config.Embedding.AllowRemoteEndpoint && !IsLoopbackHost(endpoint)) throw new ConfigurationException("embedding.endpoint must be loopback unless allowRemoteEndpoint is true.");
 
-        for (var i = 0; i < config.KnowledgeBases.Count; i++)
-        {
-            var kb = config.KnowledgeBases[i];
-            if (string.IsNullOrWhiteSpace(kb.Name)) throw new ConfigurationException($"knowledgeBases[{i}].name is required.");
-            if (string.IsNullOrWhiteSpace(kb.Root)) throw new ConfigurationException($"knowledgeBases[{i}].root is required.");
-            if (!Directory.Exists(kb.Root)) throw new ConfigurationException($"knowledgeBases[{i}].root does not exist.");
-        }
     }
 
     private static bool IsLoopbackHost(Uri endpoint)

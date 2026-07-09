@@ -1,6 +1,7 @@
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using Microsoft.Extensions.FileSystemGlobbing;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 
@@ -9,8 +10,10 @@ public sealed class MarkdownDocumentLoader : IMarkdownDocumentLoader
     public async Task<IReadOnlyList<MarkdownSourceDocument>> LoadAsync(KnowledgeBaseConfig knowledgeBase, CancellationToken cancellationToken)
     {
         var root = Path.GetFullPath(knowledgeBase.Root);
-        var files = Directory.EnumerateFiles(root, "*.md", SearchOption.AllDirectories)
-            .Where(file => !IsExcluded(root, file, knowledgeBase.Exclude))
+        var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
+        matcher.AddIncludePatterns(knowledgeBase.Include);
+        matcher.AddExcludePatterns(knowledgeBase.Exclude);
+        var files = matcher.GetResultsInFullPath(root)
             .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -21,19 +24,9 @@ public sealed class MarkdownDocumentLoader : IMarkdownDocumentLoader
             var raw = await File.ReadAllTextAsync(file, cancellationToken);
             var markdown = MarkdownTextNormalizer.Normalize(raw);
             var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-            documents.Add(new MarkdownSourceDocument(knowledgeBase.Name, relative, Path.GetFullPath(file), markdown, StableHash.HashText(markdown), File.GetLastWriteTimeUtc(file)));
+            documents.Add(new MarkdownSourceDocument(relative, Path.GetFullPath(file), markdown, StableHash.HashText(markdown), File.GetLastWriteTimeUtc(file)));
         }
 
         return documents;
-    }
-
-    private static bool IsExcluded(string root, string file, IReadOnlyList<string> excludes)
-    {
-        var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-        return excludes.Any(pattern =>
-        {
-            var p = pattern.Replace('\\', '/').Trim('*');
-            return p.Length > 0 && relative.Contains(p.Trim('/'), StringComparison.OrdinalIgnoreCase);
-        });
     }
 }

@@ -10,7 +10,7 @@ public sealed class MarkdownElementParser : IMarkdownElementParser
     {
         var elements = new List<MarkdownElement>
         {
-            new(document.KnowledgeBase, document.RelativePath, new SemanticPointer("document"), MarkdownElementKind.Document, "", 1, 1, 0, null)
+            new(document.RelativePath, new SemanticPointer("document"), MarkdownElementKind.Document, "", 1, 1, 0, null)
         };
         var lines = document.Markdown.Split('\n');
         var lineIndex = 0;
@@ -28,7 +28,7 @@ public sealed class MarkdownElementParser : IMarkdownElementParser
             if (end > 0)
             {
                 var text = string.Join('\n', lines.Take(end + 1)).Trim();
-                elements.Add(new MarkdownElement(document.KnowledgeBase, document.RelativePath, new SemanticPointer("frontmatter"), MarkdownElementKind.FrontMatter, text, 1, end + 1, 0, null));
+                elements.Add(new MarkdownElement(document.RelativePath, new SemanticPointer("frontmatter"), MarkdownElementKind.FrontMatter, text, 1, end + 1, 0, null));
                 lineIndex = end + 1;
             }
         }
@@ -53,7 +53,7 @@ public sealed class MarkdownElementParser : IMarkdownElementParser
                 while (currentHeadingPath.Count < level - 1) currentHeadingPath.Add("");
                 if (currentHeadingPath.Count == level - 1) currentHeadingPath.Add(heading.Groups[2].Value.Trim()); else currentHeadingPath[level - 1] = heading.Groups[2].Value.Trim();
                 var hp = string.Join(" > ", currentHeadingPath.Where(x => !string.IsNullOrWhiteSpace(x)));
-                elements.Add(new MarkdownElement(document.KnowledgeBase, document.RelativePath, new SemanticPointer(currentSection), MarkdownElementKind.Heading, line.Trim(), lineIndex + 1, lineIndex + 1, level, hp));
+                elements.Add(new MarkdownElement(document.RelativePath, new SemanticPointer(currentSection), MarkdownElementKind.Heading, line.Trim(), lineIndex + 1, lineIndex + 1, level, hp));
                 lineIndex++;
                 continue;
             }
@@ -66,7 +66,7 @@ public sealed class MarkdownElementParser : IMarkdownElementParser
                 if (lineIndex < lines.Length) lineIndex++;
                 var text = string.Join('\n', lines.Skip(start).Take(lineIndex - start)).TrimEnd();
                 var pointer = NextPointer(currentSection, codeCounts, ref rootCode, "code");
-                elements.Add(new MarkdownElement(document.KnowledgeBase, document.RelativePath, pointer, MarkdownElementKind.CodeBlock, text, start + 1, lineIndex, 0, HeadingPath(currentHeadingPath)));
+                elements.Add(new MarkdownElement(document.RelativePath, pointer, MarkdownElementKind.CodeBlock, text, start + 1, lineIndex, 0, HeadingPath(currentHeadingPath)));
                 continue;
             }
 
@@ -82,7 +82,7 @@ public sealed class MarkdownElementParser : IMarkdownElementParser
             if (paragraphText.Length > 0)
             {
                 var pointer = NextPointer(currentSection, paragraphCounts, ref rootParagraph, "p");
-                elements.Add(new MarkdownElement(document.KnowledgeBase, document.RelativePath, pointer, MarkdownElementKind.Paragraph, paragraphText, paragraphStart + 1, lineIndex, 0, HeadingPath(currentHeadingPath)));
+                elements.Add(new MarkdownElement(document.RelativePath, pointer, MarkdownElementKind.Paragraph, paragraphText, paragraphStart + 1, lineIndex, 0, HeadingPath(currentHeadingPath)));
             }
         }
 

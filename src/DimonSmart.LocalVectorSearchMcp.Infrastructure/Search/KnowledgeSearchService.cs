@@ -21,12 +21,12 @@ public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IE
         if (mode is SearchMode.Semantic or SearchMode.Hybrid)
         {
             var embedding = (await embeddingProvider.EmbedBatchAsync([request.Query], cancellationToken)).Single();
-            semantic.AddRange(await vectorSearch.SearchAsync(embedding, config.Search.SemanticCandidatePoolSize, request.KnowledgeBase, cancellationToken));
+            semantic.AddRange(await vectorSearch.SearchAsync(embedding, config.Search.SemanticCandidatePoolSize, cancellationToken));
         }
 
         if (mode is SearchMode.Lexical or SearchMode.Hybrid)
         {
-            lexical.AddRange(await fullTextSearch.SearchAsync(request.Query, config.Search.LexicalCandidatePoolSize, request.KnowledgeBase, cancellationToken));
+            lexical.AddRange(await fullTextSearch.SearchAsync(request.Query, config.Search.LexicalCandidatePoolSize, cancellationToken));
         }
 
         var ordered = mode switch
@@ -42,7 +42,7 @@ public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IE
         {
             var c = chunks[x.ChunkId];
             var pointer = new SemanticPointer(c.Pointer);
-            return new SearchResultItem(c.KnowledgeBase, c.Path, c.Pointer, new FullSemanticPointer(c.Path, pointer).ToString(), x.Score, mode, c.HeadingPath, snippets.GetValueOrDefault(c.ChunkId) ?? MakeSnippet(c.Text), new ReadHint(c.Path, c.Pointer, 20, 12000));
+            return new SearchResultItem(c.Path, c.Pointer, new FullSemanticPointer(c.Path, pointer).ToString(), x.Score, mode, c.HeadingPath, snippets.GetValueOrDefault(c.ChunkId) ?? MakeSnippet(c.Text), new ReadHint(c.Path, c.Pointer, 20, 12000));
         }).ToList();
         return new SearchResponse(results);
     }
