@@ -6,20 +6,74 @@ using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using Microsoft.Data.Sqlite;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 
-public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, LocalVectorSearchMcpConfig config) : IKnowledgeRepository, IVectorIndexService, IFullTextSearchService
+public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, LocalVectorSearchMcpConfig config) : IKnowledgeRepository, IVectorIndexService, IFullTextSearchService, IIndexManifestService
 {
     public const string SchemaVersion = "1";
+    private int EffectiveEmbeddingDimensions => config.Embedding.Dimensions ?? 1024;
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
         TryLoadVector(db);
+        await ExecuteAsync(db, "pragma journal_mode = wal;", cancellationToken);
+        await CreateSchemaAsync(db, cancellationToken);
+    }
+
+    public async Task<bool> HasManifestAsync(CancellationToken cancellationToken)
+    {
+        await using var db = factory.Open();
+        return (await ScalarLongAsync(db, "select count(*) from index_manifest", [], cancellationToken) ?? 0) > 0;
+    }
+
+    public async Task<IndexCompatibilityResult> CheckCompatibilityAsync(CancellationToken cancellationToken)
+    {
+        await using var db = factory.Open();
+        var indexed = await ReadManifestAsync(db, cancellationToken);
+        var problems = CurrentManifest()
+            .Where(entry => !indexed.TryGetValue(entry.Key, out var value) || value != entry.Value)
+            .Select(entry =>
+            {
+                var indexedValue = indexed.TryGetValue(entry.Key, out var value) ? $"'{value}'" : "<missing>";
+                return $"{entry.Key}: indexed {indexedValue}, current '{entry.Value}'";
+            })
+            .ToList();
+        return new IndexCompatibilityResult(problems.Count == 0, problems);
+    }
+
+    public async Task ResetIndexAsync(CancellationToken cancellationToken)
+    {
+        await using var db = factory.Open();
+        TryLoadVector(db);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await ExecuteAsync(db, """
-            pragma journal_mode = wal;
+            drop table if exists chunk_vectors;
+            drop table if exists chunks_fts;
+            drop table if exists elements;
+            drop table if exists chunks;
+            drop table if exists documents;
+            drop table if exists index_manifest;
+            """, cancellationToken, tx: (SqliteTransaction)transaction);
+        await CreateSchemaAsync(db, cancellationToken, (SqliteTransaction)transaction);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task WriteCurrentManifestAsync(CancellationToken cancellationToken)
+    {
+        await using var db = factory.Open();
+        foreach (var entry in CurrentManifest())
+        {
+            await UpsertManifestAsync(db, entry.Key, entry.Value, cancellationToken);
+        }
+    }
+
+    private async Task CreateSchemaAsync(SqliteConnection db, CancellationToken cancellationToken, SqliteTransaction? transaction = null)
+    {
+        await ExecuteAsync(db, """
             create table if not exists documents (
               id integer primary key,
               knowledge_base text not null,
@@ -59,22 +113,17 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
               key text primary key,
               value text not null
             );
-            """, cancellationToken);
+            """, cancellationToken, tx: transaction);
 
-        var dimensions = config.Embedding.Dimensions ?? 1024;
         try
         {
-            await ExecuteAsync(db, $"create virtual table if not exists chunk_vectors using vec0(embedding float[{dimensions}]);", cancellationToken);
+            await ExecuteAsync(db, $"create virtual table if not exists chunk_vectors using vec0(embedding float[{EffectiveEmbeddingDimensions}]);", cancellationToken, tx: transaction);
         }
         catch (Exception ex)
         {
             throw new VectorIndexException("sqlite-vec initialization failed. Ensure vec0 native extension is available.", ex);
         }
 
-        await UpsertManifestAsync(db, "schema_version", SchemaVersion, cancellationToken);
-        await UpsertManifestAsync(db, "chunker_version", MarkdownChunker.Version, cancellationToken);
-        await UpsertManifestAsync(db, "embedding_text_builder_version", EmbeddingTextBuilder.Version, cancellationToken);
-        await UpsertManifestAsync(db, "embedding_model", config.Embedding.Model, cancellationToken);
     }
 
     public async Task<IReadOnlyDictionary<string, string>> GetDocumentHashesAsync(string knowledgeBase, CancellationToken cancellationToken)
@@ -92,6 +141,12 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
     public async Task SaveDocumentIndexAsync(MarkdownSourceDocument document, IReadOnlyList<MarkdownElement> elements, IReadOnlyList<MarkdownChunk> chunks, IReadOnlyList<EmbeddingVector> vectors, CancellationToken cancellationToken)
     {
         if (chunks.Count != vectors.Count) throw new EmbeddingProviderException("Embedding count does not match chunk count.");
+        var invalidVector = vectors.FirstOrDefault(vector => vector.Values.Length != EffectiveEmbeddingDimensions);
+        if (invalidVector is not null)
+        {
+            throw new EmbeddingProviderException($"Embedding dimension mismatch. Expected {EffectiveEmbeddingDimensions}, got {invalidVector.Values.Length}.");
+        }
+
         await using var db = factory.Open();
         TryLoadVector(db);
         await using var tx = await db.BeginTransactionAsync(cancellationToken);
@@ -277,7 +332,7 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
             statuses.Add(new KnowledgeBaseStatus(kb.Name, kb.Root, (int)docs, (int)chunks, DateTimeOffset.TryParse(last, out var dto) ? dto : null));
         }
 
-        return new StatusResponse(config.Storage.Path, SchemaVersion, MarkdownChunker.Version, EmbeddingTextBuilder.Version, config.Embedding.Model, config.Embedding.Dimensions, statuses);
+        return new StatusResponse(config.Storage.Path, SchemaVersion, MarkdownChunker.Version, EmbeddingTextBuilder.Version, config.Embedding.Model, EffectiveEmbeddingDimensions, statuses);
     }
 
     public async Task<bool> HasChunksAsync(CancellationToken cancellationToken)
@@ -327,6 +382,25 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
 
     private static async Task UpsertManifestAsync(SqliteConnection db, string key, string value, CancellationToken cancellationToken)
         => await ExecuteAsync(db, "insert into index_manifest(key,value) values($key,$value) on conflict(key) do update set value = excluded.value", cancellationToken, [("$key", key), ("$value", value)]);
+
+    private IReadOnlyDictionary<string, string> CurrentManifest() => new Dictionary<string, string>
+    {
+        ["schema_version"] = SchemaVersion,
+        ["chunker_version"] = MarkdownChunker.Version,
+        ["embedding_text_builder_version"] = EmbeddingTextBuilder.Version,
+        ["embedding_model"] = config.Embedding.Model,
+        ["embedding_dimensions"] = EffectiveEmbeddingDimensions.ToString(System.Globalization.CultureInfo.InvariantCulture)
+    };
+
+    private static async Task<IReadOnlyDictionary<string, string>> ReadManifestAsync(SqliteConnection db, CancellationToken cancellationToken)
+    {
+        var command = db.CreateCommand();
+        command.CommandText = "select key, value from index_manifest";
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result[reader.GetString(0)] = reader.GetString(1);
+        return result;
+    }
 
     private static async Task ExecuteAsync(SqliteConnection db, string sql, CancellationToken cancellationToken, IReadOnlyList<(string Name, object? Value)>? parameters = null, SqliteTransaction? tx = null)
     {

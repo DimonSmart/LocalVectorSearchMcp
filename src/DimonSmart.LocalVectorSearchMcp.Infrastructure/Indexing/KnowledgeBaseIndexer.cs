@@ -7,13 +7,36 @@ using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 
-public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IKnowledgeRepository repository) : IKnowledgeBaseIndexer
+public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IKnowledgeRepository repository, IIndexManifestService manifestService) : IKnowledgeBaseIndexer
 {
     public async Task<ReindexResponse> ReindexAsync(ReindexRequest request, CancellationToken cancellationToken)
     {
-        await repository.InitializeAsync(cancellationToken);
         var bases = config.KnowledgeBases.Where(kb => request.KnowledgeBase is null || kb.Name == request.KnowledgeBase).ToList();
         if (bases.Count == 0) throw new ConfigurationException($"Knowledge base was not found: {request.KnowledgeBase}");
+
+        await repository.InitializeAsync(cancellationToken);
+        if (await manifestService.HasManifestAsync(cancellationToken))
+        {
+            var compatibility = await manifestService.CheckCompatibilityAsync(cancellationToken);
+            if (!compatibility.IsCompatible)
+            {
+                if (!request.Force)
+                {
+                    throw new IndexCompatibilityException(
+                        "Index is incompatible with current configuration:\n- " +
+                        string.Join("\n- ", compatibility.Problems) +
+                        "\nRun kb_reindex with force=true or CLI --reindex --force to rebuild the index.");
+                }
+
+                await manifestService.ResetIndexAsync(cancellationToken);
+                await manifestService.WriteCurrentManifestAsync(cancellationToken);
+                bases = config.KnowledgeBases;
+            }
+        }
+        else
+        {
+            await manifestService.WriteCurrentManifestAsync(cancellationToken);
+        }
 
         var scanned = 0;
         var indexed = 0;

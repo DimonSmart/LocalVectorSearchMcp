@@ -1,6 +1,7 @@
 using DimonSmart.LocalVectorSearchMcp.Core;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
@@ -26,7 +27,7 @@ public sealed class IntegrationTests
         await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nLocal vector search uses SQLite FTS5.\n", cancellationToken);
         var config = TestConfig(temp.Path);
         var repository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(config), config);
-        var indexer = new KnowledgeBaseIndexer(config, new MarkdownDocumentLoader(), new MarkdownElementParser(), new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()), new FakeEmbeddingProvider(), repository);
+        var indexer = CreateIndexer(config, repository);
 
         var first = await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
         var second = await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
@@ -48,7 +49,7 @@ public sealed class IntegrationTests
         var config = TestConfig(temp.Path);
         var repository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(config), config);
         var provider = new FakeEmbeddingProvider();
-        var indexer = new KnowledgeBaseIndexer(config, new MarkdownDocumentLoader(), new MarkdownElementParser(), new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()), provider, repository);
+        var indexer = CreateIndexer(config, repository, provider);
         await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
 
         var search = new KnowledgeSearchService(config, provider, repository, repository, repository);
@@ -58,10 +59,126 @@ public sealed class IntegrationTests
         Assert.Equal("notes.md::1.p1", response.Results[0].FullPointer);
     }
 
-    private static LocalVectorSearchMcpConfig TestConfig(string root) => new()
+    [Fact]
+    public async Task ForceFalse_FailsOnIncompatibleManifest()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
+        var configA = TestConfig(temp.Path, "model-a", 3);
+        var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+
+        var configB = TestConfig(temp.Path, "model-b", 3);
+        var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
+        var exception = await Assert.ThrowsAsync<IndexCompatibilityException>(
+            () => CreateIndexer(configB, repositoryB).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken));
+
+        Assert.Contains("embedding_model", exception.Message);
+        Assert.Contains("model-a", exception.Message);
+        Assert.Contains("model-b", exception.Message);
+        Assert.Contains("force=true", exception.Message);
+    }
+
+    [Fact]
+    public async Task ForceTrue_RebuildsIncompatibleIndexAndManifest()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
+        var configA = TestConfig(temp.Path, "model-a", 3);
+        var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+
+        var configB = TestConfig(temp.Path, "model-b", 3);
+        var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
+        var response = await CreateIndexer(configB, repositoryB).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, true), cancellationToken);
+        var status = await repositoryB.GetStatusAsync(cancellationToken);
+
+        Assert.Equal(1, response.IndexedFiles);
+        Assert.Equal("model-b", status.EmbeddingModel);
+        Assert.Equal("model-b", await ReadManifestValueAsync(configB, "embedding_model", cancellationToken));
+    }
+
+    [Fact]
+    public async Task DimensionsChange_RequiresForceAndRecreatesVectorTable()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
+        var configA = TestConfig(temp.Path, "model", 3);
+        var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+
+        var configB = TestConfig(temp.Path, "model", 4);
+        var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
+        var indexerB = CreateIndexer(configB, repositoryB, new FakeEmbeddingProvider(4));
+        var exception = await Assert.ThrowsAsync<IndexCompatibilityException>(
+            () => indexerB.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken));
+        var response = await indexerB.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, true), cancellationToken);
+
+        Assert.Contains("embedding_dimensions", exception.Message);
+        Assert.Equal(1, response.IndexedFiles);
+        Assert.Equal("4", await ReadManifestValueAsync(configB, "embedding_dimensions", cancellationToken));
+    }
+
+    [Fact]
+    public async Task InitializeAsync_DoesNotHideManifestMismatch()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
+        var configA = TestConfig(temp.Path, "model-a", 3);
+        var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+
+        var configB = TestConfig(temp.Path, "model-b", 3);
+        var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
+        await repositoryB.InitializeAsync(cancellationToken);
+        var compatibility = await repositoryB.CheckCompatibilityAsync(cancellationToken);
+
+        Assert.Equal("model-a", await ReadManifestValueAsync(configB, "embedding_model", cancellationToken));
+        Assert.False(compatibility.IsCompatible);
+        Assert.Contains(compatibility.Problems, problem => problem.Contains("embedding_model", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EmbeddingDimensionMismatch_FailsBeforeDocumentStorage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
+        var config = TestConfig(temp.Path, "model", 3);
+        var repository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(config), config);
+
+        var exception = await Assert.ThrowsAsync<EmbeddingProviderException>(
+            () => CreateIndexer(config, repository, new FakeEmbeddingProvider(4))
+                .ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken));
+        var status = await repository.GetStatusAsync(cancellationToken);
+
+        Assert.Contains("Expected 3, got 4", exception.Message);
+        Assert.Equal(0, Assert.Single(status.KnowledgeBases).Documents);
+    }
+
+    private static KnowledgeBaseIndexer CreateIndexer(
+        LocalVectorSearchMcpConfig config,
+        SqliteKnowledgeRepository repository,
+        IEmbeddingProvider? provider = null)
+        => new(config, new MarkdownDocumentLoader(), new MarkdownElementParser(), new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()), provider ?? new FakeEmbeddingProvider(config.Embedding.Dimensions ?? 3), repository, repository);
+
+    private static async Task<string?> ReadManifestValueAsync(LocalVectorSearchMcpConfig config, string key, CancellationToken cancellationToken)
+    {
+        await using var db = new SqliteConnectionFactory(config).Open();
+        var command = db.CreateCommand();
+        command.CommandText = "select value from index_manifest where key = $key";
+        command.Parameters.AddWithValue("$key", key);
+        return Convert.ToString(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static LocalVectorSearchMcpConfig TestConfig(string root, string model = "bge-m3:latest", int dimensions = 3) => new()
     {
         Storage = new StorageConfig { Path = Path.Combine(root, ".local-vector-search-mcp", "index.db") },
-        Embedding = new EmbeddingConfig { Dimensions = 3 },
+        Embedding = new EmbeddingConfig { Model = model, Dimensions = dimensions },
         KnowledgeBases = [new KnowledgeBaseConfig { Name = "kb", Root = root }]
     };
 }
