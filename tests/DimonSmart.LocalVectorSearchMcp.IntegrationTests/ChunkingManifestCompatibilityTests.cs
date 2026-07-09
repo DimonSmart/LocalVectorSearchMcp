@@ -140,21 +140,21 @@ public sealed class ChunkingManifestCompatibilityTests
         Assert.Equal(currentValue, manifest[manifestKey]);
     }
 
-    private static SqliteKnowledgeRepository CreateRepository(LocalVectorSearchMcpConfig config)
-        => new(new SqliteConnectionFactory(config), config);
+    private static SqliteTestServices CreateRepository(LocalVectorSearchMcpConfig config)
+        => SqliteTestServices.Create(config);
 
     private static KnowledgeBaseIndexer CreateIndexer(
         LocalVectorSearchMcpConfig config,
-        SqliteKnowledgeRepository repository)
+        SqliteTestServices repository)
         => new(
             config,
             new MarkdownDocumentLoader(),
             new MarkdownElementParser(),
             new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()),
             new FakeEmbeddingProvider(3),
-            repository,
-            repository,
-            repository);
+            repository.Initializer,
+            repository.DocumentStore,
+            repository.Manifest);
 
     private static async Task<IReadOnlyDictionary<string, string>> ReadManifestAsync(
         LocalVectorSearchMcpConfig config,
