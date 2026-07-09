@@ -144,7 +144,11 @@ On Linux, use the executable from the `linux-x64` release archive:
 
 Lexical search uses SQLite FTS5 and BM25. Vector search uses sqlite-vec. Hybrid search combines lexical and vector ranks through Reciprocal Rank Fusion, so raw BM25 scores and vector distances are not mixed directly.
 
-Changing embedding model or dimensions requires a forced rebuild of the index.
+Changing the embedding model, embedding dimensions, chunker version, embedding text builder version, or chunking settings requires a forced rebuild of the index:
+
+```bash
+local-vector-search-mcp --config ./local-vector-search-mcp.yml --reindex --force
+```
 
 ## Verification
 
