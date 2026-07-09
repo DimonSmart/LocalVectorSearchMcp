@@ -14,6 +14,7 @@ public sealed class MarkdownDocumentLoader : IMarkdownDocumentLoader
         matcher.AddIncludePatterns(knowledgeBase.Include);
         matcher.AddExcludePatterns(knowledgeBase.Exclude);
         var files = matcher.GetResultsInFullPath(root)
+            .Where(file => Path.GetExtension(file).Equals(".md", StringComparison.OrdinalIgnoreCase) && File.Exists(file))
             .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
             .ToList();
 

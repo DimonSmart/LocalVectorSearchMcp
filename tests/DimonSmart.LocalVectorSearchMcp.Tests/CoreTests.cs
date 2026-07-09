@@ -145,6 +145,40 @@ public sealed class CoreTests
         Assert.Throws<ConfigurationException>(() => ConfigValidator.Validate(config));
     }
 
+    [Fact]
+    public void ConfigValidator_RejectsEmptyInclude()
+    {
+        using var temp = new TemporaryDirectory();
+        var config = TestConfig(temp.Path) with
+        {
+            KnowledgeBase = new KnowledgeBaseConfig { Root = temp.Path, Include = [] }
+        };
+
+        var exception = Assert.Throws<ConfigurationException>(() => ConfigValidator.Validate(config));
+
+        Assert.Contains("knowledgeBase.include", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ConfigValidator_RejectsBlankIncludeAndExcludePatterns(string? pattern)
+    {
+        using var temp = new TemporaryDirectory();
+        var includeConfig = TestConfig(temp.Path) with
+        {
+            KnowledgeBase = new KnowledgeBaseConfig { Root = temp.Path, Include = [pattern!] }
+        };
+        var excludeConfig = TestConfig(temp.Path) with
+        {
+            KnowledgeBase = new KnowledgeBaseConfig { Root = temp.Path, Exclude = [pattern!] }
+        };
+
+        Assert.Throws<ConfigurationException>(() => ConfigValidator.Validate(includeConfig));
+        Assert.Throws<ConfigurationException>(() => ConfigValidator.Validate(excludeConfig));
+    }
+
     private static LocalVectorSearchMcpConfig TestConfig(string root) => new()
     {
         Storage = new StorageConfig { Path = Path.Combine(root, "index.db") },

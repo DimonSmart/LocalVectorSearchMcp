@@ -163,6 +163,45 @@ public sealed class IntegrationTests
         Assert.Equal(0, status.Project.Documents);
     }
 
+    [Fact]
+    public async Task ChangedReindex_RemovesDocumentsExcludedByUpdatedConfiguration()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(temp.Path, "docs", "private"));
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "docs", "a.md"), "# Public\npublic-marker\n", cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "docs", "private", "secret.md"), "# Secret\nsecret-marker\n", cancellationToken);
+
+        var initialConfig = TestConfig(temp.Path) with
+        {
+            KnowledgeBase = new KnowledgeBaseConfig
+            {
+                Root = temp.Path,
+                Include = ["docs/**/*.md"],
+                Exclude = []
+            }
+        };
+        var initialRepository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(initialConfig), initialConfig);
+        await CreateIndexer(initialConfig, initialRepository)
+            .ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+        Assert.Equal(2, (await initialRepository.GetStatusAsync(cancellationToken)).Project.Documents);
+
+        var updatedConfig = initialConfig with
+        {
+            KnowledgeBase = initialConfig.KnowledgeBase with { Exclude = ["docs/private/**"] }
+        };
+        var updatedRepository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(updatedConfig), updatedConfig);
+        var response = await CreateIndexer(updatedConfig, updatedRepository)
+            .ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+        var hashes = await updatedRepository.GetDocumentHashesAsync(cancellationToken);
+
+        Assert.Equal(1, response.DeletedFiles);
+        Assert.Equal(["docs/a.md"], hashes.Keys);
+        Assert.Equal(1, (await updatedRepository.GetStatusAsync(cancellationToken)).Project.Documents);
+        Assert.Empty(await updatedRepository.SearchAsync("secret-marker", 10, cancellationToken));
+        Assert.NotEmpty(await updatedRepository.SearchAsync("public-marker", 10, cancellationToken));
+    }
+
     private static KnowledgeBaseIndexer CreateIndexer(
         LocalVectorSearchMcpConfig config,
         SqliteKnowledgeRepository repository,
