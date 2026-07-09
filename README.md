@@ -140,6 +140,28 @@ On Linux, use the executable from the `linux-x64` release archive:
 }
 ```
 
+On macOS, use the executable from the `osx-arm64` release archive on Apple Silicon or `osx-x64` on Intel:
+
+```bash
+chmod +x /opt/local-vector-search-mcp/local-vector-search-mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "local-vector-search": {
+      "command": "/opt/local-vector-search-mcp/local-vector-search-mcp",
+      "args": [
+        "--config",
+        "/Users/user/project/local-vector-search-mcp.yml"
+      ]
+    }
+  }
+}
+```
+
+Downloaded unsigned macOS binaries may require explicit approval in System Settings before first launch.
+
 ## Search Modes
 
 Lexical search uses SQLite FTS5 and BM25. Vector search uses sqlite-vec. Hybrid search combines lexical and vector ranks through Reciprocal Rank Fusion, so raw BM25 scores and vector distances are not mixed directly.
@@ -156,3 +178,5 @@ local-vector-search-mcp --config ./local-vector-search-mcp.yml --reindex --force
 dotnet build
 dotnet test
 ```
+
+Release CI also publishes and smoke-tests Windows x64, Linux x64, macOS arm64, and macOS x64 self-contained binaries.

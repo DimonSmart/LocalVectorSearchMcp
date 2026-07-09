@@ -14,7 +14,11 @@ public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
         var normalized = path.Replace('\\', '/').TrimStart('/');
         var absolute = Path.GetFullPath(Path.Combine(config.KnowledgeBase.Root, normalized));
         var root = Path.GetFullPath(config.KnowledgeBase.Root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (absolute.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        if (absolute.StartsWith(root, comparison))
         {
             return normalized;
         }
