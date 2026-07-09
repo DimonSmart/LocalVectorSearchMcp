@@ -61,6 +61,14 @@ jobs:
             runtime: linux-x64
             binary: local-vector-search-mcp
             asset-suffix: linux-x64.tar.gz
+          - os: macos-14
+            runtime: osx-arm64
+            binary: local-vector-search-mcp
+            asset-suffix: osx-arm64.tar.gz
+          - os: macos-13
+            runtime: osx-x64
+            binary: local-vector-search-mcp
+            asset-suffix: osx-x64.tar.gz
     steps:
       - name: Set version
         shell: bash
@@ -107,6 +115,23 @@ jobs:
           }
           if (-not $IsWindows) {
             chmod +x $binary
+          }
+
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "local-vector-search-mcp-smoke-root"
+          $smokeData = Join-Path $env:RUNNER_TEMP "local-vector-search-mcp-smoke-data"
+          New-Item -ItemType Directory -Force -Path $smokeRoot, $smokeData | Out-Null
+          $smokeConfig = Join-Path $env:RUNNER_TEMP "local-vector-search-mcp-smoke.yml"
+          @"
+          storage:
+            path: $((Join-Path $smokeData "index.db").Replace("\", "/"))
+          embedding:
+            apiKey: smoke
+          knowledgeBase:
+            root: $($smokeRoot.Replace("\", "/"))
+          "@ | Set-Content -LiteralPath $smokeConfig -NoNewline
+          & $binary --config $smokeConfig --status
+          if ($LASTEXITCODE -ne 0) {
+            throw "Published binary smoke test failed."
           }
 
           $asset = "LocalVectorSearchMcp-$env:GITHUB_REF_NAME-${{ matrix.asset-suffix }}"
@@ -251,6 +276,8 @@ jobs:
 
           * Windows x64: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-win-x64.zip\`
           * Linux x64: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-linux-x64.tar.gz\`
+          * macOS Apple Silicon: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-osx-arm64.tar.gz\`
+          * macOS Intel: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-osx-x64.tar.gz\`
 
           ### Changes
 
