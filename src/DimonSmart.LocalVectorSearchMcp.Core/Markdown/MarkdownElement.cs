@@ -3,7 +3,6 @@ using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public sealed record MarkdownElement(
-    string KnowledgeBase,
     string Path,
     SemanticPointer Pointer,
     MarkdownElementKind Kind,

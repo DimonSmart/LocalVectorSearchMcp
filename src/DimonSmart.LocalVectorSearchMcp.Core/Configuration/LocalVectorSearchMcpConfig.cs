@@ -13,5 +13,5 @@ public sealed record LocalVectorSearchMcpConfig
     public EmbeddingConfig Embedding { get; init; } = new();
     public ChunkingConfig Chunking { get; init; } = new();
     public SearchConfig Search { get; init; } = new();
-    public List<KnowledgeBaseConfig> KnowledgeBases { get; init; } = [];
+    public KnowledgeBaseConfig KnowledgeBase { get; init; } = new();
 }

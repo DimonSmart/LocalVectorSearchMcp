@@ -1,8 +1,10 @@
 # DimonSmart.LocalVectorSearchMcp
 
-Local MCP server for indexing configured Markdown folders and searching them through SQLite FTS5 lexical search, sqlite-vec vector search, and hybrid Reciprocal Rank Fusion.
+Local MCP server for indexing one project's configured Markdown root and searching it through SQLite FTS5 lexical search, sqlite-vec vector search, and hybrid Reciprocal Rank Fusion.
 
 ## MVP Scope
+
+One project equals one MCP server instance, one config, one allowed root, and one project-local SQLite index. Separate projects use separate server instances and cannot select or search each other's content through the API.
 
 The MVP indexes only `.md` files from configured knowledge base roots. It stores documents, Markdown elements, chunks, FTS rows, sqlite-vec vectors, and index metadata in SQLite. It exposes MCP tools:
 
@@ -47,17 +49,16 @@ search:
   maxResults: 10
   rrfK: 60
 
-knowledgeBases:
-  - name: current-project
-    root: .
-    include:
-      - "**/*.md"
-    exclude:
-      - "**/bin/**"
-      - "**/obj/**"
-      - "**/.git/**"
-      - "**/node_modules/**"
-      - "**/.local-vector-search-mcp/**"
+knowledgeBase:
+  root: .
+  include:
+    - "**/*.md"
+  exclude:
+    - "**/bin/**"
+    - "**/obj/**"
+    - "**/.git/**"
+    - "**/node_modules/**"
+    - "**/.local-vector-search-mcp/**"
 ```
 
 ## Ollama

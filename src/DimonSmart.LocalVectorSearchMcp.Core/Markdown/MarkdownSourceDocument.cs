@@ -1,7 +1,6 @@
 namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public sealed record MarkdownSourceDocument(
-    string KnowledgeBase,
     string RelativePath,
     string AbsolutePath,
     string Markdown,

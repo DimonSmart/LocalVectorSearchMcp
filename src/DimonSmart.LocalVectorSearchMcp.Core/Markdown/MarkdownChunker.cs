@@ -39,7 +39,7 @@ public sealed class MarkdownChunker(ChunkingConfig config, EmbeddingTextBuilder 
         var text = BuildText(elements);
         var headingPath = elements.LastOrDefault(e => e.HeadingPath is not null)?.HeadingPath;
         var embeddingText = textBuilder.Build(document.RelativePath, headingPath, text);
-        return new MarkdownChunk(document.KnowledgeBase, document.RelativePath, elements[0].Pointer, elements, text, headingPath, embeddingText, StableHash.HashText(embeddingText));
+        return new MarkdownChunk(document.RelativePath, elements[0].Pointer, elements, text, headingPath, embeddingText, StableHash.HashText(embeddingText));
     }
 
     private static string BuildText(IEnumerable<MarkdownElement> elements) => string.Join("\n\n", elements.Select(e => e.Text.Trim()));

@@ -29,15 +29,18 @@ public sealed class IntegrationTests
         var repository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(config), config);
         var indexer = CreateIndexer(config, repository);
 
-        var first = await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
-        var second = await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
-        var lexical = await repository.SearchAsync("SQLite", 10, "kb", cancellationToken);
-        var slice = await repository.ReadSliceAsync("kb", "notes.md", new SemanticPointer("1.p1"), 10, 12000, cancellationToken);
+        var first = await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+        var second = await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+        var lexical = await repository.SearchAsync("SQLite", 10, cancellationToken);
+        var slice = await repository.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 10, 12000, cancellationToken);
 
         Assert.Equal(1, first.IndexedFiles);
         Assert.Equal(1, second.SkippedFiles);
         Assert.NotEmpty(lexical);
         Assert.Contains("SQLite FTS5", slice.Markdown);
+        Assert.Equal("2", await ReadManifestValueAsync(config, "schema_version", cancellationToken));
+        Assert.DoesNotContain("knowledge_base", await ReadColumnNamesAsync(config, "documents", cancellationToken));
+        Assert.DoesNotContain("knowledge_base", await ReadColumnNamesAsync(config, "chunks", cancellationToken));
     }
 
     [Fact]
@@ -50,10 +53,10 @@ public sealed class IntegrationTests
         var repository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(config), config);
         var provider = new FakeEmbeddingProvider();
         var indexer = CreateIndexer(config, repository, provider);
-        await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+        await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
 
         var search = new KnowledgeSearchService(config, provider, repository, repository, repository);
-        var response = await search.SearchAsync(new SearchRequest("hybrid", "kb", SearchMode.Hybrid, 5), cancellationToken);
+        var response = await search.SearchAsync(new SearchRequest("hybrid", SearchMode.Hybrid, 5), cancellationToken);
 
         Assert.Single(response.Results);
         Assert.Equal("notes.md::1.p1", response.Results[0].FullPointer);
@@ -67,12 +70,12 @@ public sealed class IntegrationTests
         await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
         var configA = TestConfig(temp.Path, "model-a", 3);
         var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
-        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
 
         var configB = TestConfig(temp.Path, "model-b", 3);
         var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
         var exception = await Assert.ThrowsAsync<IndexCompatibilityException>(
-            () => CreateIndexer(configB, repositoryB).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken));
+            () => CreateIndexer(configB, repositoryB).ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken));
 
         Assert.Contains("embedding_model", exception.Message);
         Assert.Contains("model-a", exception.Message);
@@ -88,11 +91,11 @@ public sealed class IntegrationTests
         await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
         var configA = TestConfig(temp.Path, "model-a", 3);
         var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
-        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
 
         var configB = TestConfig(temp.Path, "model-b", 3);
         var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
-        var response = await CreateIndexer(configB, repositoryB).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, true), cancellationToken);
+        var response = await CreateIndexer(configB, repositoryB).ReindexAsync(new ReindexRequest(ReindexScope.Changed, true), cancellationToken);
         var status = await repositoryB.GetStatusAsync(cancellationToken);
 
         Assert.Equal(1, response.IndexedFiles);
@@ -108,14 +111,14 @@ public sealed class IntegrationTests
         await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
         var configA = TestConfig(temp.Path, "model", 3);
         var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
-        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
 
         var configB = TestConfig(temp.Path, "model", 4);
         var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
         var indexerB = CreateIndexer(configB, repositoryB, new FakeEmbeddingProvider(4));
         var exception = await Assert.ThrowsAsync<IndexCompatibilityException>(
-            () => indexerB.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken));
-        var response = await indexerB.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, true), cancellationToken);
+            () => indexerB.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken));
+        var response = await indexerB.ReindexAsync(new ReindexRequest(ReindexScope.Changed, true), cancellationToken);
 
         Assert.Contains("embedding_dimensions", exception.Message);
         Assert.Equal(1, response.IndexedFiles);
@@ -130,7 +133,7 @@ public sealed class IntegrationTests
         await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), "# Alpha\nText.\n", cancellationToken);
         var configA = TestConfig(temp.Path, "model-a", 3);
         var repositoryA = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configA), configA);
-        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken);
+        await CreateIndexer(configA, repositoryA).ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
 
         var configB = TestConfig(temp.Path, "model-b", 3);
         var repositoryB = new SqliteKnowledgeRepository(new SqliteConnectionFactory(configB), configB);
@@ -153,11 +156,11 @@ public sealed class IntegrationTests
 
         var exception = await Assert.ThrowsAsync<EmbeddingProviderException>(
             () => CreateIndexer(config, repository, new FakeEmbeddingProvider(4))
-                .ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), cancellationToken));
+                .ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken));
         var status = await repository.GetStatusAsync(cancellationToken);
 
         Assert.Contains("Expected 3, got 4", exception.Message);
-        Assert.Equal(0, Assert.Single(status.KnowledgeBases).Documents);
+        Assert.Equal(0, status.Project.Documents);
     }
 
     private static KnowledgeBaseIndexer CreateIndexer(
@@ -175,10 +178,21 @@ public sealed class IntegrationTests
         return Convert.ToString(await command.ExecuteScalarAsync(cancellationToken));
     }
 
+    private static async Task<IReadOnlyList<string>> ReadColumnNamesAsync(LocalVectorSearchMcpConfig config, string table, CancellationToken cancellationToken)
+    {
+        await using var db = new SqliteConnectionFactory(config).Open();
+        var command = db.CreateCommand();
+        command.CommandText = $"pragma table_info({table})";
+        var names = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) names.Add(reader.GetString(1));
+        return names;
+    }
+
     private static LocalVectorSearchMcpConfig TestConfig(string root, string model = "bge-m3:latest", int dimensions = 3) => new()
     {
         Storage = new StorageConfig { Path = Path.Combine(root, ".local-vector-search-mcp", "index.db") },
         Embedding = new EmbeddingConfig { Model = model, Dimensions = dimensions },
-        KnowledgeBases = [new KnowledgeBaseConfig { Name = "kb", Root = root }]
+        KnowledgeBase = new KnowledgeBaseConfig { Root = root }
     };
 }

@@ -13,7 +13,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 
 public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, LocalVectorSearchMcpConfig config) : IKnowledgeRepository, IVectorIndexService, IFullTextSearchService, IIndexManifestService
 {
-    public const string SchemaVersion = "1";
+    public const string SchemaVersion = "2";
     private int EffectiveEmbeddingDimensions => config.Embedding.Dimensions ?? 1024;
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -76,13 +76,12 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         await ExecuteAsync(db, """
             create table if not exists documents (
               id integer primary key,
-              knowledge_base text not null,
               path text not null,
               content_hash text not null,
               markdown text not null,
               last_write_time_utc text not null,
               indexed_at_utc text not null,
-              unique(knowledge_base, path)
+              unique(path)
             );
             create table if not exists elements (
               id integer primary key,
@@ -99,7 +98,6 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
             create table if not exists chunks (
               id integer primary key,
               document_id integer not null references documents(id) on delete cascade,
-              knowledge_base text not null,
               path text not null,
               pointer text not null,
               text text not null,
@@ -126,12 +124,11 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
 
     }
 
-    public async Task<IReadOnlyDictionary<string, string>> GetDocumentHashesAsync(string knowledgeBase, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<string, string>> GetDocumentHashesAsync(CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
         var command = db.CreateCommand();
-        command.CommandText = "select path, content_hash from documents where knowledge_base = $kb";
-        command.Parameters.AddWithValue("$kb", knowledgeBase);
+        command.CommandText = "select path, content_hash from documents";
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) result[reader.GetString(0)] = reader.GetString(1);
@@ -150,13 +147,13 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         await using var db = factory.Open();
         TryLoadVector(db);
         await using var tx = await db.BeginTransactionAsync(cancellationToken);
-        var oldId = await ScalarLongAsync(db, "select id from documents where knowledge_base = $kb and path = $path", [("$kb", document.KnowledgeBase), ("$path", document.RelativePath)], cancellationToken);
+        var oldId = await ScalarLongAsync(db, "select id from documents where path = $path", [("$path", document.RelativePath)], cancellationToken);
         if (oldId is not null) await DeleteDocumentByIdAsync(db, (SqliteTransaction)tx, oldId.Value, cancellationToken);
 
         var insertDoc = db.CreateCommand();
         insertDoc.Transaction = (SqliteTransaction)tx;
-        insertDoc.CommandText = "insert into documents(knowledge_base,path,content_hash,markdown,last_write_time_utc,indexed_at_utc) values($kb,$path,$hash,$md,$lw,$idx); select last_insert_rowid();";
-        Add(insertDoc, "$kb", document.KnowledgeBase); Add(insertDoc, "$path", document.RelativePath); Add(insertDoc, "$hash", document.ContentHash); Add(insertDoc, "$md", document.Markdown);
+        insertDoc.CommandText = "insert into documents(path,content_hash,markdown,last_write_time_utc,indexed_at_utc) values($path,$hash,$md,$lw,$idx); select last_insert_rowid();";
+        Add(insertDoc, "$path", document.RelativePath); Add(insertDoc, "$hash", document.ContentHash); Add(insertDoc, "$md", document.Markdown);
         Add(insertDoc, "$lw", document.LastWriteTimeUtc.ToString("O")); Add(insertDoc, "$idx", DateTimeOffset.UtcNow.ToString("O"));
         var documentId = (long)(await insertDoc.ExecuteScalarAsync(cancellationToken))!;
 
@@ -177,8 +174,8 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
             var vector = vectors[i];
             var insertChunk = db.CreateCommand();
             insertChunk.Transaction = (SqliteTransaction)tx;
-            insertChunk.CommandText = "insert into chunks(document_id,knowledge_base,path,pointer,text,heading_path,embedding_text_hash,embedding_model,embedding_dimensions) values($doc,$kb,$path,$ptr,$text,$heading,$hash,$model,$dim); select last_insert_rowid();";
-            Add(insertChunk, "$doc", documentId); Add(insertChunk, "$kb", c.KnowledgeBase); Add(insertChunk, "$path", c.Path); Add(insertChunk, "$ptr", c.StartPointer.Value); Add(insertChunk, "$text", c.Text);
+            insertChunk.CommandText = "insert into chunks(document_id,path,pointer,text,heading_path,embedding_text_hash,embedding_model,embedding_dimensions) values($doc,$path,$ptr,$text,$heading,$hash,$model,$dim); select last_insert_rowid();";
+            Add(insertChunk, "$doc", documentId); Add(insertChunk, "$path", c.Path); Add(insertChunk, "$ptr", c.StartPointer.Value); Add(insertChunk, "$text", c.Text);
             Add(insertChunk, "$heading", (object?)c.HeadingPath ?? DBNull.Value); Add(insertChunk, "$hash", c.EmbeddingTextHash); Add(insertChunk, "$model", config.Embedding.Model); Add(insertChunk, "$dim", vector.Values.Length);
             var chunkId = (long)(await insertChunk.ExecuteScalarAsync(cancellationToken))!;
 
@@ -198,14 +195,14 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         await tx.CommitAsync(cancellationToken);
     }
 
-    public async Task<int> DeleteMissingDocumentsAsync(string knowledgeBase, IReadOnlySet<string> currentRelativePaths, CancellationToken cancellationToken)
+    public async Task<int> DeleteMissingDocumentsAsync(IReadOnlySet<string> currentRelativePaths, CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
-        var hashes = await GetDocumentHashesAsync(knowledgeBase, cancellationToken);
+        var hashes = await GetDocumentHashesAsync(cancellationToken);
         var deleted = 0;
         foreach (var path in hashes.Keys.Where(path => !currentRelativePaths.Contains(path)).ToList())
         {
-            var id = await ScalarLongAsync(db, "select id from documents where knowledge_base = $kb and path = $path", [("$kb", knowledgeBase), ("$path", path)], cancellationToken);
+            var id = await ScalarLongAsync(db, "select id from documents where path = $path", [("$path", path)], cancellationToken);
             if (id is not null)
             {
                 await DeleteDocumentByIdAsync(db, id.Value, cancellationToken);
@@ -216,7 +213,7 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         return deleted;
     }
 
-    public async Task<IReadOnlyList<SemanticSearchResult>> SearchAsync(EmbeddingVector queryEmbedding, int topK, string? knowledgeBase, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<SemanticSearchResult>> SearchAsync(EmbeddingVector queryEmbedding, int topK, CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
         TryLoadVector(db);
@@ -224,12 +221,10 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         command.CommandText = """
             select v.rowid, v.distance
             from chunk_vectors v
-            join chunks c on c.id = v.rowid
-            where ($kb is null or c.knowledge_base = $kb) and v.embedding match $embedding and k = $top
+            where v.embedding match $embedding and k = $top
             order by v.distance
-            limit $top
             """;
-        Add(command, "$kb", (object?)knowledgeBase ?? DBNull.Value); Add(command, "$embedding", ToVectorJson(queryEmbedding.Values)); Add(command, "$top", topK);
+        Add(command, "$embedding", ToVectorJson(queryEmbedding.Values)); Add(command, "$top", topK);
         try
         {
             var list = new List<SemanticSearchResult>();
@@ -243,7 +238,7 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         }
     }
 
-    public async Task<IReadOnlyList<LexicalSearchResult>> SearchAsync(string query, int topK, string? knowledgeBase, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<LexicalSearchResult>> SearchAsync(string query, int topK, CancellationToken cancellationToken)
     {
         var ftsQuery = FtsQuery(query);
         if (ftsQuery.Length == 0) return [];
@@ -252,12 +247,11 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         command.CommandText = """
             select f.rowid, bm25(chunks_fts) as score, snippet(chunks_fts, 0, '[', ']', '...', 16) as snippet
             from chunks_fts f
-            join chunks c on c.id = f.rowid
-            where chunks_fts match $query and ($kb is null or c.knowledge_base = $kb)
+            where chunks_fts match $query
             order by score
             limit $top
             """;
-        Add(command, "$query", ftsQuery); Add(command, "$kb", (object?)knowledgeBase ?? DBNull.Value); Add(command, "$top", topK);
+        Add(command, "$query", ftsQuery); Add(command, "$top", topK);
         try
         {
             var list = new List<LexicalSearchResult>();
@@ -277,20 +271,20 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         await using var db = factory.Open();
         var ids = string.Join(",", chunkIds.Select((_, i) => "$id" + i));
         var command = db.CreateCommand();
-        command.CommandText = $"select id, knowledge_base, path, pointer, text, heading_path from chunks where id in ({ids})";
+        command.CommandText = $"select id, path, pointer, text, heading_path from chunks where id in ({ids})";
         var i = 0;
         foreach (var id in chunkIds) Add(command, "$id" + i++, id);
         var list = new List<ChunkSearchDocument>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            list.Add(new ChunkSearchDocument(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5)));
+            list.Add(new ChunkSearchDocument(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
 
         return list;
     }
 
-    public async Task<MarkdownSlice> ReadSliceAsync(string? knowledgeBase, string path, SemanticPointer pointer, int maxElements, int maxBytes, CancellationToken cancellationToken)
+    public async Task<MarkdownSlice> ReadSliceAsync(string path, SemanticPointer pointer, int maxElements, int maxBytes, CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
         var command = db.CreateCommand();
@@ -298,12 +292,12 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
             select e.pointer, e.kind, e.text, e.heading_path
             from elements e
             join documents d on d.id = e.document_id
-            where d.path = $path and ($kb is null or d.knowledge_base = $kb)
+            where d.path = $path
               and e.ordinal >= (select ordinal from elements e2 where e2.document_id = d.id and e2.pointer = $ptr)
             order by e.ordinal
             limit $max
             """;
-        Add(command, "$path", path); Add(command, "$kb", (object?)knowledgeBase ?? DBNull.Value); Add(command, "$ptr", pointer.Value); Add(command, "$max", maxElements + 1);
+        Add(command, "$path", path); Add(command, "$ptr", pointer.Value); Add(command, "$max", maxElements + 1);
         var elements = new List<MarkdownSliceElement>();
         var bytes = 0;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -317,22 +311,17 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
 
         if (elements.Count == 0) throw new SemanticPointerNotFoundException($"Pointer '{pointer.Value}' was not found in '{path}'.");
         var markdown = string.Join("\n\n", elements.Select(e => e.Text));
-        return new MarkdownSlice(knowledgeBase ?? "", path, pointer.Value, elements, markdown, null);
+        return new MarkdownSlice(path, pointer.Value, elements, markdown, null);
     }
 
     public async Task<StatusResponse> GetStatusAsync(CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
-        var statuses = new List<KnowledgeBaseStatus>();
-        foreach (var kb in config.KnowledgeBases)
-        {
-            var docs = await ScalarLongAsync(db, "select count(*) from documents where knowledge_base = $kb", [("$kb", kb.Name)], cancellationToken) ?? 0;
-            var chunks = await ScalarLongAsync(db, "select count(*) from chunks where knowledge_base = $kb", [("$kb", kb.Name)], cancellationToken) ?? 0;
-            var last = await ScalarStringAsync(db, "select max(indexed_at_utc) from documents where knowledge_base = $kb", [("$kb", kb.Name)], cancellationToken);
-            statuses.Add(new KnowledgeBaseStatus(kb.Name, kb.Root, (int)docs, (int)chunks, DateTimeOffset.TryParse(last, out var dto) ? dto : null));
-        }
-
-        return new StatusResponse(config.Storage.Path, SchemaVersion, MarkdownChunker.Version, EmbeddingTextBuilder.Version, config.Embedding.Model, EffectiveEmbeddingDimensions, statuses);
+        var docs = await ScalarLongAsync(db, "select count(*) from documents", [], cancellationToken) ?? 0;
+        var chunks = await ScalarLongAsync(db, "select count(*) from chunks", [], cancellationToken) ?? 0;
+        var last = await ScalarStringAsync(db, "select max(indexed_at_utc) from documents", [], cancellationToken);
+        var project = new ProjectIndexStatus(config.KnowledgeBase.Root, (int)docs, (int)chunks, DateTimeOffset.TryParse(last, out var dto) ? dto : null);
+        return new StatusResponse(config.Storage.Path, SchemaVersion, MarkdownChunker.Version, EmbeddingTextBuilder.Version, config.Embedding.Model, EffectiveEmbeddingDimensions, project);
     }
 
     public async Task<bool> HasChunksAsync(CancellationToken cancellationToken)

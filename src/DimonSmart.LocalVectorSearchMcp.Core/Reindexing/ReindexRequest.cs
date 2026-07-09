@@ -1,3 +1,3 @@
 namespace DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 
-public sealed record ReindexRequest(string? KnowledgeBase, ReindexScope Scope, bool Force);
+public sealed record ReindexRequest(ReindexScope Scope, bool Force);
