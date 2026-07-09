@@ -1,4 +1,5 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
@@ -11,6 +12,7 @@ using DimonSmart.LocalVectorSearchMcp.Infrastructure.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server;
+using DimonSmart.LocalVectorSearchMcp.Server.Tools;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
@@ -51,5 +53,9 @@ public sealed class DependencySegregationTests
         Assert.IsType<SqliteIndexManifestService>(provider.GetRequiredService<IIndexManifestService>());
         Assert.IsType<SqliteVectorIndexService>(provider.GetRequiredService<IVectorIndexService>());
         Assert.IsType<SqliteFullTextSearchService>(provider.GetRequiredService<IFullTextSearchService>());
+        Assert.IsType<KnowledgeBaseIndexer>(provider.GetRequiredService<IKnowledgeBaseIndexer>());
+        Assert.IsType<KnowledgeSearchService>(provider.GetRequiredService<IKnowledgeSearchService>());
+        Assert.IsType<SemanticPointerReader>(provider.GetRequiredService<ISemanticPointerReader>());
+        Assert.NotNull(provider.GetRequiredService<IEmbeddingProvider>());
     }
 }
