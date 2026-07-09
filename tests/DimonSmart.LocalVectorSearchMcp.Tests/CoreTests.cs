@@ -95,6 +95,7 @@ public sealed class CoreTests
     public void ConfigLoader_AcceptsSearchDefaultModeCaseInsensitively()
     {
         using var temp = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(temp.Path, "docs"));
         var configPath = Path.Combine(temp.Path, "config.yml");
         File.WriteAllText(configPath, $"""
             storage:
@@ -102,10 +103,10 @@ public sealed class CoreTests
             search:
               defaultMode: HYBRID
             knowledgeBase:
-              root: {temp.Path.Replace("\\", "/")}
+              root: docs
             """);
 
-        var config = LocalVectorSearchConfigLoader.Load(["--config", configPath]);
+        var config = LocalVectorSearchConfigLoader.Load(["--config", configPath], temp.Path, temp.Path);
 
         Assert.Equal(SearchMode.Hybrid, config.Search.DefaultMode);
     }
@@ -122,7 +123,7 @@ public sealed class CoreTests
             """);
 
         var exception = Assert.Throws<ConfigurationException>(
-            () => LocalVectorSearchConfigLoader.Load(["--config", configPath]));
+            () => LocalVectorSearchConfigLoader.Load(["--config", configPath], temp.Path, temp.Path));
 
         Assert.Contains("Use singular knowledgeBase", exception.Message);
     }

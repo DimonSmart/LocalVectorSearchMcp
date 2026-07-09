@@ -25,7 +25,18 @@ public sealed class MarkdownDocumentLoaderTests
 
         var documents = await LoadAsync(temp.Path);
 
-        Assert.Equal(["docs/a.md", "docs/nested/c.md", "root.md"], Paths(documents));
+        Assert.Equal(
+            [
+                ".git/ignored.md",
+                ".local-vector-search-mcp/index.md",
+                "bin/generated.md",
+                "docs/a.md",
+                "docs/nested/c.md",
+                "node_modules/pkg/readme.md",
+                "obj/generated.md",
+                "root.md"
+            ],
+            Paths(documents));
     }
 
     [Fact]
