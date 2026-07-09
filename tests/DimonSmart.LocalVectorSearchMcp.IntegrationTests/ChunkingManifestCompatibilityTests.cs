@@ -153,6 +153,7 @@ public sealed class ChunkingManifestCompatibilityTests
             new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()),
             new FakeEmbeddingProvider(3),
             repository,
+            repository,
             repository);
 
     private static async Task<IReadOnlyDictionary<string, string>> ReadManifestAsync(

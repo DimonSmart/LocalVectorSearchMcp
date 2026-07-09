@@ -7,14 +7,14 @@ using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
 
-public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IEmbeddingProvider embeddingProvider, IVectorIndexService vectorSearch, IFullTextSearchService fullTextSearch, IKnowledgeRepository repository) : IKnowledgeSearchService
+public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IEmbeddingProvider embeddingProvider, IVectorIndexService vectorSearch, IFullTextSearchService fullTextSearch, ISearchIndexStateReader indexStateReader, IChunkSearchDocumentReader chunkReader) : IKnowledgeSearchService
 {
     public async Task<SearchResponse> SearchAsync(SearchRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Query)) throw new ConfigurationException("Query is required.");
         var mode = request.Mode ?? config.Search.DefaultMode;
         var topK = Math.Clamp(request.TopK ?? config.Search.MaxResults, 1, 50);
-        if (!await repository.HasChunksAsync(cancellationToken)) throw new IndexNotReadyException("Index is empty. Run kb_reindex first.");
+        if (!await indexStateReader.HasChunksAsync(cancellationToken)) throw new IndexNotReadyException("Index is empty. Run kb_reindex first.");
 
         var semantic = new List<SemanticSearchResult>();
         var lexical = new List<LexicalSearchResult>();
@@ -36,7 +36,7 @@ public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IE
             _ => HybridRanker.Fuse(semantic.Select(x => x.ChunkId), lexical.Select(x => x.ChunkId), config.Search.RrfK, topK).ToList()
         };
 
-        var chunks = (await repository.GetChunksAsync(ordered.Select(x => x.ChunkId).ToList(), cancellationToken)).ToDictionary(x => x.ChunkId);
+        var chunks = (await chunkReader.GetChunksAsync(ordered.Select(x => x.ChunkId).ToList(), cancellationToken)).ToDictionary(x => x.ChunkId);
         var snippets = lexical.ToDictionary(x => x.ChunkId, x => x.Snippet);
         var results = ordered.Where(x => chunks.ContainsKey(x.ChunkId)).Select(x =>
         {

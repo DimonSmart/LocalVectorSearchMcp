@@ -7,11 +7,21 @@ using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using Microsoft.Data.Sqlite;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 
-public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, LocalVectorSearchMcpConfig config) : IKnowledgeRepository, IVectorIndexService, IFullTextSearchService, IIndexManifestService
+public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, LocalVectorSearchMcpConfig config) :
+    IIndexInitializer,
+    IDocumentIndexStore,
+    IChunkSearchDocumentReader,
+    ISearchIndexStateReader,
+    IIndexedMarkdownSliceReader,
+    IIndexStatusReader,
+    IVectorIndexService,
+    IFullTextSearchService,
+    IIndexManifestService
 {
     public const string SchemaVersion = "2";
     private int EffectiveEmbeddingDimensions => config.Embedding.Dimensions ?? 1024;

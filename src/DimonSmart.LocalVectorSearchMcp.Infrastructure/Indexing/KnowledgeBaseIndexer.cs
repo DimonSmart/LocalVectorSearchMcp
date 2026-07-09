@@ -1,17 +1,17 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
-using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 
-public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IKnowledgeRepository repository, IIndexManifestService manifestService) : IKnowledgeBaseIndexer
+public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IIndexInitializer indexInitializer, IDocumentIndexStore documentIndexStore, IIndexManifestService manifestService) : IKnowledgeBaseIndexer
 {
     public async Task<ReindexResponse> ReindexAsync(ReindexRequest request, CancellationToken cancellationToken)
     {
-        await repository.InitializeAsync(cancellationToken);
+        await indexInitializer.InitializeAsync(cancellationToken);
         if (await manifestService.HasManifestAsync(cancellationToken))
         {
             var compatibility = await manifestService.CheckCompatibilityAsync(cancellationToken);
@@ -41,8 +41,8 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
         var chunksIndexed = 0;
         var documents = await loader.LoadAsync(config.KnowledgeBase, cancellationToken);
         scanned = documents.Count;
-        var existing = await repository.GetDocumentHashesAsync(cancellationToken);
-        deleted = await repository.DeleteMissingDocumentsAsync(documents.Select(d => d.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase), cancellationToken);
+        var existing = await documentIndexStore.GetDocumentHashesAsync(cancellationToken);
+        deleted = await documentIndexStore.DeleteMissingDocumentsAsync(documents.Select(d => d.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase), cancellationToken);
 
         foreach (var document in documents)
         {
@@ -60,7 +60,7 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
                 vectors.AddRange(await embeddingProvider.EmbedBatchAsync(batch.Select(c => c.EmbeddingText).ToList(), cancellationToken));
             }
 
-            await repository.SaveDocumentIndexAsync(document, elements, chunks, vectors, cancellationToken);
+            await documentIndexStore.SaveDocumentIndexAsync(document, elements, chunks, vectors, cancellationToken);
             indexed++;
             chunksIndexed += chunks.Count;
         }
