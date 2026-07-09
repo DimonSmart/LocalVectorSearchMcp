@@ -22,7 +22,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nParagraph one.\n\nParagraph two.\n\nParagraph three.");
 
-        var slice = await context.Repository.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
+        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
 
         Assert.Equal(2, slice.Elements.Count);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -38,8 +38,8 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nParagraph one.\n\nParagraph two.\n\nParagraph three.");
 
-        var first = await context.Repository.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
-        var second = await context.Repository.ReadSliceAsync("notes.md", new SemanticPointer(first.NextPointer!), 2, 12_000, context.CancellationToken);
+        var first = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
+        var second = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer(first.NextPointer!), 2, 12_000, context.CancellationToken);
 
         Assert.Equal("1.p3", first.NextPointer);
         Assert.Single(second.Elements);
@@ -53,7 +53,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nSmall one.\n\nSmall two.\n\nSmall three.");
 
-        var slice = await context.Repository.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 16, context.CancellationToken);
+        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 16, context.CancellationToken);
 
         Assert.Single(slice.Elements);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -67,7 +67,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nThis paragraph is intentionally longer than the byte limit.");
 
-        var slice = await context.Repository.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
+        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
 
         Assert.Single(slice.Elements);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -80,7 +80,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nThis paragraph is intentionally longer than the byte limit.\n\nSecond paragraph.");
 
-        var slice = await context.Repository.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
+        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
 
         Assert.Single(slice.Elements);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -95,7 +95,7 @@ public sealed class ReadSliceTests
         using var context = await CreateContextAsync("# Title\n\nText.");
 
         var exception = await Assert.ThrowsAsync<SemanticPointerNotFoundException>(
-            () => context.Repository.ReadSliceAsync("notes.md", new SemanticPointer("1.p99"), 20, 12_000, context.CancellationToken));
+            () => context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p99"), 20, 12_000, context.CancellationToken));
 
         Assert.Contains("1.p99", exception.Message);
         Assert.Contains("notes.md", exception.Message);
@@ -107,7 +107,7 @@ public sealed class ReadSliceTests
         using var context = await CreateContextAsync("# Title\n\nText.");
 
         await Assert.ThrowsAsync<SemanticPointerNotFoundException>(
-            () => context.Repository.ReadSliceAsync("missing.md", new SemanticPointer("1.p1"), 20, 12_000, context.CancellationToken));
+            () => context.Services.SliceReader.ReadSliceAsync("missing.md", new SemanticPointer("1.p1"), 20, 12_000, context.CancellationToken));
     }
 
     private static async Task<ReadSliceTestContext> CreateContextAsync(string markdown)
@@ -121,23 +121,23 @@ public sealed class ReadSliceTests
             Embedding = new EmbeddingConfig { Model = "test", Dimensions = 3 },
             KnowledgeBase = new KnowledgeBaseConfig { Root = temp.Path }
         };
-        var repository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(config), config);
+        var services = SqliteTestServices.Create(config);
         var indexer = new KnowledgeBaseIndexer(
             config,
             new MarkdownDocumentLoader(),
             new MarkdownElementParser(),
             new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()),
             new FakeEmbeddingProvider(),
-            repository,
-            repository,
-            repository);
+            services.Initializer,
+            services.DocumentStore,
+            services.Manifest);
         await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
-        return new ReadSliceTestContext(temp, repository, cancellationToken);
+        return new ReadSliceTestContext(temp, services, cancellationToken);
     }
 
     private sealed record ReadSliceTestContext(
         TemporaryDirectory TemporaryDirectory,
-        SqliteKnowledgeRepository Repository,
+        SqliteTestServices Services,
         CancellationToken CancellationToken) : IDisposable
     {
         public void Dispose() => TemporaryDirectory.Dispose();

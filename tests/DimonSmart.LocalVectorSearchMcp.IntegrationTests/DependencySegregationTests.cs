@@ -30,7 +30,7 @@ public sealed class DependencySegregationTests
     }
 
     [Fact]
-    public void StorageContracts_ResolveToOneRepositoryInstance()
+    public void StorageContracts_ResolveToSpecializedServices()
     {
         using var temp = new TemporaryDirectory();
         var config = new LocalVectorSearchMcpConfig
@@ -42,16 +42,14 @@ public sealed class DependencySegregationTests
         services.AddLocalVectorSearchMcp(config);
         using var provider = services.BuildServiceProvider();
 
-        var repository = provider.GetRequiredService<SqliteKnowledgeRepository>();
-
-        Assert.Same(repository, provider.GetRequiredService<IIndexInitializer>());
-        Assert.Same(repository, provider.GetRequiredService<IDocumentIndexStore>());
-        Assert.Same(repository, provider.GetRequiredService<IIndexStatusReader>());
-        Assert.Same(repository, provider.GetRequiredService<IIndexedMarkdownSliceReader>());
-        Assert.Same(repository, provider.GetRequiredService<IChunkSearchDocumentReader>());
-        Assert.Same(repository, provider.GetRequiredService<ISearchIndexStateReader>());
-        Assert.Same(repository, provider.GetRequiredService<IIndexManifestService>());
-        Assert.Same(repository, provider.GetRequiredService<IVectorIndexService>());
-        Assert.Same(repository, provider.GetRequiredService<IFullTextSearchService>());
+        Assert.IsType<SqliteSchemaInitializer>(provider.GetRequiredService<IIndexInitializer>());
+        Assert.IsType<SqliteDocumentIndexStore>(provider.GetRequiredService<IDocumentIndexStore>());
+        Assert.IsType<SqliteIndexStatusReader>(provider.GetRequiredService<IIndexStatusReader>());
+        Assert.IsType<SqliteMarkdownSliceReader>(provider.GetRequiredService<IIndexedMarkdownSliceReader>());
+        var searchReader = Assert.IsType<SqliteSearchIndexReader>(provider.GetRequiredService<IChunkSearchDocumentReader>());
+        Assert.Same(searchReader, provider.GetRequiredService<ISearchIndexStateReader>());
+        Assert.IsType<SqliteIndexManifestService>(provider.GetRequiredService<IIndexManifestService>());
+        Assert.IsType<SqliteVectorIndexService>(provider.GetRequiredService<IVectorIndexService>());
+        Assert.IsType<SqliteFullTextSearchService>(provider.GetRequiredService<IFullTextSearchService>());
     }
 }
