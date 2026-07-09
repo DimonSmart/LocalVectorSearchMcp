@@ -9,9 +9,29 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Configuration;
 
 public static class LocalVectorSearchConfigLoader
 {
-    public static LocalVectorSearchMcpConfig Load(string[] args)
+    public static LocalVectorSearchMcpConfig Load(
+        string[] args,
+        string? currentDirectory = null,
+        string? claudeProjectDirectory = null)
     {
-        var path = ResolveConfigPath(args);
+        var options = CommandLineConfigOptionsParser.Parse(args);
+        var baseCurrentDirectory = Path.GetFullPath(currentDirectory ?? Directory.GetCurrentDirectory());
+        var projectRoot = ResolveProjectRoot(baseCurrentDirectory, claudeProjectDirectory ?? Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"));
+
+        var config = new LocalVectorSearchMcpConfig();
+        if (!string.IsNullOrWhiteSpace(options.ConfigPath))
+        {
+            config = LoadYaml(ResolveConfigPath(options.ConfigPath, baseCurrentDirectory));
+        }
+
+        config = ApplyCliOverrides(config, options);
+        config = ResolvePaths(config, projectRoot);
+        ConfigValidator.Validate(config);
+        return config;
+    }
+
+    private static LocalVectorSearchMcpConfig LoadYaml(string path)
+    {
         if (!File.Exists(path))
         {
             throw new ConfigurationException($"Configuration file was not found: {path}");
@@ -25,6 +45,7 @@ public static class LocalVectorSearchConfigLoader
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
             .WithTypeConverter(new WireEnumYamlConverter())
+            .WithTypeConverter(new ReadOnlyStringListYamlConverter())
             .IgnoreUnmatchedProperties()
             .Build();
         LocalVectorSearchMcpConfig config;
@@ -36,30 +57,61 @@ public static class LocalVectorSearchConfigLoader
         {
             throw new ConfigurationException($"Configuration file is invalid: {path}. {ex.Message}");
         }
-        var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? Directory.GetCurrentDirectory();
-        config = ResolvePaths(config, baseDirectory);
-        ConfigValidator.Validate(config);
-        return config;
+
+        return NormalizeSections(config);
     }
 
-    private static string ResolveConfigPath(string[] args)
-    {
-        var index = Array.IndexOf(args, "--config");
-        if (index >= 0 && index + 1 < args.Length)
-        {
-            return args[index + 1];
-        }
-
-        var fromEnv = Environment.GetEnvironmentVariable("LOCAL_VECTOR_SEARCH_MCP_CONFIG");
-        return string.IsNullOrWhiteSpace(fromEnv) ? "local-vector-search-mcp.yml" : fromEnv;
-    }
-
-    private static LocalVectorSearchMcpConfig ResolvePaths(LocalVectorSearchMcpConfig config, string baseDirectory)
+    private static LocalVectorSearchMcpConfig NormalizeSections(LocalVectorSearchMcpConfig config)
         => config with
         {
-            Storage = config.Storage with { Path = ToAbsolute(config.Storage.Path, baseDirectory) },
-            KnowledgeBase = config.KnowledgeBase with { Root = ToAbsolute(config.KnowledgeBase.Root, baseDirectory) }
+            Server = config.Server ?? new(),
+            Storage = config.Storage ?? new(),
+            Embedding = config.Embedding ?? new(),
+            Chunking = config.Chunking ?? new(),
+            Search = config.Search ?? new(),
+            KnowledgeBase = config.KnowledgeBase ?? new()
         };
+
+    private static string ResolveConfigPath(string path, string currentDirectory)
+        => Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(currentDirectory, path));
+
+    private static string ResolveProjectRoot(string currentDirectory, string? claudeProjectDirectory)
+        => Path.GetFullPath(string.IsNullOrWhiteSpace(claudeProjectDirectory) ? currentDirectory : claudeProjectDirectory);
+
+    private static LocalVectorSearchMcpConfig ApplyCliOverrides(LocalVectorSearchMcpConfig config, CommandLineConfigOptions options)
+        => config with
+        {
+            Storage = config.Storage with
+            {
+                Path = options.StoragePath ?? config.Storage.Path
+            },
+            Embedding = config.Embedding with
+            {
+                Endpoint = options.EmbeddingEndpoint ?? config.Embedding.Endpoint,
+                Model = options.EmbeddingModel ?? config.Embedding.Model
+            },
+            KnowledgeBase = config.KnowledgeBase with
+            {
+                Root = options.Root ?? config.KnowledgeBase.Root,
+                Include = options.Include.Count > 0 ? options.Include : config.KnowledgeBase.Include,
+                Exclude = options.Exclude.Count > 0 ? options.Exclude : config.KnowledgeBase.Exclude
+            }
+        };
+
+    private static LocalVectorSearchMcpConfig ResolvePaths(LocalVectorSearchMcpConfig config, string projectRoot)
+        => config with
+        {
+            Storage = config.Storage with { Path = ToAbsolute(DefaultStoragePath(config.Storage.Path, projectRoot), projectRoot) },
+            KnowledgeBase = config.KnowledgeBase with { Root = ToAbsolute(DefaultRoot(config.KnowledgeBase.Root, projectRoot), projectRoot) }
+        };
+
+    private static string DefaultRoot(string root, string projectRoot)
+        => string.IsNullOrWhiteSpace(root) ? projectRoot : root;
+
+    private static string DefaultStoragePath(string storagePath, string projectRoot)
+        => string.IsNullOrWhiteSpace(storagePath)
+            ? Path.Combine(projectRoot, ".local-vector-search-mcp", "index.db")
+            : storagePath;
 
     private static string ToAbsolute(string path, string baseDirectory)
         => string.IsNullOrWhiteSpace(path)
