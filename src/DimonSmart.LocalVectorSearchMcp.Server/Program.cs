@@ -39,7 +39,7 @@ try
         if (args.Contains("--reindex"))
         {
             var indexer = host.Services.GetRequiredService<IKnowledgeBaseIndexer>();
-            var response = await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, false), CancellationToken.None);
+            var response = await indexer.ReindexAsync(new ReindexRequest(null, ReindexScope.Changed, args.Contains("--force")), CancellationToken.None);
             Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(response, JsonOptions.Default));
             return;
         }
@@ -58,7 +58,7 @@ try
 
     await builder.Build().RunAsync();
 }
-catch (Exception ex) when (ex is ConfigurationException or KnowledgeBaseAccessException or EmbeddingProviderException or IndexNotReadyException or VectorIndexException or FullTextSearchException or SemanticPointerNotFoundException)
+catch (Exception ex) when (ex is ConfigurationException or KnowledgeBaseAccessException or EmbeddingProviderException or IndexCompatibilityException or IndexNotReadyException or VectorIndexException or FullTextSearchException or SemanticPointerNotFoundException)
 {
     Console.Error.WriteLine(ex.Message);
     Environment.ExitCode = 1;
@@ -97,6 +97,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Server
             services.AddSingleton<SqliteConnectionFactory>();
             services.AddSingleton<SqliteKnowledgeRepository>();
             services.AddSingleton<IKnowledgeRepository>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
+            services.AddSingleton<IIndexManifestService>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
             services.AddSingleton<IVectorIndexService>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
             services.AddSingleton<IFullTextSearchService>(sp => sp.GetRequiredService<SqliteKnowledgeRepository>());
             services.AddSingleton<IKnowledgeBaseIndexer, KnowledgeBaseIndexer>();
