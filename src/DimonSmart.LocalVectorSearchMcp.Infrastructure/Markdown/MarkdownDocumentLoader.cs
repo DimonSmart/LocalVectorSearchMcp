@@ -1,6 +1,7 @@
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
 using Microsoft.Extensions.FileSystemGlobbing;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
@@ -11,21 +12,34 @@ public sealed class MarkdownDocumentLoader : IMarkdownDocumentLoader
     {
         var root = Path.GetFullPath(knowledgeBase.Root);
         var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
-        matcher.AddIncludePatterns(knowledgeBase.Include);
-        matcher.AddExcludePatterns(knowledgeBase.Exclude);
+        try
+        {
+            matcher.AddIncludePatterns(knowledgeBase.Include);
+            matcher.AddExcludePatterns(knowledgeBase.Exclude);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            throw new ConfigurationException("Invalid knowledgeBase include/exclude pattern.");
+        }
+
         var files = matcher.GetResultsInFullPath(root)
-            .Where(file => Path.GetExtension(file).Equals(".md", StringComparison.OrdinalIgnoreCase) && File.Exists(file))
-            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+            .Select(file => new
+            {
+                FullPath = file,
+                RelativePath = Path.GetRelativePath(root, file).Replace('\\', '/')
+            })
+            .Where(file => Path.GetExtension(file.FullPath).Equals(".md", StringComparison.OrdinalIgnoreCase) && File.Exists(file.FullPath))
+            .OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(file => file.RelativePath, StringComparer.Ordinal)
             .ToList();
 
         var documents = new List<MarkdownSourceDocument>();
         foreach (var file in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var raw = await File.ReadAllTextAsync(file, cancellationToken);
+            var raw = await File.ReadAllTextAsync(file.FullPath, cancellationToken);
             var markdown = MarkdownTextNormalizer.Normalize(raw);
-            var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-            documents.Add(new MarkdownSourceDocument(relative, Path.GetFullPath(file), markdown, StableHash.HashText(markdown), File.GetLastWriteTimeUtc(file)));
+            documents.Add(new MarkdownSourceDocument(file.RelativePath, Path.GetFullPath(file.FullPath), markdown, StableHash.HashText(markdown), File.GetLastWriteTimeUtc(file.FullPath)));
         }
 
         return documents;

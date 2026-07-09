@@ -200,6 +200,52 @@ public sealed class IntegrationTests
         Assert.Equal(1, (await updatedRepository.GetStatusAsync(cancellationToken)).Project.Documents);
         Assert.Empty(await updatedRepository.SearchAsync("secret-marker", 10, cancellationToken));
         Assert.NotEmpty(await updatedRepository.SearchAsync("public-marker", 10, cancellationToken));
+
+        var counts = await ReadIndexRowCountsAsync(updatedConfig, cancellationToken);
+        Assert.Equal(1, counts.Documents);
+        Assert.True(counts.Elements > 0);
+        Assert.True(counts.Chunks > 0);
+        Assert.Equal(counts.Chunks, counts.FtsRows);
+        Assert.Equal(counts.Chunks, counts.VectorRows);
+    }
+
+    [Fact]
+    public async Task ChangedReindex_RemovesPhysicallyDeletedDocumentAndRelatedRows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var docs = Path.Combine(temp.Path, "docs");
+        Directory.CreateDirectory(docs);
+        await File.WriteAllTextAsync(Path.Combine(docs, "a.md"), "# A\nremaining-marker\n", cancellationToken);
+        var deletedPath = Path.Combine(docs, "b.md");
+        await File.WriteAllTextAsync(deletedPath, "# B\ndeleted-marker\n", cancellationToken);
+
+        var config = TestConfig(temp.Path) with
+        {
+            KnowledgeBase = new KnowledgeBaseConfig
+            {
+                Root = temp.Path,
+                Include = ["docs/**/*.md"],
+                Exclude = []
+            }
+        };
+        var repository = new SqliteKnowledgeRepository(new SqliteConnectionFactory(config), config);
+        var indexer = CreateIndexer(config, repository);
+        await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+
+        File.Delete(deletedPath);
+        var response = await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+        var paths = (await repository.GetDocumentHashesAsync(cancellationToken)).Keys;
+        var counts = await ReadIndexRowCountsAsync(config, cancellationToken);
+
+        Assert.Equal(1, response.DeletedFiles);
+        Assert.Equal(["docs/a.md"], paths);
+        Assert.Equal(1, counts.Documents);
+        Assert.True(counts.Elements > 0);
+        Assert.True(counts.Chunks > 0);
+        Assert.Equal(counts.Chunks, counts.FtsRows);
+        Assert.Equal(counts.Chunks, counts.VectorRows);
+        Assert.Empty(await repository.SearchAsync("deleted-marker", 10, cancellationToken));
     }
 
     private static KnowledgeBaseIndexer CreateIndexer(
@@ -226,6 +272,29 @@ public sealed class IntegrationTests
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) names.Add(reader.GetString(1));
         return names;
+    }
+
+    private static async Task<(long Documents, long Elements, long Chunks, long FtsRows, long VectorRows)> ReadIndexRowCountsAsync(
+        LocalVectorSearchMcpConfig config,
+        CancellationToken cancellationToken)
+    {
+        await using var db = new SqliteConnectionFactory(config).Open();
+        db.EnableExtensions();
+        db.LoadExtension("vec0");
+
+        static async Task<long> CountAsync(Microsoft.Data.Sqlite.SqliteConnection db, string table, CancellationToken cancellationToken)
+        {
+            var command = db.CreateCommand();
+            command.CommandText = $"select count(*) from {table}";
+            return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        return (
+            await CountAsync(db, "documents", cancellationToken),
+            await CountAsync(db, "elements", cancellationToken),
+            await CountAsync(db, "chunks", cancellationToken),
+            await CountAsync(db, "chunks_fts", cancellationToken),
+            await CountAsync(db, "chunk_vectors", cancellationToken));
     }
 
     private static LocalVectorSearchMcpConfig TestConfig(string root, string model = "bge-m3:latest", int dimensions = 3) => new()

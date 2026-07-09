@@ -18,8 +18,7 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        await using var db = factory.Open();
-        TryLoadVector(db);
+        await using var db = OpenVectorConnection();
         await ExecuteAsync(db, "pragma journal_mode = wal;", cancellationToken);
         await CreateSchemaAsync(db, cancellationToken);
     }
@@ -47,8 +46,7 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
 
     public async Task ResetIndexAsync(CancellationToken cancellationToken)
     {
-        await using var db = factory.Open();
-        TryLoadVector(db);
+        await using var db = OpenVectorConnection();
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await ExecuteAsync(db, """
             drop table if exists chunk_vectors;
@@ -144,8 +142,7 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
             throw new EmbeddingProviderException($"Embedding dimension mismatch. Expected {EffectiveEmbeddingDimensions}, got {invalidVector.Values.Length}.");
         }
 
-        await using var db = factory.Open();
-        TryLoadVector(db);
+        await using var db = OpenVectorConnection();
         await using var tx = await db.BeginTransactionAsync(cancellationToken);
         var oldId = await ScalarLongAsync(db, "select id from documents where path = $path", [("$path", document.RelativePath)], cancellationToken);
         if (oldId is not null) await DeleteDocumentByIdAsync(db, (SqliteTransaction)tx, oldId.Value, cancellationToken);
@@ -197,26 +194,33 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
 
     public async Task<int> DeleteMissingDocumentsAsync(IReadOnlySet<string> currentRelativePaths, CancellationToken cancellationToken)
     {
-        await using var db = factory.Open();
-        var hashes = await GetDocumentHashesAsync(cancellationToken);
-        var deleted = 0;
-        foreach (var path in hashes.Keys.Where(path => !currentRelativePaths.Contains(path)).ToList())
+        await using var db = OpenVectorConnection();
+        var documents = new List<(long Id, string Path)>();
+        var command = db.CreateCommand();
+        command.CommandText = "select id, path from documents";
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
-            var id = await ScalarLongAsync(db, "select id from documents where path = $path", [("$path", path)], cancellationToken);
-            if (id is not null)
+            while (await reader.ReadAsync(cancellationToken))
             {
-                await DeleteDocumentByIdAsync(db, id.Value, cancellationToken);
-                deleted++;
+                documents.Add((reader.GetInt64(0), reader.GetString(1)));
             }
         }
 
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        var deleted = 0;
+        foreach (var document in documents.Where(document => !currentRelativePaths.Contains(document.Path)))
+        {
+            await DeleteDocumentByIdAsync(db, (SqliteTransaction)transaction, document.Id, cancellationToken);
+            deleted++;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
         return deleted;
     }
 
     public async Task<IReadOnlyList<SemanticSearchResult>> SearchAsync(EmbeddingVector queryEmbedding, int topK, CancellationToken cancellationToken)
     {
-        await using var db = factory.Open();
-        TryLoadVector(db);
+        await using var db = OpenVectorConnection();
         var command = db.CreateCommand();
         command.CommandText = """
             select v.rowid, v.distance
@@ -331,9 +335,6 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         return count > 0;
     }
 
-    private static async Task DeleteDocumentByIdAsync(SqliteConnection db, long documentId, CancellationToken cancellationToken)
-        => await DeleteDocumentByIdAsync(db, null, documentId, cancellationToken);
-
     private static async Task DeleteDocumentByIdAsync(SqliteConnection db, SqliteTransaction? tx, long documentId, CancellationToken cancellationToken)
     {
         var chunkIds = new List<long>();
@@ -355,10 +356,20 @@ public sealed class SqliteKnowledgeRepository(SqliteConnectionFactory factory, L
         await ExecuteAsync(db, "delete from documents where id = $doc", cancellationToken, [("$doc", documentId)], tx);
     }
 
-    private static void TryLoadVector(SqliteConnection db)
+    private SqliteConnection OpenVectorConnection()
     {
-        db.EnableExtensions();
-        db.LoadVector();
+        var db = factory.Open();
+        try
+        {
+            db.EnableExtensions();
+            db.LoadVector();
+            return db;
+        }
+        catch (Exception exception)
+        {
+            db.Dispose();
+            throw new VectorIndexException("sqlite-vec initialization failed. Ensure vec0 native extension is available.", exception);
+        }
     }
 
     private static string ToVectorJson(float[] values) => "[" + string.Join(",", values.Select(v => v.ToString(System.Globalization.CultureInfo.InvariantCulture))) + "]";

@@ -83,13 +83,13 @@ public sealed class MarkdownDocumentLoaderTests
     public async Task LoadAsync_ReturnsNormalizedPathsInStableOrdinalIgnoreCaseOrder()
     {
         using var temp = new TemporaryDirectory();
-        await CreateFilesAsync(temp.Path, ["z/last.md", "A/second.md", "a/Third.md", "middle.md"]);
+        await CreateFilesAsync(temp.Path, ["B/b.md", "a/a.md", "root.md"]);
 
         var first = await LoadAsync(temp.Path);
         var second = await LoadAsync(temp.Path);
         var paths = Paths(first);
 
-        Assert.Equal(paths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase), paths);
+        Assert.Equal(["a/a.md", "B/b.md", "root.md"], paths);
         Assert.Equal(paths, Paths(second));
         Assert.All(paths, path => Assert.DoesNotContain('\\', path));
     }
