@@ -1,29 +1,52 @@
-# DimonSmart.LocalVectorSearchMcp
+# LocalVectorSearchMcp
 
-Local MCP server for indexing one project's Markdown files and searching them through SQLite FTS5 lexical search, sqlite-vec vector search, and hybrid Reciprocal Rank Fusion.
+**Give Codex and Claude Code fast, project-aware search over the Markdown documentation in your repository.**
 
-## MVP Scope
+LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database and exposes lexical, semantic, and hybrid search to coding agents.
 
-One project equals one MCP server instance, one detected project root, one configured knowledge base root, and one project-local SQLite index. Separate projects use separate server instances and cannot select or search each other's content through the API.
+It helps an agent find the right specification, architectural decision, guide, or invariant without loading the entire documentation set into its context.
 
-The MVP indexes `.md` files, stores documents, Markdown elements, chunks, FTS rows, sqlite-vec vectors, and index metadata in SQLite, and exposes MCP tools:
+## Why use it?
 
-- `kb_reindex`
-- `kb_status`
-- `kb_search`
-- `kb_read`
+Large repositories often contain the answer, but not in the file the agent happens to open first.
 
-Not included in the MVP: PDF/DOCX import, web UI, file watcher, Git history indexing, reranker, remote HTTP MCP server, authentication, multi-user mode, background daemon mode, JSON config, `kb_find_files`, and advanced Markdown table/list parsing.
+- Exact text search finds identifiers, API names, and quoted terminology.
+- Vector search finds conceptually related documentation even when wording differs.
+- Hybrid search combines both result lists through Reciprocal Rank Fusion.
+- `kb_read` returns focused Markdown slices instead of forcing the agent to read whole files.
+- Every project gets its own local SQLite index.
+- No cloud database or mandatory YAML configuration is required.
 
-## Install
+## How it works
+
+```text
+Project Markdown
+       ↓
+Markdown elements and search chunks
+       ↓
+SQLite FTS5 + sqlite-vec
+       ↓
+Lexical, semantic, or hybrid retrieval
+       ↓
+MCP tools for Codex and Claude Code
+```
+
+## Quick start
+
+### 1. Install the tool and embedding model
 
 ```bash
 dotnet tool install --global DimonSmart.LocalVectorSearchMcp
+ollama pull bge-m3:latest
 ```
 
-## Add to Claude Code
+Make sure Ollama is running before the first reindex.
 
-Run from your project root:
+### 2. Connect your coding agent
+
+Run the command from the project whose documentation should be indexed.
+
+#### Claude Code
 
 ```bash
 claude mcp add local-vector-search \
@@ -32,177 +55,80 @@ claude mcp add local-vector-search \
   -- local-vector-search-mcp
 ```
 
-## Add to Codex
-
-Run from your project root:
+#### Codex
 
 ```bash
 codex mcp add local-vector-search \
   -- local-vector-search-mcp
 ```
 
-By default the server indexes all `*.md` files under the project root and stores the local SQLite index in `.local-vector-search-mcp/index.db`.
-
-When launched from Claude Code, the project root is detected from `CLAUDE_PROJECT_DIR`. Otherwise the current working directory is used.
-
-## Configure Without YAML
-
-Server options can be passed after the MCP client separator:
-
-```bash
-claude mcp add local-vector-search \
-  --scope local \
-  --transport stdio \
-  -- local-vector-search-mcp \
-    --root docs \
-    --embedding-endpoint http://localhost:11434/v1 \
-    --embedding-model bge-m3:latest
-```
-
-Exclude folders explicitly when you want them excluded:
-
-```bash
-claude mcp add local-vector-search \
-  --scope local \
-  --transport stdio \
-  -- local-vector-search-mcp \
-    --exclude "**/node_modules/**" \
-    --exclude "**/.git/**"
-```
-
-Supported server configuration options:
+### 3. Ask the agent to initialize and use the index
 
 ```text
---config <path>
---root <path>
---storage-path <path>
---embedding-endpoint <url>
---embedding-model <model>
---include <glob>
---exclude <glob>
+Check the local documentation index status. Reindex it if necessary,
+then find the project's main architectural decisions and summarize them
+with file references.
 ```
 
-`--include` and `--exclude` are repeatable. If at least one CLI include or exclude is provided, that list replaces the YAML/default list.
+By default, the server indexes `*.md` files under the detected project root and stores the index in `.local-vector-search-mcp/index.db`.
 
-## YAML Configuration
+See [Getting started](docs/getting-started.md) for the complete setup and verification flow.
 
-YAML remains supported as an advanced configuration scenario:
-
-```bash
-claude mcp add local-vector-search \
-  --scope local \
-  --transport stdio \
-  -- local-vector-search-mcp --config local-vector-search-mcp.yml
-```
-
-Effective configuration is built in this order:
+## Example tasks
 
 ```text
-default config
-explicit --config YAML, if provided
-CLI options
-path resolution
-validation
+Before changing the indexing pipeline, find the documented architectural
+decisions and constraints that apply to it.
 ```
 
-Example YAML:
-
-```yaml
-server:
-  name: local-vector-search-mcp
-
-storage:
-  path: ./.local-vector-search-mcp/index.db
-
-embedding:
-  provider: openai-compatible
-  endpoint: http://localhost:11434/v1
-  apiKey: ollama
-  model: bge-m3:latest
-  dimensions: null
-  batchSize: 16
-  allowRemoteEndpoint: false
-  timeoutSeconds: 120
-
-chunking:
-  maxChunkBytes: 4096
-  maxElements: 20
-  includeHeadingContext: true
-  includeFrontMatter: true
-
-search:
-  defaultMode: hybrid
-  semanticCandidatePoolSize: 50
-  lexicalCandidatePoolSize: 50
-  maxResults: 10
-  rrfK: 60
-
-knowledgeBase:
-  root: .
-  include:
-    - "**/*.md"
-  exclude: []
+```text
+Search the project documentation for rules governing persisted state.
+Summarize the relevant invariants and cite the source files.
 ```
 
-CLI options override YAML values:
-
-```bash
-local-vector-search-mcp \
-  --config local-vector-search-mcp.yml \
-  --root docs \
-  --embedding-model bge-m3:latest
+```text
+Find documentation related to FileAccessProvider and explain how
+session-level overrides are expected to work.
 ```
 
-## Ollama
+## Capabilities
 
-The default embedding endpoint is Ollama's OpenAI-compatible API:
+| Capability | Implementation |
+|---|---|
+| Exact search | SQLite FTS5 with BM25 |
+| Semantic search | sqlite-vec |
+| Hybrid ranking | Reciprocal Rank Fusion |
+| Storage | Project-local SQLite |
+| Indexed content | Markdown |
+| Transport | MCP over stdio |
+| Clients | Claude Code and Codex |
+| Default embeddings | Local Ollama-compatible endpoint |
 
-```bash
-ollama pull bge-m3:latest
-ollama serve
-```
+The MCP server exposes four focused tools:
 
-First reindex requires the embedding endpoint to be reachable. `apiKey` defaults to `ollama` for local Ollama-compatible usage.
+- `kb_status` — inspect the current index.
+- `kb_reindex` — build or rebuild the index.
+- `kb_search` — run lexical, semantic, or hybrid search.
+- `kb_read` — read indexed Markdown from a semantic pointer.
 
-Remote embedding endpoints are rejected unless `allowRemoteEndpoint: true` is explicitly set in YAML.
+## Local-first and project-isolated
 
-## CLI Maintenance
+Each server process belongs to one project and one configured Markdown root. It cannot select or search another project's index through the MCP API.
 
-```bash
-local-vector-search-mcp --status
-local-vector-search-mcp --reindex
-local-vector-search-mcp --reindex --force
-```
+The default embedding endpoint is local Ollama. Remote embedding endpoints are rejected unless they are explicitly enabled in YAML. Document text, embedding text, API keys, and raw vectors are not logged.
 
-From source:
+## Documentation
 
-```bash
-dotnet run --project src/DimonSmart.LocalVectorSearchMcp.Server -- --status
-dotnet run --project src/DimonSmart.LocalVectorSearchMcp.Server -- --reindex
-```
+- [Getting started](docs/getting-started.md)
+- [Claude Code setup](docs/clients/claude-code.md)
+- [Codex setup](docs/clients/codex.md)
+- [Configuration](docs/configuration.md)
+- [Maintenance and updates](docs/maintenance.md)
+- [Verification](docs/verification.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Product specification](.idd/intent/0001.spec-product-overview.md)
+- [Architecture decision](.idd/intent/0006.adr-mcp-sqlite-hybrid-architecture.md)
 
-With YAML:
+## Current scope
 
-```bash
-local-vector-search-mcp --config ./local-vector-search-mcp.yml --status
-local-vector-search-mcp --config ./local-vector-search-mcp.yml --reindex --force
-```
-
-## Search Modes
-
-Lexical search uses SQLite FTS5 and BM25. Vector search uses sqlite-vec. Hybrid search combines lexical and vector ranks through Reciprocal Rank Fusion, so raw BM25 scores and vector distances are not mixed directly.
-
-Changing the embedding model, embedding dimensions, chunker version, embedding text builder version, or chunking settings requires a forced rebuild of the index:
-
-```bash
-local-vector-search-mcp --reindex --force
-```
-
-## Verification
-
-```bash
-dotnet build
-dotnet test
-```
-
-Release CI also publishes and smoke-tests Windows x64, Linux x64, macOS arm64, and macOS x64 self-contained binaries.
+The current version indexes project-local Markdown documentation. PDF and DOCX import, a web UI, file watching, Git history indexing, remote HTTP MCP transport, authentication, and multi-user mode are outside the current scope.
