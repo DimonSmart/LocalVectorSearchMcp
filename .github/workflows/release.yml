@@ -65,7 +65,7 @@ jobs:
             runtime: osx-arm64
             binary: local-vector-search-mcp
             asset-suffix: osx-arm64.tar.gz
-          - os: macos-13
+          - os: macos-15-intel
             runtime: osx-x64
             binary: local-vector-search-mcp
             asset-suffix: osx-x64.tar.gz
