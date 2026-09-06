@@ -1,95 +1,160 @@
 using System.Text.RegularExpressions;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using Markdig;
+using Markdig.Extensions.Yaml;
+using Markdig.Syntax;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 
-public sealed class MarkdownElementParser : IMarkdownElementParser
+public sealed partial class MarkdownElementParser : IMarkdownElementParser
 {
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseYamlFrontMatter()
+        .Build();
+
     public IReadOnlyList<MarkdownElement> Parse(MarkdownSourceDocument document)
     {
         var elements = new List<MarkdownElement>
         {
-            new(document.RelativePath, new SemanticPointer("document"), MarkdownElementKind.Document, "", 1, 1, 0, null)
+            new(
+                document.RelativePath,
+                new SemanticPointer("document"),
+                MarkdownElementKind.Document,
+                "",
+                1,
+                1,
+                0,
+                null,
+                0,
+                0)
         };
-        var lines = document.Markdown.Split('\n');
-        var lineIndex = 0;
-        var rootParagraph = 0;
-        var rootCode = 0;
+        var syntax = Markdig.Markdown.Parse(document.Markdown, Pipeline);
         var sectionCounters = new int[6];
-        var currentSection = "";
-        var currentHeadingPath = new List<string>();
+        var headingTitles = new string?[6];
         var paragraphCounts = new Dictionary<string, int>();
         var codeCounts = new Dictionary<string, int>();
+        var rootParagraph = 0;
+        var rootCode = 0;
+        var currentSection = "";
+        string? currentHeadingPath = null;
 
-        if (lines.Length > 0 && lines[0].Trim() == "---")
+        foreach (var block in syntax.Descendants().OfType<Block>())
         {
-            var end = Array.FindIndex(lines, 1, line => line.Trim() == "---");
-            if (end > 0)
+            if (block is not (HeadingBlock or ParagraphBlock or FencedCodeBlock or CodeBlock or YamlFrontMatterBlock))
             {
-                var text = string.Join('\n', lines.Take(end + 1)).Trim();
-                elements.Add(new MarkdownElement(document.RelativePath, new SemanticPointer("frontmatter"), MarkdownElementKind.FrontMatter, text, 1, end + 1, 0, null));
-                lineIndex = end + 1;
-            }
-        }
-
-        while (lineIndex < lines.Length)
-        {
-            var line = lines[lineIndex];
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                lineIndex++;
                 continue;
             }
 
-            var heading = Regex.Match(line, @"^(#{1,6})\s+(.+)$");
-            if (heading.Success)
+            // Container descendants can expose the same source range. Index only leaf editing units.
+            if (block is ParagraphBlock paragraph && paragraph.Parent is QuoteBlock
+                && paragraph.Span == paragraph.Parent.Span)
             {
-                var level = heading.Groups[1].Value.Length;
+                continue;
+            }
+
+            var (start, length) = GetSpan(block, document.Markdown.Length);
+            if (length <= 0)
+            {
+                continue;
+            }
+
+            var text = document.Markdown.Substring(start, length);
+            var startLine = block.Line + 1;
+            var endLine = block.Line + CountLineBreaks(text);
+
+            if (block is YamlFrontMatterBlock)
+            {
+                elements.Add(new MarkdownElement(
+                    document.RelativePath,
+                    new SemanticPointer("frontmatter"),
+                    MarkdownElementKind.FrontMatter,
+                    text,
+                    startLine,
+                    endLine,
+                    0,
+                    null,
+                    start,
+                    length));
+                continue;
+            }
+
+            if (block is HeadingBlock heading)
+            {
+                var level = heading.Level;
                 sectionCounters[level - 1]++;
-                for (var i = level; i < sectionCounters.Length; i++) sectionCounters[i] = 0;
-                currentSection = string.Join('.', sectionCounters.Take(level).Where(x => x > 0));
-                if (currentHeadingPath.Count >= level) currentHeadingPath.RemoveRange(level - 1, currentHeadingPath.Count - level + 1);
-                while (currentHeadingPath.Count < level - 1) currentHeadingPath.Add("");
-                if (currentHeadingPath.Count == level - 1) currentHeadingPath.Add(heading.Groups[2].Value.Trim()); else currentHeadingPath[level - 1] = heading.Groups[2].Value.Trim();
-                var hp = string.Join(" > ", currentHeadingPath.Where(x => !string.IsNullOrWhiteSpace(x)));
-                elements.Add(new MarkdownElement(document.RelativePath, new SemanticPointer(currentSection), MarkdownElementKind.Heading, line.Trim(), lineIndex + 1, lineIndex + 1, level, hp));
-                lineIndex++;
+                for (var index = level; index < sectionCounters.Length; index++)
+                {
+                    sectionCounters[index] = 0;
+                    headingTitles[index] = null;
+                }
+
+                currentSection = string.Join('.', sectionCounters.Take(level).Where(value => value > 0));
+                var title = ExtractHeadingTitle(text);
+                headingTitles[level - 1] = title;
+                currentHeadingPath = string.Join(
+                    " > ",
+                    headingTitles.Take(level).Where(value => !string.IsNullOrWhiteSpace(value)));
+                elements.Add(new MarkdownElement(
+                    document.RelativePath,
+                    new SemanticPointer(currentSection),
+                    MarkdownElementKind.Heading,
+                    text,
+                    startLine,
+                    endLine,
+                    level,
+                    currentHeadingPath,
+                    start,
+                    length));
                 continue;
             }
 
-            if (line.StartsWith("```", StringComparison.Ordinal))
-            {
-                var start = lineIndex;
-                lineIndex++;
-                while (lineIndex < lines.Length && !lines[lineIndex].StartsWith("```", StringComparison.Ordinal)) lineIndex++;
-                if (lineIndex < lines.Length) lineIndex++;
-                var text = string.Join('\n', lines.Skip(start).Take(lineIndex - start)).TrimEnd();
-                var pointer = NextPointer(currentSection, codeCounts, ref rootCode, "code");
-                elements.Add(new MarkdownElement(document.RelativePath, pointer, MarkdownElementKind.CodeBlock, text, start + 1, lineIndex, 0, HeadingPath(currentHeadingPath)));
-                continue;
-            }
-
-            var paragraphStart = lineIndex;
-            var paragraph = new List<string>();
-            while (lineIndex < lines.Length && !string.IsNullOrWhiteSpace(lines[lineIndex]) && !Regex.IsMatch(lines[lineIndex], @"^(#{1,6})\s+") && !lines[lineIndex].StartsWith("```", StringComparison.Ordinal))
-            {
-                paragraph.Add(lines[lineIndex]);
-                lineIndex++;
-            }
-
-            var paragraphText = string.Join('\n', paragraph).Trim();
-            if (paragraphText.Length > 0)
-            {
-                var pointer = NextPointer(currentSection, paragraphCounts, ref rootParagraph, "p");
-                elements.Add(new MarkdownElement(document.RelativePath, pointer, MarkdownElementKind.Paragraph, paragraphText, paragraphStart + 1, lineIndex, 0, HeadingPath(currentHeadingPath)));
-            }
+            var isCode = block is CodeBlock;
+            var pointer = isCode
+                ? NextPointer(currentSection, codeCounts, ref rootCode, "code")
+                : NextPointer(currentSection, paragraphCounts, ref rootParagraph, "p");
+            elements.Add(new MarkdownElement(
+                document.RelativePath,
+                pointer,
+                isCode ? MarkdownElementKind.CodeBlock : MarkdownElementKind.Paragraph,
+                text,
+                startLine,
+                endLine,
+                0,
+                currentHeadingPath,
+                start,
+                length));
         }
 
-        return elements;
+        return elements.OrderBy(element => element.SourceStart)
+            .ThenBy(element => element.Kind == MarkdownElementKind.Document ? 0 : 1)
+            .ToList();
     }
 
-    private static SemanticPointer NextPointer(string section, Dictionary<string, int> counts, ref int rootCount, string prefix)
+    private static (int Start, int Length) GetSpan(Block block, int sourceLength)
+    {
+        var start = Math.Clamp(block.Span.Start, 0, sourceLength);
+        var end = Math.Clamp(block.Span.End, start - 1, sourceLength - 1);
+        return (start, end >= start ? end - start + 1 : 0);
+    }
+
+    private static int CountLineBreaks(string value)
+        => value.Count(character => character == '\n');
+
+    private static string ExtractHeadingTitle(string source)
+    {
+        var firstLine = source.Split(['\r', '\n'], 2)[0];
+        var match = AtxHeadingRegex().Match(firstLine);
+        return match.Success
+            ? ClosingHashesRegex().Replace(match.Groups[1].Value.Trim(), "").Trim()
+            : firstLine.Trim();
+    }
+
+    private static SemanticPointer NextPointer(
+        string section,
+        Dictionary<string, int> counts,
+        ref int rootCount,
+        string prefix)
     {
         if (string.IsNullOrEmpty(section))
         {
@@ -101,9 +166,9 @@ public sealed class MarkdownElementParser : IMarkdownElementParser
         return new SemanticPointer($"{section}.{prefix}{counts[section]}");
     }
 
-    private static string? HeadingPath(List<string> headings)
-    {
-        var value = string.Join(" > ", headings.Where(x => !string.IsNullOrWhiteSpace(x)));
-        return value.Length == 0 ? null : value;
-    }
+    [GeneratedRegex(@"^#{1,6}\s+(.+?)\s*$")]
+    private static partial Regex AtxHeadingRegex();
+
+    [GeneratedRegex(@"\s+#+\s*$")]
+    private static partial Regex ClosingHashesRegex();
 }

@@ -4,5 +4,9 @@ namespace DimonSmart.LocalVectorSearchMcp.Core.Search;
 
 public interface IVectorIndexService
 {
-    Task<IReadOnlyList<SemanticSearchResult>> SearchAsync(EmbeddingVector queryEmbedding, int topK, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SemanticSearchResult>> SearchAsync(
+        EmbeddingVector queryEmbedding,
+        int topK,
+        SearchPathScope? scope,
+        CancellationToken cancellationToken);
 }

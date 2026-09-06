@@ -10,10 +10,29 @@ public sealed record ReindexToolRequest(
 public sealed record SearchToolRequest(
     string Query,
     SearchMode? Mode = null,
-    int? TopK = null);
+    int? TopK = null,
+    IReadOnlyList<string>? IncludeGlobs = null,
+    IReadOnlyList<string>? ExcludeGlobs = null);
 
 public sealed record ReadToolRequest(
     string Path,
     string Pointer,
     int? MaxElements = null,
     int? MaxBytes = null);
+
+public sealed record PatchToolOperation(string Kind, string Pointer, string? Markdown = null);
+
+public sealed record PatchToolRequest(
+    string Path,
+    string ExpectedSourceHash,
+    IReadOnlyList<PatchToolOperation> Operations);
+
+public sealed record CreateToolRequest(string Path, string Markdown);
+
+public sealed record MoveToolRequest(string SourcePath, string TargetPath, string ExpectedSourceHash);
+
+public sealed record DeleteToolRequest(string Path, string ExpectedSourceHash);
+
+public sealed record ListFilesToolRequest(string? PathPrefix = null, string? IncludeGlob = null);
+
+public sealed record OutlineToolRequest(string Path);

@@ -4,12 +4,20 @@ using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 
-public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IIndexInitializer indexInitializer, IDocumentIndexStore documentIndexStore, IIndexManifestService manifestService) : IKnowledgeBaseIndexer
+public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IIndexInitializer indexInitializer, IDocumentIndexStore documentIndexStore, IIndexManifestService manifestService, IIndexSynchronizationState? synchronizationState = null, IndexOperationGate? operationGate = null) : IKnowledgeBaseIndexer
 {
-    public async Task<ReindexResponse> ReindexAsync(ReindexRequest request, CancellationToken cancellationToken)
+    private readonly IndexOperationGate gate = operationGate ?? new IndexOperationGate();
+
+    public Task<ReindexResponse> ReindexAsync(ReindexRequest request, CancellationToken cancellationToken)
+        => gate.RunAsync(() => ReindexCoreAsync(request, cancellationToken), cancellationToken);
+
+    private async Task<ReindexResponse> ReindexCoreAsync(
+        ReindexRequest request,
+        CancellationToken cancellationToken)
     {
         await indexInitializer.InitializeAsync(cancellationToken);
         if (await manifestService.HasManifestAsync(cancellationToken))
@@ -46,7 +54,7 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
 
         foreach (var document in documents)
         {
-            if (request.Scope == ReindexScope.Changed && existing.TryGetValue(document.RelativePath, out var hash) && hash == document.ContentHash)
+            if (request.Scope == ReindexScope.Changed && existing.TryGetValue(document.RelativePath, out var hash) && hash == document.SourceHash)
             {
                 skipped++;
                 continue;
@@ -61,8 +69,17 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             }
 
             await documentIndexStore.SaveDocumentIndexAsync(document, elements, chunks, vectors, cancellationToken);
+            synchronizationState?.MarkSynchronized(document.RelativePath);
             indexed++;
             chunksIndexed += chunks.Count;
+        }
+
+        if (synchronizationState is not null)
+        {
+            foreach (var path in synchronizationState.GetStatus().Paths)
+            {
+                synchronizationState.MarkSynchronized(path);
+            }
         }
 
         return new ReindexResponse(scanned, indexed, skipped, deleted, chunksIndexed, null);

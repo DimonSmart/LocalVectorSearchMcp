@@ -5,6 +5,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
@@ -12,6 +13,7 @@ using DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DimonSmart.LocalVectorSearchMcp.Server;
@@ -31,6 +33,9 @@ public static class ServiceRegistration
         services.AddSingleton<IMarkdownDocumentLoader, MarkdownDocumentLoader>();
         services.AddSingleton<IMarkdownElementParser, MarkdownElementParser>();
         services.AddSingleton<KnowledgeBasePathGuard>();
+        services.AddSingleton<IndexOperationGate>();
+        services.AddSingleton<InMemoryIndexSynchronizationState>();
+        services.AddSingleton<IIndexSynchronizationState>(sp => sp.GetRequiredService<InMemoryIndexSynchronizationState>());
         services.AddSingleton<SqliteConnectionFactory>();
         services.AddSingleton<SqliteSchemaInitializer>();
         services.AddSingleton<IIndexInitializer>(sp => sp.GetRequiredService<SqliteSchemaInitializer>());
@@ -51,8 +56,12 @@ public static class ServiceRegistration
         services.AddSingleton<SqliteFullTextSearchService>();
         services.AddSingleton<IFullTextSearchService>(sp => sp.GetRequiredService<SqliteFullTextSearchService>());
         services.AddSingleton<IKnowledgeBaseIndexer, KnowledgeBaseIndexer>();
+        services.AddSingleton<IWorkspaceIndexSynchronizer, WorkspaceIndexSynchronizer>();
         services.AddSingleton<IKnowledgeSearchService, KnowledgeSearchService>();
         services.AddSingleton<ISemanticPointerReader, SemanticPointerReader>();
+        services.AddSingleton<IWorkspaceMutationService, WorkspaceMutationService>();
+        services.AddSingleton<IWorkspaceNavigationService, WorkspaceNavigationService>();
+        services.AddHostedService<MarkdownWorkspaceWatcher>();
         services.AddHttpClient<IEmbeddingProvider, OpenAiCompatibleEmbeddingProvider>(
             client => client.Timeout = TimeSpan.FromSeconds(config.Embedding.TimeoutSeconds));
         return services;

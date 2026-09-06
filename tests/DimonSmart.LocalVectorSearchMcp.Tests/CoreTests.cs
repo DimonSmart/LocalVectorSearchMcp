@@ -112,6 +112,30 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void ConfigLoader_WriteAndWatchFlagsAreExplicitOptIns()
+    {
+        using var temp = new TemporaryDirectory();
+        var configPath = Path.Combine(temp.Path, "config.yml");
+        File.WriteAllText(configPath, """
+            knowledgeBase:
+              root: .
+              allowWrites: true
+              watchFiles: true
+            """);
+
+        var configured = LocalVectorSearchConfigLoader.Load(
+            ["--config", configPath],
+            temp.Path,
+            temp.Path);
+        var defaults = LocalVectorSearchConfigLoader.Load([], temp.Path, temp.Path);
+
+        Assert.True(configured.KnowledgeBase.AllowWrites);
+        Assert.True(configured.KnowledgeBase.WatchFiles);
+        Assert.False(defaults.KnowledgeBase.AllowWrites);
+        Assert.False(defaults.KnowledgeBase.WatchFiles);
+    }
+
+    [Fact]
     public void ConfigLoader_RejectsLegacyKnowledgeBasesList()
     {
         using var temp = new TemporaryDirectory();
@@ -138,6 +162,37 @@ public sealed class CoreTests
         Assert.Equal("docs/a.md", guard.ValidateRelativePath("docs/a.md"));
         Assert.Throws<KnowledgeBaseAccessException>(() => guard.ValidateRelativePath("../a.md"));
         Assert.Throws<KnowledgeBaseAccessException>(() => guard.ValidateRelativePath(Path.GetFullPath("a.md")));
+    }
+
+    [Fact]
+    public void PathGuard_RejectsNonMarkdownWritePath()
+    {
+        using var temp = new TemporaryDirectory();
+        var guard = new KnowledgeBasePathGuard(TestConfig(temp.Path));
+
+        Assert.Throws<KnowledgeBaseAccessException>(() => guard.ResolveMarkdownPath("assets/image.png"));
+    }
+
+    [Fact]
+    public void PathGuard_RejectsPathThroughSymbolicLink_WhenPlatformAllowsCreatingOne()
+    {
+        using var temp = new TemporaryDirectory();
+        using var outside = new TemporaryDirectory();
+        var link = Path.Combine(temp.Path, "linked");
+        try
+        {
+            Directory.CreateSymbolicLink(link, outside.Path);
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException
+            or IOException
+            or PlatformNotSupportedException)
+        {
+            return;
+        }
+
+        var guard = new KnowledgeBasePathGuard(TestConfig(temp.Path));
+
+        Assert.Throws<KnowledgeBaseAccessException>(() => guard.ResolveMarkdownPath("linked/outside.md"));
     }
 
     [Fact]

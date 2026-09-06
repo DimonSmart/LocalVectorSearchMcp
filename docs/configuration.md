@@ -124,6 +124,8 @@ search:
 
 knowledgeBase:
   root: .
+  allowWrites: false
+  watchFiles: false
   include:
     - "**/*.md"
   exclude: []
@@ -172,6 +174,22 @@ Relative paths are resolved against the detected project root.
 
 All file access is restricted to the configured project root. Traversal and absolute paths outside that root are rejected.
 
+## Writes and external file watching
+
+Both capabilities are disabled by default. Enable them explicitly for a Markdown workbench:
+
+```yaml
+knowledgeBase:
+  allowWrites: true
+  watchFiles: true
+```
+
+`allowWrites` enables `kb_patch`, `kb_create`, `kb_move`, and `kb_delete`. Mutation paths must be relative `.md` paths under the configured root; existing destinations and paths through symbolic links, junctions, or reparse points are rejected.
+
+`watchFiles` observes external Markdown create, edit, rename, and delete events and reconciles affected index entries after a short debounce. It does not require `allowWrites`, because the watcher reads changes made by other applications rather than creating them.
+
+Search requests can independently narrow already indexed documents with optional `includeGlobs` and `excludeGlobs`. These filters do not change the configured source set.
+
 ## Embedding endpoints
 
 The default embedding endpoint is local Ollama:
@@ -207,6 +225,7 @@ The default is `hybrid`.
 
 Changing any of the following makes the existing index incompatible:
 
+- schema version;
 - embedding model;
 - embedding dimensions;
 - chunker version;

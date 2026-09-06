@@ -1,5 +1,7 @@
 namespace DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
+
 public sealed record StatusResponse(
     string DatabasePath,
     string SchemaVersion,
@@ -7,4 +9,5 @@ public sealed record StatusResponse(
     string EmbeddingTextBuilderVersion,
     string EmbeddingModel,
     int? EmbeddingDimensions,
-    ProjectIndexStatus Project);
+    ProjectIndexStatus Project,
+    IndexSynchronizationStatus? Synchronization = null);

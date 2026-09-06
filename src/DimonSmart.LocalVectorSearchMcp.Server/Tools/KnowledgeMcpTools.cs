@@ -5,6 +5,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using ModelContextProtocol.Server;
 
 namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
@@ -15,7 +16,9 @@ public sealed class KnowledgeMcpTools(
     IIndexInitializer indexInitializer,
     IIndexStatusReader statusReader,
     IKnowledgeSearchService searchService,
-    ISemanticPointerReader reader)
+    ISemanticPointerReader reader,
+    IWorkspaceMutationService mutations,
+    IWorkspaceNavigationService navigation)
 {
     [McpServerTool(Name = "kb_reindex")]
     [Description("Indexes or reindexes the current project's configured Markdown root.")]
@@ -44,7 +47,7 @@ public sealed class KnowledgeMcpTools(
             ? null
             : Math.Clamp(request.TopK.Value, 1, 50);
         return searchService.SearchAsync(
-            new SearchRequest(request.Query, request.Mode, topK),
+            new SearchRequest(request.Query, request.Mode, topK, request.IncludeGlobs, request.ExcludeGlobs),
             cancellationToken);
     }
 
@@ -62,4 +65,69 @@ public sealed class KnowledgeMcpTools(
             request.MaxBytes ?? 12000,
             cancellationToken);
     }
+
+    [McpServerTool(Name = "kb_patch")]
+    [Description("Atomically edits Markdown elements by semantic pointer when the source revision matches.")]
+    public Task<MutationResponse> PatchAsync(
+        PatchToolRequest request,
+        CancellationToken cancellationToken)
+        => mutations.PatchAsync(
+            new PatchRequest(
+                request.Path,
+                request.ExpectedSourceHash,
+                request.Operations.Select(operation => new PatchOperation(
+                    ParsePatchKind(operation.Kind),
+                    operation.Pointer,
+                    operation.Markdown)).ToList()),
+            cancellationToken);
+
+    [McpServerTool(Name = "kb_create")]
+    [Description("Creates a new UTF-8 Markdown file and synchronizes it with the index.")]
+    public Task<MutationResponse> CreateAsync(
+        CreateToolRequest request,
+        CancellationToken cancellationToken)
+        => mutations.CreateAsync(request.Path, request.Markdown, cancellationToken);
+
+    [McpServerTool(Name = "kb_move")]
+    [Description("Moves a Markdown file when its source revision matches and synchronizes the index.")]
+    public Task<MutationResponse> MoveAsync(
+        MoveToolRequest request,
+        CancellationToken cancellationToken)
+        => mutations.MoveAsync(
+            new MoveRequest(request.SourcePath, request.TargetPath, request.ExpectedSourceHash),
+            cancellationToken);
+
+    [McpServerTool(Name = "kb_delete")]
+    [Description("Deletes a Markdown file when its source revision matches and removes it from the index.")]
+    public Task<MutationResponse> DeleteAsync(
+        DeleteToolRequest request,
+        CancellationToken cancellationToken)
+        => mutations.DeleteAsync(
+            new DeleteRequest(request.Path, request.ExpectedSourceHash),
+            cancellationToken);
+
+    [McpServerTool(Name = "kb_list_files")]
+    [Description("Lists Markdown and asset files under the configured workspace root.")]
+    public Task<WorkspaceFileList> ListFilesAsync(
+        ListFilesToolRequest request,
+        CancellationToken cancellationToken)
+        => navigation.ListFilesAsync(request.PathPrefix, request.IncludeGlob, cancellationToken);
+
+    [McpServerTool(Name = "kb_outline")]
+    [Description("Returns a deterministic heading outline for one Markdown file.")]
+    public Task<MarkdownOutline> OutlineAsync(
+        OutlineToolRequest request,
+        CancellationToken cancellationToken)
+        => navigation.GetOutlineAsync(request.Path, cancellationToken);
+
+    private static PatchOperationKind ParsePatchKind(string kind)
+        => kind.Trim().ToLowerInvariant() switch
+        {
+            "replace" => PatchOperationKind.Replace,
+            "insert_before" => PatchOperationKind.InsertBefore,
+            "insert_after" => PatchOperationKind.InsertAfter,
+            "delete" => PatchOperationKind.Delete,
+            _ => throw new WorkspaceMutationException(
+                "Patch operation kind must be replace, insert_before, insert_after, or delete.")
+        };
 }

@@ -29,6 +29,8 @@ search:
 
 knowledgeBase:
   root: .
+  allowWrites: false
+  watchFiles: false
   include:
     - "**/*.md"
   exclude: []

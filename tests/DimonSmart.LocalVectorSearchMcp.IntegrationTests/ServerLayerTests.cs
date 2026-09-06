@@ -2,12 +2,42 @@ using System.Text.Json;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Server;
+using DimonSmart.LocalVectorSearchMcp.Server.Tools;
+using ModelContextProtocol.Server;
 
 namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 
 public sealed class ServerLayerTests
 {
+    [Fact]
+    public void KnowledgeMcpTools_ExposeExpectedWorkbenchSurface()
+    {
+        var names = typeof(KnowledgeMcpTools).GetMethods()
+            .Select(method => method.GetCustomAttributes(typeof(McpServerToolAttribute), false)
+                .Cast<McpServerToolAttribute>()
+                .SingleOrDefault()?.Name)
+            .OfType<string>()
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            [
+                "kb_create",
+                "kb_delete",
+                "kb_list_files",
+                "kb_move",
+                "kb_outline",
+                "kb_patch",
+                "kb_read",
+                "kb_reindex",
+                "kb_search",
+                "kb_status"
+            ],
+            names);
+    }
+
     [Fact]
     public void KnownCliExceptionFilter_RecognizesSemanticPointerFormatException()
         => Assert.True(KnownCliExceptionFilter.IsKnown(new SemanticPointerFormatException("bad")));
@@ -23,6 +53,7 @@ public sealed class ServerLayerTests
         Assert.Equal(
             ReindexScope.Changed,
             JsonSerializer.Deserialize<ReindexScope>("\"ChAnGeD\"", JsonOptions.Default));
+        Assert.Equal("\"asset\"", JsonSerializer.Serialize(WorkspaceFileKind.Asset, JsonOptions.Default));
     }
 
     [Theory]

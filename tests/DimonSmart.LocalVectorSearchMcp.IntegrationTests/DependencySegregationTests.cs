@@ -6,10 +6,12 @@ using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
@@ -56,6 +58,9 @@ public sealed class DependencySegregationTests
         Assert.IsType<KnowledgeBaseIndexer>(provider.GetRequiredService<IKnowledgeBaseIndexer>());
         Assert.IsType<KnowledgeSearchService>(provider.GetRequiredService<IKnowledgeSearchService>());
         Assert.IsType<SemanticPointerReader>(provider.GetRequiredService<ISemanticPointerReader>());
+        Assert.IsType<WorkspaceIndexSynchronizer>(provider.GetRequiredService<IWorkspaceIndexSynchronizer>());
+        Assert.IsType<WorkspaceMutationService>(provider.GetRequiredService<IWorkspaceMutationService>());
+        Assert.IsType<WorkspaceNavigationService>(provider.GetRequiredService<IWorkspaceNavigationService>());
         Assert.NotNull(provider.GetRequiredService<IEmbeddingProvider>());
     }
 }
