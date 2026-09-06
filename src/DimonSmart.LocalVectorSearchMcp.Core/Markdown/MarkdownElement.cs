@@ -10,4 +10,6 @@ public sealed record MarkdownElement(
     int StartLine,
     int EndLine,
     int HeadingLevel,
-    string? HeadingPath);
+    string? HeadingPath,
+    int SourceStart = 0,
+    int SourceLength = 0);

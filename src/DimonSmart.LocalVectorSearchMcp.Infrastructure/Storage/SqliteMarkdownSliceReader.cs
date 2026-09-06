@@ -19,7 +19,7 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
         await using var db = factory.Open();
         var command = db.CreateCommand();
         command.CommandText = """
-            select e.pointer, e.kind, e.text, e.heading_path
+            select e.pointer, e.kind, e.text, e.heading_path, d.source_hash
             from elements e
             join documents d on d.id = e.document_id
             where d.path = $path
@@ -32,10 +32,12 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
         command.AddParameter("$max", maxElements + 1);
         var elements = new List<MarkdownSliceElement>();
         string? nextPointer = null;
+        string? sourceHash = null;
         var bytes = 0;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            sourceHash ??= reader.GetString(4);
             var currentPointer = reader.GetString(0);
             var text = reader.GetString(2);
             if (elements.Count >= maxElements)
@@ -66,6 +68,6 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
         }
 
         var markdown = string.Join("\n\n", elements.Select(element => element.Text));
-        return new MarkdownSlice(path, pointer.Value, elements, markdown, nextPointer);
+        return new MarkdownSlice(path, pointer.Value, elements, markdown, nextPointer, sourceHash!);
     }
 }

@@ -15,4 +15,5 @@ public interface IDocumentIndexStore
     Task<int> DeleteMissingDocumentsAsync(
         IReadOnlySet<string> currentRelativePaths,
         CancellationToken cancellationToken);
+    Task<bool> DeleteDocumentAsync(string relativePath, CancellationToken cancellationToken);
 }

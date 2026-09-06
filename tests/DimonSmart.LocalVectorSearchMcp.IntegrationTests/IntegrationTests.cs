@@ -37,8 +37,10 @@ public sealed class IntegrationTests
         Assert.Equal(1, second.SkippedFiles);
         Assert.NotEmpty(lexical);
         Assert.Contains("SQLite FTS5", slice.Markdown);
-        Assert.Equal("2", await ReadManifestValueAsync(config, "schema_version", cancellationToken));
-        Assert.DoesNotContain("knowledge_base", await ReadColumnNamesAsync(config, "documents", cancellationToken));
+        Assert.Equal("3", await ReadManifestValueAsync(config, "schema_version", cancellationToken));
+        var documentColumns = await ReadColumnNamesAsync(config, "documents", cancellationToken);
+        Assert.DoesNotContain("knowledge_base", documentColumns);
+        Assert.Contains("source_hash", documentColumns);
         Assert.DoesNotContain("knowledge_base", await ReadColumnNamesAsync(config, "chunks", cancellationToken));
     }
 

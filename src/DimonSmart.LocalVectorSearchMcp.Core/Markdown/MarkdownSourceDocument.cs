@@ -5,4 +5,9 @@ public sealed record MarkdownSourceDocument(
     string AbsolutePath,
     string Markdown,
     string ContentHash,
-    DateTimeOffset LastWriteTimeUtc);
+    DateTimeOffset LastWriteTimeUtc,
+    bool HasUtf8Bom = false,
+    string? SourceRevisionHash = null)
+{
+    public string SourceHash => SourceRevisionHash ?? ContentHash;
+}

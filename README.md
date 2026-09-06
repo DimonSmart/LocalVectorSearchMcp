@@ -1,8 +1,8 @@
 # LocalVectorSearchMcp
 
-**Give Codex and Claude Code fast, project-aware search over the Markdown documentation in your repository.**
+**Give Codex and Claude Code a local, editable, project-aware Markdown workbench.**
 
-LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database and exposes lexical, semantic, and hybrid search to coding agents.
+LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database. Agents can search, read focused semantic slices, edit by semantic pointer, manage Markdown files, and navigate the workspace.
 
 It helps an agent find the right specification, architectural decision, guide, or invariant without loading the entire documentation set into its context.
 
@@ -14,19 +14,21 @@ Large repositories often contain the answer, but not in the file the agent happe
 - Vector search finds conceptually related documentation even when wording differs.
 - Hybrid search combines both result lists through Reciprocal Rank Fusion.
 - `kb_read` returns focused Markdown slices instead of forcing the agent to read whole files.
+- Optimistic concurrency prevents an agent from overwriting a file changed after it was read.
+- Optional file watching keeps the index synchronized with edits from VS Code, Obsidian, or other editors.
 - Every project gets its own local SQLite index.
 - No cloud database or mandatory YAML configuration is required.
 
 ## How it works
 
 ```text
-Project Markdown
+Workspace Markdown (source of truth)
        ↓
 Markdown elements and search chunks
        ↓
 SQLite FTS5 + sqlite-vec
        ↓
-Lexical, semantic, or hybrid retrieval
+Scoped retrieval + semantic editing
        ↓
 MCP tools for Codex and Claude Code
 ```
@@ -100,16 +102,22 @@ session-level overrides are expected to work.
 | Hybrid ranking | Reciprocal Rank Fusion |
 | Storage | Project-local SQLite |
 | Indexed content | Markdown |
+| Editable content | Markdown, guarded by exact source hashes |
+| Navigation | File listing and heading outlines |
 | Transport | MCP over stdio |
 | Clients | Claude Code and Codex |
 | Default embeddings | Local Ollama-compatible endpoint |
 
-The MCP server exposes four focused tools:
+The MCP server exposes ten focused tools:
 
 - `kb_status` — inspect the current index.
 - `kb_reindex` — build or rebuild the index.
-- `kb_search` — run lexical, semantic, or hybrid search.
-- `kb_read` — read indexed Markdown from a semantic pointer.
+- `kb_search` — run optionally path-scoped lexical, semantic, or hybrid search.
+- `kb_read` — read indexed Markdown from a semantic pointer and receive its `sourceHash`.
+- `kb_patch` — atomically replace, insert before/after, or delete semantic elements.
+- `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
+- `kb_list_files` — list Markdown files and non-indexed assets.
+- `kb_outline` — return a deterministic heading tree.
 
 ## Local-first and project-isolated
 
@@ -129,6 +137,19 @@ The default embedding endpoint is local Ollama. Remote embedding endpoints are r
 - [Product specification](.idd/intent/0001.spec-product-overview.md)
 - [Architecture decision](.idd/intent/0006.adr-mcp-sqlite-hybrid-architecture.md)
 
+## Editable workspaces
+
+Writes and external file watching are explicit opt-ins:
+
+```yaml
+knowledgeBase:
+  root: .
+  allowWrites: true
+  watchFiles: true
+```
+
+Markdown files remain the source of truth. A mutation first changes the source file and then synchronizes the derived SQLite index. Semantic pointers address one document revision; mutation calls use the exact `sourceHash` returned by `kb_read` to detect concurrent human edits.
+
 ## Current scope
 
-The current version indexes project-local Markdown documentation. PDF and DOCX import, a web UI, file watching, Git history indexing, remote HTTP MCP transport, authentication, and multi-user mode are outside the current scope.
+The current version supports local Markdown and discovers ordinary assets through file listing without indexing them. PDF/DOCX/OCR, binary editing, image embeddings, a web UI, Git history indexing, remote HTTP MCP transport, authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.

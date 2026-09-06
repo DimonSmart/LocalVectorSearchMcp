@@ -3,12 +3,14 @@ using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 
 public sealed class SqliteIndexStatusReader(
     SqliteConnectionFactory factory,
-    LocalVectorSearchMcpConfig config) : IIndexStatusReader
+    LocalVectorSearchMcpConfig config,
+    IIndexSynchronizationState? synchronizationState = null) : IIndexStatusReader
 {
     private int EffectiveEmbeddingDimensions => config.Embedding.Dimensions ?? 1024;
 
@@ -30,6 +32,7 @@ public sealed class SqliteIndexStatusReader(
             EmbeddingTextBuilder.Version,
             config.Embedding.Model,
             EffectiveEmbeddingDimensions,
-            project);
+            project,
+            synchronizationState?.GetStatus() ?? new IndexSynchronizationStatus(0, [], null));
     }
 }

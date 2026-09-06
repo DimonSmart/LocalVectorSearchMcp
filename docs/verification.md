@@ -70,6 +70,12 @@ kb_status
 kb_reindex
 kb_search
 kb_read
+kb_patch
+kb_create
+kb_move
+kb_delete
+kb_list_files
+kb_outline
 ```
 
 ## 5. Build and inspect the index
@@ -126,6 +132,16 @@ summarize it with the source path.
 ```
 
 This validates the normal end-to-end workflow: search, semantic pointer, and focused Markdown reading.
+
+## 9. Verify editable workbench behavior
+
+Use a disposable workspace with `knowledgeBase.allowWrites: true` and `knowledgeBase.watchFiles: true`.
+
+1. Create a Markdown file with `kb_create` and confirm it is immediately returned by `kb_search`.
+2. Read it with `kb_read`, retain `sourceHash`, and replace one paragraph with `kb_patch`.
+3. Edit the file manually, then confirm a patch using the earlier hash returns a conflict without overwriting the manual edit.
+4. Use `kb_outline` and `kb_list_files`; add a binary asset and confirm it appears as `asset` but is not indexed.
+5. Move and delete the Markdown file, confirming each change is immediately reflected in search.
 
 ## Developer verification
 

@@ -14,6 +14,13 @@ public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IE
         if (string.IsNullOrWhiteSpace(request.Query)) throw new ConfigurationException("Query is required.");
         var mode = request.Mode ?? config.Search.DefaultMode;
         var topK = Math.Clamp(request.TopK ?? config.Search.MaxResults, 1, 50);
+        SearchPathScope? scope = request.IncludeGlobs is null && request.ExcludeGlobs is null
+            ? null
+            : new SearchPathScope(request.IncludeGlobs ?? [], request.ExcludeGlobs ?? []);
+        if (scope is not null)
+        {
+            _ = new PathScopeMatcher(scope);
+        }
         if (!await indexStateReader.HasChunksAsync(cancellationToken)) throw new IndexNotReadyException("Index is empty. Run kb_reindex first.");
 
         var semantic = new List<SemanticSearchResult>();
@@ -21,12 +28,12 @@ public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IE
         if (mode is SearchMode.Semantic or SearchMode.Hybrid)
         {
             var embedding = (await embeddingProvider.EmbedBatchAsync([request.Query], cancellationToken)).Single();
-            semantic.AddRange(await vectorSearch.SearchAsync(embedding, config.Search.SemanticCandidatePoolSize, cancellationToken));
+            semantic.AddRange(await vectorSearch.SearchAsync(embedding, config.Search.SemanticCandidatePoolSize, scope, cancellationToken));
         }
 
         if (mode is SearchMode.Lexical or SearchMode.Hybrid)
         {
-            lexical.AddRange(await fullTextSearch.SearchAsync(request.Query, config.Search.LexicalCandidatePoolSize, cancellationToken));
+            lexical.AddRange(await fullTextSearch.SearchAsync(request.Query, config.Search.LexicalCandidatePoolSize, scope, cancellationToken));
         }
 
         var ordered = mode switch

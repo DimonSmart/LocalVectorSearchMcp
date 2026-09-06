@@ -27,6 +27,7 @@ public sealed class SqliteSchemaInitializer(SqliteConnectionFactory factory, Loc
               id integer primary key,
               path text not null,
               content_hash text not null,
+              source_hash text not null,
               markdown text not null,
               last_write_time_utc text not null,
               indexed_at_utc text not null,
@@ -40,6 +41,8 @@ public sealed class SqliteSchemaInitializer(SqliteConnectionFactory factory, Loc
               text text not null,
               start_line integer not null,
               end_line integer not null,
+              source_start integer not null,
+              source_length integer not null,
               heading_path text null,
               ordinal integer not null,
               unique(document_id, pointer)
@@ -55,7 +58,7 @@ public sealed class SqliteSchemaInitializer(SqliteConnectionFactory factory, Loc
               embedding_model text not null,
               embedding_dimensions integer not null
             );
-            create virtual table if not exists chunks_fts using fts5(text, content='chunks', content_rowid='id');
+            create virtual table if not exists chunks_fts using fts5(text, heading_path);
             create table if not exists index_manifest (
               key text primary key,
               value text not null

@@ -17,7 +17,7 @@ public sealed class SqliteDocumentIndexStore(
     {
         await using var db = factory.Open();
         var command = db.CreateCommand();
-        command.CommandText = "select path, content_hash from documents";
+        command.CommandText = "select path, source_hash from documents";
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) result[reader.GetString(0)] = reader.GetString(1);
@@ -58,9 +58,10 @@ public sealed class SqliteDocumentIndexStore(
 
         var insertDocument = db.CreateCommand();
         insertDocument.Transaction = transaction;
-        insertDocument.CommandText = "insert into documents(path,content_hash,markdown,last_write_time_utc,indexed_at_utc) values($path,$hash,$md,$lw,$idx); select last_insert_rowid();";
+        insertDocument.CommandText = "insert into documents(path,content_hash,source_hash,markdown,last_write_time_utc,indexed_at_utc) values($path,$hash,$sourceHash,$md,$lw,$idx); select last_insert_rowid();";
         insertDocument.AddParameter("$path", document.RelativePath);
         insertDocument.AddParameter("$hash", document.ContentHash);
+        insertDocument.AddParameter("$sourceHash", document.SourceHash);
         insertDocument.AddParameter("$md", document.Markdown);
         insertDocument.AddParameter("$lw", document.LastWriteTimeUtc.ToString("O"));
         insertDocument.AddParameter("$idx", DateTimeOffset.UtcNow.ToString("O"));
@@ -71,13 +72,15 @@ public sealed class SqliteDocumentIndexStore(
             var element = elements[index];
             var command = db.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "insert into elements(document_id,pointer,kind,text,start_line,end_line,heading_path,ordinal) values($doc,$ptr,$kind,$text,$start,$end,$heading,$ord)";
+            command.CommandText = "insert into elements(document_id,pointer,kind,text,start_line,end_line,source_start,source_length,heading_path,ordinal) values($doc,$ptr,$kind,$text,$start,$end,$sourceStart,$sourceLength,$heading,$ord)";
             command.AddParameter("$doc", documentId);
             command.AddParameter("$ptr", element.Pointer.Value);
             command.AddParameter("$kind", element.Kind.ToString());
             command.AddParameter("$text", element.Text);
             command.AddParameter("$start", element.StartLine);
             command.AddParameter("$end", element.EndLine);
+            command.AddParameter("$sourceStart", element.SourceStart);
+            command.AddParameter("$sourceLength", element.SourceLength);
             command.AddParameter("$heading", element.HeadingPath);
             command.AddParameter("$ord", index);
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -102,9 +105,10 @@ public sealed class SqliteDocumentIndexStore(
 
             var fts = db.CreateCommand();
             fts.Transaction = transaction;
-            fts.CommandText = "insert into chunks_fts(rowid, text) values($id, $text)";
+            fts.CommandText = "insert into chunks_fts(rowid, text, heading_path) values($id, $text, $heading)";
             fts.AddParameter("$id", chunkId);
             fts.AddParameter("$text", chunk.Text);
+            fts.AddParameter("$heading", chunk.HeadingPath ?? "");
             await fts.ExecuteNonQueryAsync(cancellationToken);
 
             var vectorCommand = db.CreateCommand();
@@ -145,5 +149,23 @@ public sealed class SqliteDocumentIndexStore(
 
         await transaction.CommitAsync(cancellationToken);
         return deleted;
+    }
+
+    public async Task<bool> DeleteDocumentAsync(
+        string relativePath,
+        CancellationToken cancellationToken)
+    {
+        await using var db = factory.Open();
+        SqliteVectorExtensionLoader.Load(db);
+        var documentId = await db.ScalarLongAsync(
+            "select id from documents where path = $path",
+            [("$path", relativePath)],
+            cancellationToken);
+        if (documentId is null) return false;
+
+        await using var transaction = (SqliteTransaction)await db.BeginTransactionAsync(cancellationToken);
+        await deletionService.DeleteDocumentByIdAsync(db, documentId.Value, cancellationToken, transaction);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 }
