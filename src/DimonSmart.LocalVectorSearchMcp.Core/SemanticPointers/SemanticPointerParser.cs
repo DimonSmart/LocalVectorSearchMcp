@@ -20,6 +20,7 @@ public static partial class SemanticPointerParser
     public static SemanticPointerKind GetKind(SemanticPointer pointer)
     {
         var value = pointer.Value;
+        if (value == "document") return SemanticPointerKind.Document;
         if (value == "frontmatter") return SemanticPointerKind.FrontMatter;
         if (value.Contains(".code", StringComparison.Ordinal) || value.StartsWith("code", StringComparison.Ordinal)) return SemanticPointerKind.CodeBlock;
         if (value.Contains(".p", StringComparison.Ordinal) || value.StartsWith('p')) return SemanticPointerKind.Paragraph;
@@ -29,7 +30,7 @@ public static partial class SemanticPointerParser
     public static SemanticPointer? GetContainingSectionPointer(SemanticPointer pointer)
     {
         var value = pointer.Value;
-        if (value is "frontmatter" || value.StartsWith('p') || value.StartsWith("code", StringComparison.Ordinal))
+        if (value is "document" or "frontmatter" || value.StartsWith('p') || value.StartsWith("code", StringComparison.Ordinal))
         {
             return null;
         }
@@ -44,6 +45,6 @@ public static partial class SemanticPointerParser
         return char.IsDigit(prefix[^1]) ? new SemanticPointer(prefix) : null;
     }
 
-    [GeneratedRegex(@"^(frontmatter|(?:\d+(?:\.\d+)*)(?:\.(?:p|code)\d+)?|p\d+|code\d+)$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^(document|frontmatter|(?:\d+(?:\.\d+)*)(?:\.(?:p|code)\d+)?|p\d+|code\d+)$", RegexOptions.Compiled)]
     private static partial Regex PointerRegex();
 }

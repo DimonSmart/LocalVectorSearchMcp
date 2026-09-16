@@ -11,5 +11,6 @@ public sealed record MarkdownElement(
     int EndLine,
     int HeadingLevel,
     string? HeadingPath,
+    SemanticPointer SectionPointer,
     int SourceStart = 0,
     int SourceLength = 0);

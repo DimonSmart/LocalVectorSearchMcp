@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
@@ -15,28 +16,30 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
 
     public IReadOnlyList<MarkdownElement> Parse(MarkdownSourceDocument document)
     {
+        var documentPointer = new SemanticPointer("document");
         var elements = new List<MarkdownElement>
         {
             new(
                 document.RelativePath,
-                new SemanticPointer("document"),
+                documentPointer,
                 MarkdownElementKind.Document,
                 "",
                 1,
                 1,
                 0,
                 null,
+                documentPointer,
                 0,
                 0)
         };
         var syntax = Markdig.Markdown.Parse(document.Markdown, Pipeline);
-        var sectionCounters = new int[6];
-        var headingTitles = new string?[6];
+        var headingStack = new List<HeadingContext>();
         var paragraphCounts = new Dictionary<string, int>();
         var codeCounts = new Dictionary<string, int>();
         var rootParagraph = 0;
         var rootCode = 0;
-        var currentSection = "";
+        var rootSectionCount = 0;
+        var currentSection = documentPointer;
         string? currentHeadingPath = null;
 
         foreach (var block in syntax.Descendants().OfType<Block>())
@@ -65,15 +68,17 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
 
             if (block is YamlFrontMatterBlock)
             {
+                var frontMatterPointer = new SemanticPointer("frontmatter");
                 elements.Add(new MarkdownElement(
                     document.RelativePath,
-                    new SemanticPointer("frontmatter"),
+                    frontMatterPointer,
                     MarkdownElementKind.FrontMatter,
                     text,
                     startLine,
                     endLine,
                     0,
                     null,
+                    frontMatterPointer,
                     start,
                     length));
                 continue;
@@ -82,28 +87,32 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
             if (block is HeadingBlock heading)
             {
                 var level = heading.Level;
-                sectionCounters[level - 1]++;
-                for (var index = level; index < sectionCounters.Length; index++)
+                while (headingStack.Count > 0 && headingStack[^1].Level >= level)
                 {
-                    sectionCounters[index] = 0;
-                    headingTitles[index] = null;
+                    headingStack.RemoveAt(headingStack.Count - 1);
                 }
 
-                currentSection = string.Join('.', sectionCounters.Take(level).Where(value => value > 0));
+                var ordinal = headingStack.Count == 0
+                    ? ++rootSectionCount
+                    : ++headingStack[^1].ChildCount;
+                var pointerValue = headingStack.Count == 0
+                    ? ordinal.ToString(CultureInfo.InvariantCulture)
+                    : $"{headingStack[^1].Pointer.Value}.{ordinal.ToString(CultureInfo.InvariantCulture)}";
+                var sectionPointer = new SemanticPointer(pointerValue);
                 var title = ExtractHeadingTitle(text);
-                headingTitles[level - 1] = title;
-                currentHeadingPath = string.Join(
-                    " > ",
-                    headingTitles.Take(level).Where(value => !string.IsNullOrWhiteSpace(value)));
+                headingStack.Add(new HeadingContext(level, sectionPointer, title));
+                currentSection = sectionPointer;
+                currentHeadingPath = string.Join(" > ", headingStack.Select(item => item.Title));
                 elements.Add(new MarkdownElement(
                     document.RelativePath,
-                    new SemanticPointer(currentSection),
+                    sectionPointer,
                     MarkdownElementKind.Heading,
                     text,
                     startLine,
                     endLine,
                     level,
                     currentHeadingPath,
+                    sectionPointer,
                     start,
                     length));
                 continue;
@@ -122,6 +131,7 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
                 endLine,
                 0,
                 currentHeadingPath,
+                currentSection,
                 start,
                 length));
         }
@@ -151,19 +161,27 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
     }
 
     private static SemanticPointer NextPointer(
-        string section,
+        SemanticPointer section,
         Dictionary<string, int> counts,
         ref int rootCount,
         string prefix)
     {
-        if (string.IsNullOrEmpty(section))
+        if (section.Value == "document")
         {
             rootCount++;
             return new SemanticPointer($"{prefix}{rootCount}");
         }
 
-        counts[section] = counts.GetValueOrDefault(section) + 1;
-        return new SemanticPointer($"{section}.{prefix}{counts[section]}");
+        counts[section.Value] = counts.GetValueOrDefault(section.Value) + 1;
+        return new SemanticPointer($"{section.Value}.{prefix}{counts[section.Value]}");
+    }
+
+    private sealed class HeadingContext(int level, SemanticPointer pointer, string title)
+    {
+        public int Level { get; } = level;
+        public SemanticPointer Pointer { get; } = pointer;
+        public string Title { get; } = title;
+        public int ChildCount { get; set; }
     }
 
     [GeneratedRegex(@"^#{1,6}\s+(.+?)\s*$")]
