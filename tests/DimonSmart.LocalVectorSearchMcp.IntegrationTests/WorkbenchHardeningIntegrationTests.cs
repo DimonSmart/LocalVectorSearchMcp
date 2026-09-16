@@ -1,5 +1,6 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
