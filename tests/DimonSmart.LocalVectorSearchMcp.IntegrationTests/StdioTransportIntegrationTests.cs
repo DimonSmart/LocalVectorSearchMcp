@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
@@ -27,7 +28,7 @@ public sealed class StdioTransportIntegrationTests
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TemporaryDirectory();
         var configPath = await CreateConfigAsync(temp.Path, cancellationToken);
-        var stderr = new List<string>();
+        var stderr = new ConcurrentQueue<string>();
 
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -35,13 +36,7 @@ public sealed class StdioTransportIntegrationTests
             Command = "dotnet",
             Arguments = [typeof(KnowledgeMcpTools).Assembly.Location, "--config", configPath],
             WorkingDirectory = temp.Path,
-            StandardErrorLines = line =>
-            {
-                lock (stderr)
-                {
-                    stderr.Add(line);
-                }
-            }
+            StandardErrorLines = stderr.Enqueue
         });
 
         await using var client = await McpClient.CreateAsync(
