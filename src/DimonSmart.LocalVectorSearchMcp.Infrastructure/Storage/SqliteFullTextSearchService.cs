@@ -22,29 +22,41 @@ public sealed class SqliteFullTextSearchService(SqliteConnectionFactory factory)
         if (ftsQuery.Length == 0) return [];
 
         await using var db = factory.Open();
+        if (scope is not null
+            && !await ScopedSearchFilter.PrepareAsync(db, scope, cancellationToken))
+        {
+            return [];
+        }
+
         var command = db.CreateCommand();
-        command.CommandText = """
-            select f.rowid, bm25(chunks_fts) as score,
-                   snippet(chunks_fts, 0, '[', ']', '...', 16) as snippet,
-                   c.path
-            from chunks_fts f
-            join chunks c on c.id = f.rowid
-            where chunks_fts match $query
-            order by score
-            limit $top
-            """;
+        command.CommandText = scope is null
+            ? """
+                select f.rowid, bm25(chunks_fts) as score,
+                       snippet(chunks_fts, 0, '[', ']', '...', 16) as snippet
+                from chunks_fts f
+                where chunks_fts match $query
+                order by score
+                limit $top
+                """
+            : $"""
+                select f.rowid, bm25(chunks_fts) as score,
+                       snippet(chunks_fts, 0, '[', ']', '...', 16) as snippet
+                from chunks_fts f
+                join chunks c on c.id = f.rowid
+                join temp.{ScopedSearchFilter.TempTableName} s on s.path = c.path
+                where chunks_fts match $query
+                order by score
+                limit $top
+                """;
         command.AddParameter("$query", ftsQuery);
-        command.AddParameter("$top", scope is null ? topK : int.MaxValue);
+        command.AddParameter("$top", topK);
         try
         {
-            var matcher = scope is null ? null : new PathScopeMatcher(scope);
             var result = new List<LexicalSearchResult>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                if (matcher is not null && !matcher.Matches(reader.GetString(3))) continue;
                 result.Add(new LexicalSearchResult(reader.GetInt64(0), reader.GetDouble(1), reader.GetString(2)));
-                if (result.Count == topK) break;
             }
 
             return result;

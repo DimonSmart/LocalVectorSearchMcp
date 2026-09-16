@@ -26,38 +26,72 @@ public sealed partial class WorkspaceNavigationService(
         var storagePath = Path.GetFullPath(config.Storage.Path);
         var options = new EnumerationOptions
         {
-            RecurseSubdirectories = true,
+            RecurseSubdirectories = false,
             IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.ReparsePoint
+            AttributesToSkip = FileAttributes.ReparsePoint,
+            ReturnSpecialDirectories = false
         };
         var files = new List<WorkspaceFile>();
-        foreach (var absolutePath in Directory.EnumerateFiles(config.KnowledgeBase.Root, "*", options))
+        var directories = new Stack<DirectoryInfo>();
+        directories.Push(new DirectoryInfo(config.KnowledgeBase.Root));
+
+        while (directories.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var fullPath = Path.GetFullPath(absolutePath);
-            if (fullPath.Equals(storagePath, PathComparison())
-                || fullPath.StartsWith(storagePath + "-", PathComparison()))
+            var directory = directories.Pop();
+            FileSystemInfo[] entries;
+            try
+            {
+                entries = directory.GetFileSystemInfos("*", options);
+            }
+            catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException or IOException)
             {
                 continue;
             }
 
-            var relativePath = Path.GetRelativePath(config.KnowledgeBase.Root, fullPath).Replace('\\', '/');
-            if (normalizedPrefix is not null
-                && !relativePath.Equals(normalizedPrefix, StringComparison.OrdinalIgnoreCase)
-                && !relativePath.StartsWith(normalizedPrefix + "/", StringComparison.OrdinalIgnoreCase))
+            foreach (var entry in entries)
             {
-                continue;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (entry.Name.Equals(".git", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
 
-            if (!matcher.Match(relativePath).HasMatches) continue;
-            var info = new FileInfo(fullPath);
-            files.Add(new WorkspaceFile(
-                relativePath,
-                info.Extension.Equals(".md", StringComparison.OrdinalIgnoreCase)
-                    ? WorkspaceFileKind.Markdown
-                    : WorkspaceFileKind.Asset,
-                info.Length,
-                info.LastWriteTimeUtc));
+                if (entry is DirectoryInfo childDirectory)
+                {
+                    directories.Push(childDirectory);
+                    continue;
+                }
+
+                if (entry is not FileInfo info)
+                {
+                    continue;
+                }
+
+                var fullPath = Path.GetFullPath(info.FullName);
+                if (fullPath.Equals(storagePath, PathComparison())
+                    || fullPath.StartsWith(storagePath + "-", PathComparison()))
+                {
+                    continue;
+                }
+
+                var relativePath = Path.GetRelativePath(config.KnowledgeBase.Root, fullPath).Replace('\\', '/');
+                if (normalizedPrefix is not null
+                    && !relativePath.Equals(normalizedPrefix, StringComparison.OrdinalIgnoreCase)
+                    && !relativePath.StartsWith(normalizedPrefix + "/", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!matcher.Match(relativePath).HasMatches) continue;
+                files.Add(new WorkspaceFile(
+                    relativePath,
+                    info.Extension.Equals(".md", StringComparison.OrdinalIgnoreCase)
+                        ? WorkspaceFileKind.Markdown
+                        : WorkspaceFileKind.Asset,
+                    info.Length,
+                    info.LastWriteTimeUtc));
+            }
         }
 
         return Task.FromResult(new WorkspaceFileList(files
