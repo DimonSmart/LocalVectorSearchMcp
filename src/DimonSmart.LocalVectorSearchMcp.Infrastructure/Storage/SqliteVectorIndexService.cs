@@ -20,36 +20,41 @@ public sealed class SqliteVectorIndexService(SqliteConnectionFactory factory) : 
     {
         await using var db = factory.Open();
         SqliteVectorExtensionLoader.Load(db);
-        var candidateCount = topK;
-        if (scope is not null)
+        if (scope is not null
+            && !await ScopedSearchFilter.PrepareAsync(db, scope, cancellationToken))
         {
-            candidateCount = (int)(await db.ScalarLongAsync(
-                "select count(*) from chunk_vectors",
-                [],
-                cancellationToken) ?? 0);
-            if (candidateCount == 0) return [];
+            return [];
         }
 
         var command = db.CreateCommand();
-        command.CommandText = """
-            select v.rowid, v.distance, c.path
-            from chunk_vectors v
-            join chunks c on c.id = v.rowid
-            where v.embedding match $embedding and k = $top
-            order by v.distance
-            """;
+        command.CommandText = scope is null
+            ? """
+                select v.rowid, v.distance
+                from chunk_vectors v
+                where v.embedding match $embedding and k = $top
+                order by v.distance
+                """
+            : $"""
+                select v.rowid, v.distance
+                from chunk_vectors v
+                where v.embedding match $embedding
+                  and v.rowid in (
+                    select c.id
+                    from chunks c
+                    join temp.{ScopedSearchFilter.TempTableName} s on s.path = c.path
+                  )
+                  and k = $top
+                order by v.distance
+                """;
         command.AddParameter("$embedding", SqliteVectorSerializer.ToJson(queryEmbedding.Values));
-        command.AddParameter("$top", candidateCount);
+        command.AddParameter("$top", topK);
         try
         {
-            var matcher = scope is null ? null : new PathScopeMatcher(scope);
             var result = new List<SemanticSearchResult>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                if (matcher is not null && !matcher.Matches(reader.GetString(2))) continue;
                 result.Add(new SemanticSearchResult(reader.GetInt64(0), reader.GetDouble(1)));
-                if (result.Count == topK) break;
             }
 
             return result;
