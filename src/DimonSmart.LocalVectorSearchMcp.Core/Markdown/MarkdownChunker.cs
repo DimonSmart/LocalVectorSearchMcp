@@ -6,7 +6,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public sealed class MarkdownChunker(ChunkingConfig config, EmbeddingTextBuilder textBuilder) : IMarkdownChunker
 {
-    public const string Version = "3";
+    public const string Version = "4";
 
     public IReadOnlyList<MarkdownChunk> BuildChunks(MarkdownSourceDocument document, IReadOnlyList<MarkdownElement> elements)
     {
@@ -17,7 +17,7 @@ public sealed class MarkdownChunker(ChunkingConfig config, EmbeddingTextBuilder 
         foreach (var element in indexable)
         {
             if (current.Count > 0
-                && !string.Equals(current[^1].HeadingPath, element.HeadingPath, StringComparison.Ordinal))
+                && current[^1].SectionPointer != element.SectionPointer)
             {
                 chunks.Add(CreateChunk(document, current));
                 current.Clear();

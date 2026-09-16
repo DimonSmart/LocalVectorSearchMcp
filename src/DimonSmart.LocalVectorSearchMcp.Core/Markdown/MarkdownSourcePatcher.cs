@@ -29,6 +29,12 @@ public static class MarkdownSourcePatcher
         var edits = new List<SourceEdit>(operations.Count);
         foreach (var operation in operations)
         {
+            if (operation.Pointer == "document")
+            {
+                edits.Add(CreateDocumentEdit(source, operation, eol));
+                continue;
+            }
+
             if (!byPointer.TryGetValue(operation.Pointer, out var element))
             {
                 throw new WorkspaceMutationException(
@@ -72,6 +78,40 @@ public static class MarkdownSourcePatcher
         }
 
         return result;
+    }
+
+    private static SourceEdit CreateDocumentEdit(
+        string source,
+        PatchOperation operation,
+        string eol)
+    {
+        if (operation.Kind is PatchOperationKind.Replace or PatchOperationKind.Delete)
+        {
+            throw new WorkspaceMutationException(
+                $"Operation '{operation.Kind.ToString().ToLowerInvariant()}' is not supported for the document pointer.");
+        }
+
+        if (operation.Markdown is null)
+        {
+            throw new WorkspaceMutationException(
+                $"Patch operation '{operation.Kind}' requires markdown content.");
+        }
+
+        var markdown = NormalizeLineEndings(operation.Markdown, eol);
+        if (source.Length == 0)
+        {
+            return new SourceEdit(0, 0, markdown, operation.Pointer);
+        }
+
+        return operation.Kind switch
+        {
+            PatchOperationKind.InsertBefore
+                => new SourceEdit(0, 0, markdown.TrimEnd('\r', '\n') + eol + eol, operation.Pointer),
+            PatchOperationKind.InsertAfter
+                => new SourceEdit(source.Length, 0, eol + eol + markdown.TrimStart('\r', '\n'), operation.Pointer),
+            _ => throw new WorkspaceMutationException(
+                $"Operation '{operation.Kind.ToString().ToLowerInvariant()}' is not supported for the document pointer.")
+        };
     }
 
     private static string DetectLineEnding(string source)
