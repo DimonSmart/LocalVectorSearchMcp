@@ -1,6 +1,6 @@
 # LocalVectorSearchMcp
 
-**Give Codex and Claude Code a local, editable, project-aware Markdown workbench.**
+**Give Codex, Claude Code, and ChatGPT a local, editable, project-aware Markdown workbench.**
 
 LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database. Agents can search, read focused semantic slices, edit by semantic pointer, manage Markdown files, and navigate the workspace.
 
@@ -30,8 +30,10 @@ SQLite FTS5 + sqlite-vec
        ↓
 Scoped retrieval + semantic editing
        ↓
-MCP tools for Codex and Claude Code
+MCP tools over stdio
 ```
+
+Claude Code and Codex can launch the stdio server directly. ChatGPT can use the same MCP surface through OpenAI Secure MCP Tunnel, where the external `tunnel-client` bridges ChatGPT to the local stdio process.
 
 ## Quick start
 
@@ -44,7 +46,7 @@ ollama pull bge-m3:latest
 
 Make sure Ollama is running before the first reindex.
 
-### 2. Connect your coding agent
+### 2. Connect your client
 
 Run the command from the project whose documentation should be indexed.
 
@@ -63,6 +65,12 @@ claude mcp add local-vector-search \
 codex mcp add local-vector-search \
   -- local-vector-search-mcp
 ```
+
+#### ChatGPT
+
+Keep LocalVectorSearchMcp as a local stdio server and bridge it with OpenAI Secure MCP Tunnel. For the tunnel scenario, use an explicit configuration with absolute knowledge-base and storage paths.
+
+See [ChatGPT via Secure MCP Tunnel](docs/clients/chatgpt-secure-tunnel.md).
 
 ### 3. Ask the agent to initialize and use the index
 
@@ -105,7 +113,7 @@ session-level overrides are expected to work.
 | Editable content | Markdown, guarded by exact source hashes |
 | Navigation | File listing and heading outlines |
 | Transport | MCP over stdio |
-| Clients | Claude Code and Codex |
+| Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
 | Default embeddings | Local Ollama-compatible endpoint |
 
 The MCP server exposes ten focused tools:
@@ -130,6 +138,7 @@ The default embedding endpoint is local Ollama. Remote embedding endpoints are r
 - [Getting started](docs/getting-started.md)
 - [Claude Code setup](docs/clients/claude-code.md)
 - [Codex setup](docs/clients/codex.md)
+- [ChatGPT via Secure MCP Tunnel](docs/clients/chatgpt-secure-tunnel.md)
 - [Configuration](docs/configuration.md)
 - [Maintenance and updates](docs/maintenance.md)
 - [Verification](docs/verification.md)
@@ -152,4 +161,6 @@ Markdown files remain the source of truth. A mutation first changes the source f
 
 ## Current scope
 
-The current version supports local Markdown and discovers ordinary assets through file listing without indexing them. PDF/DOCX/OCR, binary editing, image embeddings, a web UI, Git history indexing, remote HTTP MCP transport, authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
+The current version supports local Markdown and discovers ordinary assets through file listing without indexing them. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
+
+PDF/DOCX/OCR, binary editing, image embeddings, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
