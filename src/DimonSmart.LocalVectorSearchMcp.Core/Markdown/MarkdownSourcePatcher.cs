@@ -106,12 +106,32 @@ public static class MarkdownSourcePatcher
         return operation.Kind switch
         {
             PatchOperationKind.InsertBefore
-                => new SourceEdit(0, 0, markdown.TrimEnd('\r', '\n') + eol + eol, operation.Pointer),
+                => new SourceEdit(
+                    0,
+                    0,
+                    markdown.TrimEnd('\r', '\n') + GetLeadingBlockSeparator(source, eol),
+                    operation.Pointer),
             PatchOperationKind.InsertAfter
-                => new SourceEdit(source.Length, 0, eol + eol + markdown.TrimStart('\r', '\n'), operation.Pointer),
+                => new SourceEdit(
+                    source.Length,
+                    0,
+                    GetTrailingBlockSeparator(source, eol) + markdown.TrimStart('\r', '\n'),
+                    operation.Pointer),
             _ => throw new WorkspaceMutationException(
                 $"Operation '{operation.Kind.ToString().ToLowerInvariant()}' is not supported for the document pointer.")
         };
+    }
+
+    private static string GetLeadingBlockSeparator(string source, string eol)
+    {
+        if (source.StartsWith(eol + eol, StringComparison.Ordinal)) return "";
+        return source.StartsWith(eol, StringComparison.Ordinal) ? eol : eol + eol;
+    }
+
+    private static string GetTrailingBlockSeparator(string source, string eol)
+    {
+        if (source.EndsWith(eol + eol, StringComparison.Ordinal)) return "";
+        return source.EndsWith(eol, StringComparison.Ordinal) ? eol : eol + eol;
     }
 
     private static string DetectLineEnding(string source)
