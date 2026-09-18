@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
 
@@ -22,7 +23,7 @@ public sealed record ReadToolRequest(
     int? MaxElements = null,
     int? MaxBytes = null);
 
-public sealed record PatchToolOperation(string Kind, string Pointer, string? Markdown = null);
+public sealed record PatchToolOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null);
 
 public sealed record PatchToolRequest(
     string Path,
