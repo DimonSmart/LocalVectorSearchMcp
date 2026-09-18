@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using Microsoft.Extensions.FileSystemGlobbing;
@@ -44,7 +45,10 @@ public sealed partial class WorkspaceNavigationService(
             {
                 entries = directory.GetFileSystemInfos("*", options);
             }
-            catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException or IOException)
+            catch (Exception exception) when (
+                exception is UnauthorizedAccessException
+                    or DirectoryNotFoundException
+                    or IOException)
             {
                 continue;
             }
@@ -75,10 +79,14 @@ public sealed partial class WorkspaceNavigationService(
                     continue;
                 }
 
-                var relativePath = Path.GetRelativePath(config.KnowledgeBase.Root, fullPath).Replace('\\', '/');
+                var relativePath = Path.GetRelativePath(
+                    config.KnowledgeBase.Root,
+                    fullPath).Replace('\\', '/');
                 if (normalizedPrefix is not null
                     && !relativePath.Equals(normalizedPrefix, StringComparison.OrdinalIgnoreCase)
-                    && !relativePath.StartsWith(normalizedPrefix + "/", StringComparison.OrdinalIgnoreCase))
+                    && !relativePath.StartsWith(
+                        normalizedPrefix + "/",
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -108,31 +116,59 @@ public sealed partial class WorkspaceNavigationService(
         var absolute = pathGuard.ResolveMarkdownPath(normalized);
         if (!File.Exists(absolute))
         {
-            throw new WorkspaceMutationException($"Markdown file '{normalized}' does not exist.");
+            throw new WorkspaceMutationException(
+                $"Markdown file '{normalized}' does not exist.");
         }
 
-        var document = await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken);
+        var document = await loader.LoadFileAsync(
+            config.KnowledgeBase,
+            normalized,
+            cancellationToken);
         var roots = new List<MutableOutlineNode>();
         var stack = new Stack<MutableOutlineNode>();
-        foreach (var heading in parser.Parse(document).Where(element => element.Kind == MarkdownElementKind.Heading))
+        foreach (var heading in parser.Parse(document)
+                     .Where(element => element.Kind == MarkdownElementKind.Heading))
         {
             var node = new MutableOutlineNode(
-                heading.Pointer.Value,
+                SemanticAnchor.FromElement(heading).ToString(),
                 heading.HeadingLevel,
-                HeadingTextRegex().Replace(heading.Text.Split(['\r', '\n'], 2)[0], "$1").Trim());
-            while (stack.Count > 0 && stack.Peek().Level >= node.Level) stack.Pop();
-            if (stack.Count == 0) roots.Add(node); else stack.Peek().Children.Add(node);
+                HeadingTextRegex().Replace(
+                    heading.Text.Split(['\r', '\n'], 2)[0],
+                    "$1").Trim());
+            while (stack.Count > 0 && stack.Peek().Level >= node.Level)
+            {
+                stack.Pop();
+            }
+
+            if (stack.Count == 0)
+            {
+                roots.Add(node);
+            }
+            else
+            {
+                stack.Peek().Children.Add(node);
+            }
+
             stack.Push(node);
         }
 
-        return new MarkdownOutline(normalized, document.SourceHash, roots.Select(ToContract).ToList());
+        return new MarkdownOutline(
+            normalized,
+            document.SourceHash,
+            roots.Select(ToContract).ToList());
     }
 
     private static OutlineNode ToContract(MutableOutlineNode node)
-        => new(node.Pointer, node.Level, node.Title, node.Children.Select(ToContract).ToList());
+        => new(
+            node.Pointer,
+            node.Level,
+            node.Title,
+            node.Children.Select(ToContract).ToList());
 
     private static StringComparison PathComparison()
-        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        => OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
     [GeneratedRegex(@"^#{1,6}\s+(.+?)(?:\s+#+\s*)?$")]
     private static partial Regex HeadingTextRegex();

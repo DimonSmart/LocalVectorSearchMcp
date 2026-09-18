@@ -5,6 +5,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Server;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
@@ -44,25 +45,34 @@ public sealed class ServerLayerTests
         var reader = new EchoSemanticPointerReader();
         var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!);
 
-        var implicitRoot = await tools.ReadAsync(
+        var implicitResult = await tools.ReadAsync(
             new ReadToolRequest("book.md"),
             CancellationToken.None);
-        var explicitRoot = await tools.ReadAsync(
+        var explicitResult = await tools.ReadAsync(
             new ReadToolRequest("book.md", "document"),
             CancellationToken.None);
 
+        Assert.False(implicitResult.IsError is true);
+        Assert.False(explicitResult.IsError is true);
+        var implicitRoot = ReadSlice(implicitResult);
+        var explicitRoot = ReadSlice(explicitResult);
         Assert.Equal("document", implicitRoot.Pointer);
         Assert.Equal(explicitRoot.Pointer, implicitRoot.Pointer);
     }
 
     [Fact]
-    public async Task KnowledgeMcpTools_ReadDoesNotTreatWhitespacePointerAsRoot()
+    public async Task KnowledgeMcpTools_ReadReturnsControlledErrorForWhitespacePointer()
     {
         var reader = new EchoSemanticPointerReader();
         var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!);
 
-        await Assert.ThrowsAsync<SemanticPointerFormatException>(() =>
-            tools.ReadAsync(new ReadToolRequest("book.md", "   "), CancellationToken.None));
+        var result = await tools.ReadAsync(
+            new ReadToolRequest("book.md", "   "),
+            CancellationToken.None);
+
+        Assert.True(result.IsError is true);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Contains("Invalid semantic pointer", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -110,15 +120,22 @@ public sealed class ServerLayerTests
         Assert.Equal(isMaintenanceCommand, options.IsMaintenanceCommand);
     }
 
+    private static MarkdownSlice ReadSlice(CallToolResult result)
+    {
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        return JsonSerializer.Deserialize<MarkdownSlice>(text, JsonOptions.Default)
+            ?? throw new Xunit.Sdk.XunitException("kb_read returned invalid JSON.");
+    }
+
     private sealed class EchoSemanticPointerReader : ISemanticPointerReader
     {
         public Task<MarkdownSlice> ReadAsync(
             string path,
-            SemanticPointer pointer,
+            SemanticAnchor anchor,
             int maxElements,
             int maxBytes,
             CancellationToken cancellationToken)
-            => Task.FromResult(new MarkdownSlice(path, pointer.Value, [], "", null, "hash"));
+            => Task.FromResult(new MarkdownSlice(path, anchor.ToString(), [], "", null, "hash"));
     }
 
     public static TheoryData<string[], bool, bool, bool, bool> MaintenanceArguments()

@@ -10,4 +10,11 @@ public interface IIndexedMarkdownSliceReader
         int maxElements,
         int maxBytes,
         CancellationToken cancellationToken);
+
+    Task<MarkdownSlice> ReadSliceAsync(
+        string path,
+        SemanticAnchor anchor,
+        int maxElements,
+        int maxBytes,
+        CancellationToken cancellationToken);
 }

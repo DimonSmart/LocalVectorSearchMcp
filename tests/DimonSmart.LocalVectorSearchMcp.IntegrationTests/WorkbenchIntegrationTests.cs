@@ -5,6 +5,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
@@ -78,10 +79,12 @@ public sealed class WorkbenchIntegrationTests
             12000,
             cancellationToken);
         Assert.NotNull(slice.SourceHash);
+        var paragraphAnchor = new SemanticAnchor(
+            new SemanticPointer("1.p1"),
+            SemanticFingerprint.Compute(slice.Elements[0].Text)).ToString();
         await Assert.ThrowsAsync<WorkspaceMutationException>(() => services.Mutations.PatchAsync(
             new PatchRequest(
                 "chapters/one.md",
-                slice.SourceHash!,
                 [new PatchOperation(PatchOperationKind.Delete, "9.p1")]),
             cancellationToken));
         Assert.Contains(
@@ -92,8 +95,7 @@ public sealed class WorkbenchIntegrationTests
         var patched = await services.Mutations.PatchAsync(
             new PatchRequest(
                 "chapters/one.md",
-                slice.SourceHash!,
-                [new PatchOperation(PatchOperationKind.Replace, "1.p1", "new-marker body.")]),
+                [new PatchOperation(PatchOperationKind.Replace, paragraphAnchor, "new-marker body.")]),
             cancellationToken);
         Assert.True(patched.IndexSynchronized);
         Assert.Empty(await services.Repository.FullTextSearch.SearchAsync(
@@ -119,23 +121,25 @@ public sealed class WorkbenchIntegrationTests
     }
 
     [Fact]
-    public async Task Patch_RejectsStaleHashAndPreservesManualEdit()
+    public async Task Patch_RejectsChangedTargetAndPreservesManualEdit()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TemporaryDirectory();
         var services = CreateServices(temp.Path);
-        var created = await services.Mutations.CreateAsync(
+        await services.Mutations.CreateAsync(
             "notes.md", "# Notes\n\nOriginal.\n", cancellationToken);
+        var anchor = new SemanticAnchor(
+            new SemanticPointer("1.p1"),
+            SemanticFingerprint.Compute("Original.")).ToString();
         await File.WriteAllTextAsync(
             Path.Combine(temp.Path, "notes.md"),
             "# Notes\n\nHuman edit.\n",
             cancellationToken);
 
-        await Assert.ThrowsAsync<DocumentConflictException>(() => services.Mutations.PatchAsync(
+        await Assert.ThrowsAsync<SemanticAnchorConflictException>(() => services.Mutations.PatchAsync(
             new PatchRequest(
                 "notes.md",
-                created.SourceHash!,
-                [new PatchOperation(PatchOperationKind.Replace, "1.p1", "LLM edit.")]),
+                [new PatchOperation(PatchOperationKind.Replace, anchor, "LLM edit.")]),
             cancellationToken));
 
         Assert.Equal(
@@ -218,12 +222,14 @@ public sealed class WorkbenchIntegrationTests
         await services.Synchronizer.ReconcileAsync("notes.md", cancellationToken);
         var document = await new MarkdownDocumentLoader().LoadFileAsync(
             services.Config.KnowledgeBase, "notes.md", cancellationToken);
+        var target = new MarkdownElementParser().Parse(document)
+            .Single(element => element.Pointer.Value == "1.p2");
+        var targetAnchor = SemanticAnchor.FromElement(target).ToString();
 
         await services.Mutations.PatchAsync(
             new PatchRequest(
                 "notes.md",
-                document.SourceHash,
-                [new PatchOperation(PatchOperationKind.Replace, "1.p2", "Changed.")]),
+                [new PatchOperation(PatchOperationKind.Replace, targetAnchor, "Changed.")]),
             cancellationToken);
 
         var result = await File.ReadAllBytesAsync(path, cancellationToken);
@@ -304,9 +310,11 @@ public sealed class WorkbenchIntegrationTests
         Assert.Contains(files.Files, file =>
             file.RelativePath == "BOOK.md" && file.Kind == WorkspaceFileKind.Markdown);
         Assert.Single(outline.Headings);
-        Assert.Equal("1", outline.Headings[0].Pointer);
+        Assert.Matches(@"^1~[0-9a-f]{16}$", outline.Headings[0].Pointer);
         Assert.Equal("Part", outline.Headings[0].Children[0].Title);
-        Assert.Equal("1.1.1", outline.Headings[0].Children[0].Children[0].Pointer);
+        Assert.Matches(
+            @"^1\.1\.1~[0-9a-f]{16}$",
+            outline.Headings[0].Children[0].Children[0].Pointer);
     }
 
     [Fact]

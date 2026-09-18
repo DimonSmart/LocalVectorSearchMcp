@@ -211,6 +211,90 @@ public sealed class ReadSliceTests
             () => context.Services.SliceReader.ReadSliceAsync("missing.md", new SemanticPointer("1.p1"), 20, 12_000, context.CancellationToken));
     }
 
+    [Fact]
+    public async Task ReadSliceAsync_PublicReadReturnsCanonicalFingerprintedPointers()
+    {
+        using var context = await CreateContextAsync(
+            "# Title\n\nParagraph one.\n\nParagraph two.");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticAnchor(new SemanticPointer("document")),
+            2,
+            12_000,
+            context.CancellationToken);
+
+        Assert.Equal("document", slice.Pointer);
+        Assert.Equal(2, slice.Elements.Count);
+        Assert.All(
+            slice.Elements,
+            element => Assert.Matches(
+                @"^[^~]+~[0-9a-f]{16}$",
+                element.Pointer));
+        Assert.NotNull(slice.NextPointer);
+        Assert.Matches(@"^1\.p2~[0-9a-f]{16}$", slice.NextPointer!);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_PublicUnhashedPointerStillNavigates()
+    {
+        using var context = await CreateContextAsync("# Title\n\nTarget.");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticAnchor(new SemanticPointer("1.p1")),
+            20,
+            12_000,
+            context.CancellationToken);
+
+        Assert.Matches(@"^1\.p1~[0-9a-f]{16}$", slice.Pointer);
+        Assert.Equal(slice.Pointer, slice.Elements[0].Pointer);
+        Assert.Equal("Target.", slice.Elements[0].Text);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_PublicFingerprintedPointerRelocatesAfterStructuralShift()
+    {
+        using var context = await CreateContextAsync(
+            "# Title\n\nInserted.\n\nTarget.");
+        var oldAnchor = new SemanticAnchor(
+            new SemanticPointer("1.p1"),
+            SemanticFingerprint.Compute("Target."));
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            oldAnchor,
+            20,
+            12_000,
+            context.CancellationToken);
+
+        Assert.Matches(@"^1\.p2~[0-9a-f]{16}$", slice.Pointer);
+        Assert.Equal("Target.", slice.Elements[0].Text);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_PublicFingerprintedPointerRejectsAmbiguousRelocation()
+    {
+        using var context = await CreateContextAsync(
+            "# Title\n\nChanged.\n\nTODO\n\nTODO");
+        var oldAnchor = new SemanticAnchor(
+            new SemanticPointer("1.p1"),
+            SemanticFingerprint.Compute("TODO"));
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => context.Services.SliceReader.ReadSliceAsync(
+                "notes.md",
+                oldAnchor,
+                20,
+                12_000,
+                context.CancellationToken));
+
+        Assert.Contains(
+            "multiple current elements",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     private static async Task<ReadSliceTestContext> CreateContextAsync(string markdown)
     {
         var cancellationToken = TestContext.Current.CancellationToken;

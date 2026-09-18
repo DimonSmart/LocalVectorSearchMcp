@@ -23,7 +23,6 @@ public sealed record PatchOperation(PatchOperationKind Kind, string Pointer, str
 
 public sealed record PatchRequest(
     string Path,
-    string ExpectedSourceHash,
     IReadOnlyList<PatchOperation> Operations);
 
 public sealed record MoveRequest(string SourcePath, string TargetPath, string ExpectedSourceHash);

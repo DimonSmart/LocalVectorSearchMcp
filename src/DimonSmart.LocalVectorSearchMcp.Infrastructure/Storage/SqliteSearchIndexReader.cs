@@ -16,7 +16,14 @@ public sealed class SqliteSearchIndexReader(SqliteConnectionFactory factory) :
         await using var db = factory.Open();
         var placeholders = string.Join(",", chunkIds.Select((_, index) => "$id" + index));
         var command = db.CreateCommand();
-        command.CommandText = $"select id, path, pointer, text, heading_path from chunks where id in ({placeholders})";
+        command.CommandText = $"""
+            select c.id, c.path, c.pointer, c.text, c.heading_path, e.text
+            from chunks c
+            join elements e
+              on e.document_id = c.document_id
+             and e.pointer = c.pointer
+            where c.id in ({placeholders})
+            """;
         var index = 0;
         foreach (var chunkId in chunkIds) command.AddParameter("$id" + index++, chunkId);
 
@@ -29,7 +36,8 @@ public sealed class SqliteSearchIndexReader(SqliteConnectionFactory factory) :
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                reader.IsDBNull(4) ? null : reader.GetString(4)));
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.GetString(5)));
         }
 
         return result;

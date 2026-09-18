@@ -1,6 +1,7 @@
 using System.Text;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 
@@ -13,12 +14,15 @@ public sealed class WorkspaceMutationService(
     IMarkdownElementParser parser,
     IWorkspaceIndexSynchronizer synchronizer) : IWorkspaceMutationService
 {
+    private const int MaxPatchAttempts = 3;
     private readonly SemaphoreSlim mutationGate = new(1, 1);
 
     public Task<MutationResponse> PatchAsync(
         PatchRequest request,
         CancellationToken cancellationToken)
-        => RunMutationAsync(() => PatchCoreAsync(request, cancellationToken), cancellationToken);
+        => RunMutationAsync(
+            () => PatchCoreAsync(request, cancellationToken),
+            cancellationToken);
 
     private async Task<MutationResponse> PatchCoreAsync(
         PatchRequest request,
@@ -29,30 +33,101 @@ public sealed class WorkspaceMutationService(
         var absolute = pathGuard.ResolveMarkdownPath(normalized);
         if (!File.Exists(absolute))
         {
-            throw new WorkspaceMutationException($"Markdown file '{normalized}' does not exist.");
+            throw new WorkspaceMutationException(
+                $"Markdown file '{normalized}' does not exist.");
         }
 
-        var document = await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken);
-        EnsureExpectedHash(request.ExpectedSourceHash, document.SourceHash);
-        var resultingSource = MarkdownSourcePatcher.Apply(
-            document.Markdown,
-            parser.Parse(document),
-            request.Operations);
-        await WriteAtomicallyAsync(
-            absolute,
-            resultingSource,
-            document.HasUtf8Bom,
-            document.SourceHash,
-            cancellationToken);
-        var updated = await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken);
-        return await SynchronizeMutationAsync(normalized, updated.SourceHash, null, cancellationToken);
+        for (var attempt = 1; attempt <= MaxPatchAttempts; attempt++)
+        {
+            var document = await loader.LoadFileAsync(
+                config.KnowledgeBase,
+                normalized,
+                cancellationToken);
+            var elements = parser.Parse(document);
+            var resolvedOperations = ResolvePatchOperations(
+                request.Operations,
+                elements);
+            var resultingSource = MarkdownSourcePatcher.Apply(
+                document.Markdown,
+                elements,
+                resolvedOperations);
+
+            try
+            {
+                await WriteAtomicallyAsync(
+                    absolute,
+                    resultingSource,
+                    document.HasUtf8Bom,
+                    document.SourceHash,
+                    cancellationToken);
+            }
+            catch (DocumentConflictException) when (attempt < MaxPatchAttempts)
+            {
+                continue;
+            }
+            catch (DocumentConflictException)
+            {
+                throw new DocumentConflictException(
+                    "The document kept changing while the patch was being applied.");
+            }
+
+            var updated = await loader.LoadFileAsync(
+                config.KnowledgeBase,
+                normalized,
+                cancellationToken);
+            return await SynchronizeMutationAsync(
+                normalized,
+                updated.SourceHash,
+                null,
+                cancellationToken);
+        }
+
+        throw new DocumentConflictException(
+            "The document kept changing while the patch was being applied.");
+    }
+
+    private static IReadOnlyList<PatchOperation> ResolvePatchOperations(
+        IReadOnlyList<PatchOperation> operations,
+        IReadOnlyList<MarkdownElement> elements)
+    {
+        var candidates = elements
+            .Where(element => element.SourceLength > 0)
+            .Select(element => new SemanticAnchorCandidate(
+                element.Pointer,
+                element.Kind,
+                element.Text))
+            .ToList();
+        var result = new List<PatchOperation>(operations.Count);
+
+        foreach (var operation in operations)
+        {
+            var anchor = SemanticAnchorParser.Parse(operation.Pointer);
+            if (anchor.IsDocument)
+            {
+                result.Add(operation with { Pointer = "document" });
+                continue;
+            }
+
+            if (anchor.Fingerprint is null)
+            {
+                throw new WorkspaceMutationException(
+                    "A fingerprint is required when mutating a concrete semantic element.");
+            }
+
+            var resolved = SemanticAnchorResolver.Resolve(anchor, candidates);
+            result.Add(operation with { Pointer = resolved.Value });
+        }
+
+        return result;
     }
 
     public Task<MutationResponse> CreateAsync(
         string path,
         string markdown,
         CancellationToken cancellationToken)
-        => RunMutationAsync(() => CreateCoreAsync(path, markdown, cancellationToken), cancellationToken);
+        => RunMutationAsync(
+            () => CreateCoreAsync(path, markdown, cancellationToken),
+            cancellationToken);
 
     private async Task<MutationResponse> CreateCoreAsync(
         string path,
@@ -64,7 +139,8 @@ public sealed class WorkspaceMutationService(
         var absolute = pathGuard.ResolveMarkdownPath(normalized);
         if (File.Exists(absolute))
         {
-            throw new WorkspaceMutationException($"Markdown file '{normalized}' already exists.");
+            throw new WorkspaceMutationException(
+                $"Markdown file '{normalized}' already exists.");
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
@@ -82,14 +158,23 @@ public sealed class WorkspaceMutationService(
             await stream.FlushAsync(cancellationToken);
         }
 
-        var document = await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken);
-        return await SynchronizeMutationAsync(normalized, document.SourceHash, null, cancellationToken);
+        var document = await loader.LoadFileAsync(
+            config.KnowledgeBase,
+            normalized,
+            cancellationToken);
+        return await SynchronizeMutationAsync(
+            normalized,
+            document.SourceHash,
+            null,
+            cancellationToken);
     }
 
     public Task<MutationResponse> MoveAsync(
         MoveRequest request,
         CancellationToken cancellationToken)
-        => RunMutationAsync(() => MoveCoreAsync(request, cancellationToken), cancellationToken);
+        => RunMutationAsync(
+            () => MoveCoreAsync(request, cancellationToken),
+            cancellationToken);
 
     private async Task<MutationResponse> MoveCoreAsync(
         MoveRequest request,
@@ -102,19 +187,27 @@ public sealed class WorkspaceMutationService(
         var targetAbsolute = pathGuard.ResolveMarkdownPath(targetPath);
         if (!File.Exists(sourceAbsolute))
         {
-            throw new WorkspaceMutationException($"Markdown file '{sourcePath}' does not exist.");
+            throw new WorkspaceMutationException(
+                $"Markdown file '{sourcePath}' does not exist.");
         }
 
         if (File.Exists(targetAbsolute))
         {
-            throw new WorkspaceMutationException($"Destination '{targetPath}' already exists.");
+            throw new WorkspaceMutationException(
+                $"Destination '{targetPath}' already exists.");
         }
 
-        var document = await loader.LoadFileAsync(config.KnowledgeBase, sourcePath, cancellationToken);
+        var document = await loader.LoadFileAsync(
+            config.KnowledgeBase,
+            sourcePath,
+            cancellationToken);
         EnsureExpectedHash(request.ExpectedSourceHash, document.SourceHash);
         Directory.CreateDirectory(Path.GetDirectoryName(targetAbsolute)!);
         targetAbsolute = pathGuard.ResolveMarkdownPath(targetPath);
-        await EnsureFileHashAsync(sourceAbsolute, document.SourceHash, cancellationToken);
+        await EnsureFileHashAsync(
+            sourceAbsolute,
+            document.SourceHash,
+            cancellationToken);
         File.Move(sourceAbsolute, targetAbsolute);
 
         var errors = new List<string>();
@@ -137,13 +230,20 @@ public sealed class WorkspaceMutationService(
         }
 
         var error = errors.Count == 0 ? null : string.Join("; ", errors);
-        return new MutationResponse(targetPath, document.SourceHash, error is null, error, sourcePath);
+        return new MutationResponse(
+            targetPath,
+            document.SourceHash,
+            error is null,
+            error,
+            sourcePath);
     }
 
     public Task<MutationResponse> DeleteAsync(
         DeleteRequest request,
         CancellationToken cancellationToken)
-        => RunMutationAsync(() => DeleteCoreAsync(request, cancellationToken), cancellationToken);
+        => RunMutationAsync(
+            () => DeleteCoreAsync(request, cancellationToken),
+            cancellationToken);
 
     private async Task<MutationResponse> DeleteCoreAsync(
         DeleteRequest request,
@@ -154,14 +254,25 @@ public sealed class WorkspaceMutationService(
         var absolute = pathGuard.ResolveMarkdownPath(normalized);
         if (!File.Exists(absolute))
         {
-            throw new WorkspaceMutationException($"Markdown file '{normalized}' does not exist.");
+            throw new WorkspaceMutationException(
+                $"Markdown file '{normalized}' does not exist.");
         }
 
-        var document = await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken);
+        var document = await loader.LoadFileAsync(
+            config.KnowledgeBase,
+            normalized,
+            cancellationToken);
         EnsureExpectedHash(request.ExpectedSourceHash, document.SourceHash);
-        await EnsureFileHashAsync(absolute, document.SourceHash, cancellationToken);
+        await EnsureFileHashAsync(
+            absolute,
+            document.SourceHash,
+            cancellationToken);
         File.Delete(absolute);
-        return await SynchronizeMutationAsync(normalized, null, null, cancellationToken);
+        return await SynchronizeMutationAsync(
+            normalized,
+            null,
+            null,
+            cancellationToken);
     }
 
     private async Task<MutationResponse> SynchronizeMutationAsync(
@@ -173,11 +284,21 @@ public sealed class WorkspaceMutationService(
         try
         {
             await synchronizer.ReconcileAsync(path, cancellationToken);
-            return new MutationResponse(path, sourceHash, true, null, previousPath);
+            return new MutationResponse(
+                path,
+                sourceHash,
+                true,
+                null,
+                previousPath);
         }
         catch (Exception exception)
         {
-            return new MutationResponse(path, sourceHash, false, exception.Message, previousPath);
+            return new MutationResponse(
+                path,
+                sourceHash,
+                false,
+                exception.Message,
+                previousPath);
         }
     }
 
@@ -194,10 +315,14 @@ public sealed class WorkspaceMutationService(
     {
         if (string.IsNullOrWhiteSpace(expected))
         {
-            throw new WorkspaceMutationException("expectedSourceHash is required.");
+            throw new WorkspaceMutationException(
+                "expectedSourceHash is required.");
         }
 
-        if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(
+                expected,
+                actual,
+                StringComparison.OrdinalIgnoreCase))
         {
             throw new DocumentConflictException(
                 "Document has changed since it was read. Read the affected document again and retry the mutation.");
@@ -211,7 +336,10 @@ public sealed class WorkspaceMutationService(
         string expectedSourceHash,
         CancellationToken cancellationToken)
     {
-        await EnsureFileHashAsync(absolutePath, expectedSourceHash, cancellationToken);
+        await EnsureFileHashAsync(
+            absolutePath,
+            expectedSourceHash,
+            cancellationToken);
 
         var payload = new UTF8Encoding(includeBom).GetPreamble()
             .Concat(new UTF8Encoding(false).GetBytes(source))
@@ -222,13 +350,22 @@ public sealed class WorkspaceMutationService(
             $".{Path.GetFileName(absolutePath)}.{Guid.NewGuid():N}.tmp");
         try
         {
-            await File.WriteAllBytesAsync(temporaryPath, payload, cancellationToken);
-            await EnsureFileHashAsync(absolutePath, expectedSourceHash, cancellationToken);
+            await File.WriteAllBytesAsync(
+                temporaryPath,
+                payload,
+                cancellationToken);
+            await EnsureFileHashAsync(
+                absolutePath,
+                expectedSourceHash,
+                cancellationToken);
             File.Move(temporaryPath, absolutePath, true);
         }
         finally
         {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
         }
     }
 
@@ -237,7 +374,9 @@ public sealed class WorkspaceMutationService(
         string expectedSourceHash,
         CancellationToken cancellationToken)
     {
-        var currentBytes = await File.ReadAllBytesAsync(absolutePath, cancellationToken);
+        var currentBytes = await File.ReadAllBytesAsync(
+            absolutePath,
+            cancellationToken);
         var currentHash = Core.Storage.StableHash.HashBytes(currentBytes);
         EnsureExpectedHash(expectedSourceHash, currentHash);
     }

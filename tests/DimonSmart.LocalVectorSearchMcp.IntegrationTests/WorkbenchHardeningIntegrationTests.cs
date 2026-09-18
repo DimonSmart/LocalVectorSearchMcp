@@ -44,7 +44,6 @@ public sealed class WorkbenchHardeningIntegrationTests
         var patched = await services.Mutations.PatchAsync(
             new PatchRequest(
                 "chapter.md",
-                empty.SourceHash!,
                 [new PatchOperation(
                     PatchOperationKind.InsertAfter,
                     "document",
@@ -62,21 +61,26 @@ public sealed class WorkbenchHardeningIntegrationTests
     }
 
     [Fact]
-    public async Task DocumentPatch_RejectsStaleHashBeforeChangingEmptySource()
+    public async Task DocumentPatch_AppliesToLatestSourceWithoutClientHash()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TemporaryDirectory();
         var services = CreateServices(temp.Path);
         await services.Mutations.CreateAsync("chapter.md", "", cancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(temp.Path, "chapter.md"),
+            "Human.",
+            cancellationToken);
 
-        await Assert.ThrowsAsync<DocumentConflictException>(() => services.Mutations.PatchAsync(
+        await services.Mutations.PatchAsync(
             new PatchRequest(
                 "chapter.md",
-                "stale",
-                [new PatchOperation(PatchOperationKind.InsertAfter, "document", "Text")]),
-            cancellationToken));
+                [new PatchOperation(PatchOperationKind.InsertAfter, "document", "Agent.")]),
+            cancellationToken);
 
-        Assert.Equal("", await File.ReadAllTextAsync(Path.Combine(temp.Path, "chapter.md"), cancellationToken));
+        Assert.Equal(
+            "Human.\n\nAgent.",
+            await File.ReadAllTextAsync(Path.Combine(temp.Path, "chapter.md"), cancellationToken));
     }
 
     [Theory]
