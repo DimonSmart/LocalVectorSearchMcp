@@ -83,6 +83,16 @@ public sealed class ServerLayerTests
         Assert.Equal("\"asset\"", JsonSerializer.Serialize(WorkspaceFileKind.Asset, JsonOptions.Default));
     }
 
+    [Fact]
+    public void JsonOptions_SerializesUnicodeWithoutEscaping()
+    {
+        const string text = "Множество версий и взаимоисключающие";
+
+        var json = JsonSerializer.Serialize(text, JsonOptions.Default);
+
+        Assert.Equal($"\"{text}\"", json);
+    }
+
     [Theory]
     [MemberData(nameof(MaintenanceArguments))]
     public void MaintenanceCommandOptions_ParseDetectsCommands(
