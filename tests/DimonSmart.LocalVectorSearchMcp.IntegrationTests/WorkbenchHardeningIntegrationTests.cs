@@ -36,8 +36,10 @@ public sealed class WorkbenchHardeningIntegrationTests
             cancellationToken);
 
         Assert.Equal(created.SourceHash, empty.SourceHash);
-        Assert.Single(empty.Elements);
-        Assert.Equal("document", empty.Elements[0].Pointer);
+        Assert.Equal("document", empty.Pointer);
+        Assert.Empty(empty.Elements);
+        Assert.Equal("", empty.Markdown);
+        Assert.Null(empty.NextPointer);
 
         var patched = await services.Mutations.PatchAsync(
             new PatchRequest(
