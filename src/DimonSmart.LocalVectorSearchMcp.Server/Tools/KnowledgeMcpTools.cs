@@ -6,6 +6,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
@@ -37,18 +38,35 @@ public sealed class KnowledgeMcpTools(
         return await statusReader.GetStatusAsync(cancellationToken);
     }
 
-    [McpServerTool(Name = "kb_search")]
+    [McpServerTool(Name = "kb_search", UseStructuredContent = true, OutputSchemaType = typeof(SearchResponse))]
     [Description("Searches the local Markdown knowledge base using lexical, semantic or hybrid search.")]
-    public Task<SearchResponse> SearchAsync(
+    public async Task<CallToolResult> SearchAsync(
         SearchToolRequest request,
         CancellationToken cancellationToken)
     {
         int? topK = request.TopK is null
             ? null
             : Math.Clamp(request.TopK.Value, 1, 50);
-        return searchService.SearchAsync(
-            new SearchRequest(request.Query, request.Mode, topK, request.IncludeGlobs, request.ExcludeGlobs),
-            cancellationToken);
+        try
+        {
+            await indexInitializer.InitializeAsync(cancellationToken);
+            var response = await searchService.SearchAsync(
+                new SearchRequest(request.Query, request.Mode, topK, request.IncludeGlobs, request.ExcludeGlobs),
+                cancellationToken);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = System.Text.Json.JsonSerializer.Serialize(response, JsonOptions.Default) }],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(response, JsonOptions.Default)
+            };
+        }
+        catch (IndexNotReadyException exception)
+        {
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = exception.Message }],
+                IsError = true
+            };
+        }
     }
 
     [McpServerTool(Name = "kb_read")]

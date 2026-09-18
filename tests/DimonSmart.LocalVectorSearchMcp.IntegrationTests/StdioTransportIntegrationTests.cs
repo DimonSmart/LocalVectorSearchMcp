@@ -57,6 +57,40 @@ public sealed class StdioTransportIntegrationTests
     }
 
     [Fact]
+    public async Task Search_with_empty_index_returns_a_controlled_tool_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(temp.Path, cancellationToken);
+        var stderr = new ConcurrentQueue<string>();
+
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "local-vector-search-empty-index",
+            Command = "dotnet",
+            Arguments = [typeof(KnowledgeMcpTools).Assembly.Location, "--config", configPath],
+            WorkingDirectory = temp.Path,
+            StandardErrorLines = stderr.Enqueue
+        });
+
+        await using var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
+        var result = await client.CallToolAsync(
+            "kb_search",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { query = "Smoke", mode = "lexical" }
+            },
+            cancellationToken: cancellationToken);
+
+        Assert.True(result.IsError is true);
+        var text = string.Join(Environment.NewLine, result.Content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().Select(content => content.Text));
+        Assert.True(
+            text.Contains("Run kb_reindex first.", StringComparison.Ordinal),
+            $"Tool response: {text}{Environment.NewLine}Server log:{Environment.NewLine}{string.Join(Environment.NewLine, stderr)}");
+        Assert.DoesNotContain(stderr, line => line.Contains("threw an unhandled exception", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Stdio_server_exits_on_input_close_and_emits_no_unsolicited_stdout()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
