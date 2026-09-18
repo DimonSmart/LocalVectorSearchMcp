@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 
@@ -16,7 +17,8 @@ public sealed record SearchToolRequest(
 
 public sealed record ReadToolRequest(
     string Path,
-    string Pointer,
+    [property: Description("Semantic pointer to start from. Omit or use \"document\" to start from the document root.")]
+    string? Pointer = null,
     int? MaxElements = null,
     int? MaxBytes = null);
 
