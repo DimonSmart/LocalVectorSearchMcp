@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 
@@ -48,6 +50,34 @@ public sealed class StdioTransportIntegrationTests
             ExpectedTools,
             tools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
 
+        var readTool = Assert.Single(tools, tool => tool.Name == "kb_read");
+        Assert.Contains("Omit pointer", readTool.Description, StringComparison.Ordinal);
+        Assert.Contains("\"document\"", readTool.Description, StringComparison.Ordinal);
+        Assert.True(
+            HasOptionalSchemaProperty(readTool.JsonSchema, "pointer"),
+            $"kb_read schema must expose pointer as optional:{Environment.NewLine}{readTool.JsonSchema}");
+
+        var patchTool = Assert.Single(tools, tool => tool.Name == "kb_patch");
+        Assert.Contains("expectedSourceHash", patchTool.Description, StringComparison.Ordinal);
+        Assert.Contains("operations as an array", patchTool.Description, StringComparison.Ordinal);
+        Assert.Contains("replace", patchTool.Description, StringComparison.Ordinal);
+        Assert.Contains("delete", patchTool.Description, StringComparison.Ordinal);
+
+        var operationsSchema = FindSchemaProperty(patchTool.JsonSchema, "operations");
+        Assert.Equal("array", operationsSchema.GetProperty("type").GetString());
+        Assert.True(
+            operationsSchema.TryGetProperty("items", out var operationItemSchema),
+            $"kb_patch operations schema must expose array items:{Environment.NewLine}{patchTool.JsonSchema}");
+
+        var kindSchema = FindSchemaProperty(operationItemSchema, "kind");
+        Assert.Equal("string", kindSchema.GetProperty("type").GetString());
+        Assert.Equal(
+            ["replace", "insert_before", "insert_after", "delete"],
+            kindSchema.GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString())
+                .ToArray());
+
         var status = await client.CallToolAsync(
             "kb_status",
             new Dictionary<string, object?>(),
@@ -83,11 +113,61 @@ public sealed class StdioTransportIntegrationTests
             cancellationToken: cancellationToken);
 
         Assert.True(result.IsError is true);
-        var text = string.Join(Environment.NewLine, result.Content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().Select(content => content.Text));
+        var text = string.Join(Environment.NewLine, result.Content.OfType<TextContentBlock>().Select(content => content.Text));
         Assert.True(
             text.Contains("Run kb_reindex first.", StringComparison.Ordinal),
             $"Tool response: {text}{Environment.NewLine}Server log:{Environment.NewLine}{string.Join(Environment.NewLine, stderr)}");
         Assert.DoesNotContain(stderr, line => line.Contains("threw an unhandled exception", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Stdio_patch_returns_expected_domain_error_to_client()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(temp.Path, cancellationToken);
+        var stderr = new ConcurrentQueue<string>();
+
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "local-vector-search-patch-error-integration",
+            Command = "dotnet",
+            Arguments = [typeof(KnowledgeMcpTools).Assembly.Location, "--config", configPath],
+            WorkingDirectory = temp.Path,
+            StandardErrorLines = stderr.Enqueue
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: cancellationToken);
+
+        var result = await client.CallToolAsync(
+            "kb_patch",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["path"] = "smoke.md",
+                    ["expectedSourceHash"] = "unused-while-writes-are-disabled",
+                    ["operations"] = new object[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["kind"] = "delete",
+                            ["pointer"] = "1"
+                        }
+                    }
+                }
+            },
+            cancellationToken: cancellationToken);
+
+        var errorText = string.Join(
+            Environment.NewLine,
+            result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+
+        Assert.True(result.IsError is true, errorText);
+        Assert.Contains("Workspace writes are disabled", errorText, StringComparison.Ordinal);
+        Assert.DoesNotContain("An error occurred invoking 'kb_patch'", errorText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -110,6 +190,95 @@ public sealed class StdioTransportIntegrationTests
 
         Assert.Equal(0, process.ExitCode);
         Assert.True(string.IsNullOrEmpty(stdout), $"Unexpected stdout before any MCP request:{Environment.NewLine}{stdout}{Environment.NewLine}{stderr}");
+    }
+
+    private static JsonElement FindSchemaProperty(JsonElement schema, string propertyName)
+    {
+        if (TryFindSchemaProperty(schema, propertyName, out var propertySchema))
+        {
+            return propertySchema;
+        }
+
+        throw new Xunit.Sdk.XunitException(
+            $"Schema property '{propertyName}' was not found:{Environment.NewLine}{schema}");
+    }
+
+    private static bool TryFindSchemaProperty(
+        JsonElement schema,
+        string propertyName,
+        out JsonElement propertySchema)
+    {
+        if (schema.ValueKind == JsonValueKind.Object)
+        {
+            if (schema.TryGetProperty("properties", out var properties)
+                && properties.ValueKind == JsonValueKind.Object
+                && properties.TryGetProperty(propertyName, out propertySchema))
+            {
+                return true;
+            }
+
+            foreach (var property in schema.EnumerateObject())
+            {
+                if (TryFindSchemaProperty(property.Value, propertyName, out propertySchema))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (schema.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in schema.EnumerateArray())
+            {
+                if (TryFindSchemaProperty(item, propertyName, out propertySchema))
+                {
+                    return true;
+                }
+            }
+        }
+
+        propertySchema = default;
+        return false;
+    }
+
+    private static bool HasOptionalSchemaProperty(JsonElement schema, string propertyName)
+    {
+        if (schema.ValueKind == JsonValueKind.Object)
+        {
+            if (schema.TryGetProperty("properties", out var properties)
+                && properties.ValueKind == JsonValueKind.Object
+                && properties.TryGetProperty(propertyName, out _))
+            {
+                if (!schema.TryGetProperty("required", out var required)
+                    || required.ValueKind != JsonValueKind.Array)
+                {
+                    return true;
+                }
+
+                return !required.EnumerateArray().Any(item =>
+                    item.ValueKind == JsonValueKind.String
+                    && item.GetString() == propertyName);
+            }
+
+            foreach (var property in schema.EnumerateObject())
+            {
+                if (HasOptionalSchemaProperty(property.Value, propertyName))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (schema.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in schema.EnumerateArray())
+            {
+                if (HasOptionalSchemaProperty(item, propertyName))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static Process StartServer(string configPath, string workingDirectory)

@@ -39,6 +39,33 @@ public sealed class ServerLayerTests
     }
 
     [Fact]
+    public async Task KnowledgeMcpTools_ReadDefaultsMissingPointerToDocument()
+    {
+        var reader = new EchoSemanticPointerReader();
+        var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!);
+
+        var implicitRoot = await tools.ReadAsync(
+            new ReadToolRequest("book.md"),
+            CancellationToken.None);
+        var explicitRoot = await tools.ReadAsync(
+            new ReadToolRequest("book.md", "document"),
+            CancellationToken.None);
+
+        Assert.Equal("document", implicitRoot.Pointer);
+        Assert.Equal(explicitRoot.Pointer, implicitRoot.Pointer);
+    }
+
+    [Fact]
+    public async Task KnowledgeMcpTools_ReadDoesNotTreatWhitespacePointerAsRoot()
+    {
+        var reader = new EchoSemanticPointerReader();
+        var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!);
+
+        await Assert.ThrowsAsync<SemanticPointerFormatException>(() =>
+            tools.ReadAsync(new ReadToolRequest("book.md", "   "), CancellationToken.None));
+    }
+
+    [Fact]
     public void KnownCliExceptionFilter_RecognizesSemanticPointerFormatException()
         => Assert.True(KnownCliExceptionFilter.IsKnown(new SemanticPointerFormatException("bad")));
 
@@ -71,6 +98,17 @@ public sealed class ServerLayerTests
         Assert.Equal(status, options.Status);
         Assert.Equal(force, options.Force);
         Assert.Equal(isMaintenanceCommand, options.IsMaintenanceCommand);
+    }
+
+    private sealed class EchoSemanticPointerReader : ISemanticPointerReader
+    {
+        public Task<MarkdownSlice> ReadAsync(
+            string path,
+            SemanticPointer pointer,
+            int maxElements,
+            int maxBytes,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new MarkdownSlice(path, pointer.Value, [], "", null, "hash"));
     }
 
     public static TheoryData<string[], bool, bool, bool, bool> MaintenanceArguments()

@@ -70,12 +70,12 @@ public sealed class KnowledgeMcpTools(
     }
 
     [McpServerTool(Name = "kb_read")]
-    [Description("Reads indexed Markdown content from a document starting at a semantic pointer.")]
+    [Description("Reads indexed Markdown content starting at a semantic pointer. Omit pointer or use \"document\" to read from the beginning of the document.")]
     public Task<MarkdownSlice> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
     {
-        var pointer = SemanticPointerParser.Parse(request.Pointer);
+        var pointer = SemanticPointerParser.Parse(request.Pointer ?? "document");
         return reader.ReadAsync(
             request.Path,
             pointer,
@@ -84,20 +84,40 @@ public sealed class KnowledgeMcpTools(
             cancellationToken);
     }
 
-    [McpServerTool(Name = "kb_patch")]
-    [Description("Atomically edits Markdown elements by semantic pointer when the source revision matches.")]
-    public Task<MutationResponse> PatchAsync(
+    [McpServerTool(Name = "kb_patch", UseStructuredContent = true, OutputSchemaType = typeof(MutationResponse))]
+    [Description("Atomically edits Markdown using semantic pointers and the current sourceHash. Pass operations as an array with kind replace, insert_before, insert_after, or delete. Each pointer addresses a semantic element. Replace and insert operations require markdown; delete does not. Use expectedSourceHash from the latest read. The document pointer supports insert_before and insert_after at document boundaries.")]
+    public async Task<CallToolResult> PatchAsync(
         PatchToolRequest request,
         CancellationToken cancellationToken)
-        => mutations.PatchAsync(
-            new PatchRequest(
-                request.Path,
-                request.ExpectedSourceHash,
-                request.Operations.Select(operation => new PatchOperation(
-                    ParsePatchKind(operation.Kind),
-                    operation.Pointer,
-                    operation.Markdown)).ToList()),
-            cancellationToken);
+    {
+        try
+        {
+            var response = await mutations.PatchAsync(
+                new PatchRequest(
+                    request.Path,
+                    request.ExpectedSourceHash,
+                    request.Operations.Select(operation => new PatchOperation(
+                        operation.Kind,
+                        operation.Pointer,
+                        operation.Markdown)).ToList()),
+                cancellationToken);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = System.Text.Json.JsonSerializer.Serialize(response, JsonOptions.Default) }],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(response, JsonOptions.Default)
+            };
+        }
+        catch (Exception exception) when (exception is WorkspaceMutationException
+                                          or DocumentConflictException
+                                          or KnowledgeBaseAccessException)
+        {
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = exception.Message }],
+                IsError = true
+            };
+        }
+    }
 
     [McpServerTool(Name = "kb_create")]
     [Description("Creates a new UTF-8 Markdown file and synchronizes it with the index.")]
@@ -137,15 +157,4 @@ public sealed class KnowledgeMcpTools(
         OutlineToolRequest request,
         CancellationToken cancellationToken)
         => navigation.GetOutlineAsync(request.Path, cancellationToken);
-
-    private static PatchOperationKind ParsePatchKind(string kind)
-        => kind.Trim().ToLowerInvariant() switch
-        {
-            "replace" => PatchOperationKind.Replace,
-            "insert_before" => PatchOperationKind.InsertBefore,
-            "insert_after" => PatchOperationKind.InsertAfter,
-            "delete" => PatchOperationKind.Delete,
-            _ => throw new WorkspaceMutationException(
-                "Patch operation kind must be replace, insert_before, insert_after, or delete.")
-        };
 }
