@@ -99,7 +99,27 @@ public sealed class MarkdownHardeningTests
             [new PatchOperation(PatchOperationKind.InsertAfter, "document", "After.")]);
 
         Assert.Equal("Before.\r\n\r\nExisting.\r\n", before);
-        Assert.Equal("Existing.\r\n\r\n\r\nAfter.", after);
+        Assert.Equal("Existing.\r\n\r\nAfter.", after);
+    }
+
+    [Fact]
+    public void SourcePatcher_DocumentInsertion_ReusesExistingBoundaryLineEndings()
+    {
+        const string source = "\r\nExisting.\r\n\r\n";
+        var document = new MarkdownSourceDocument("a.md", "a.md", source, "hash", DateTimeOffset.UtcNow);
+        var elements = new MarkdownElementParser().Parse(document);
+
+        var before = MarkdownSourcePatcher.Apply(
+            source,
+            elements,
+            [new PatchOperation(PatchOperationKind.InsertBefore, "document", "Before.")]);
+        var after = MarkdownSourcePatcher.Apply(
+            source,
+            elements,
+            [new PatchOperation(PatchOperationKind.InsertAfter, "document", "After.")]);
+
+        Assert.Equal("Before.\r\n\r\nExisting.\r\n\r\n", before);
+        Assert.Equal("\r\nExisting.\r\n\r\nAfter.", after);
     }
 
     [Theory]

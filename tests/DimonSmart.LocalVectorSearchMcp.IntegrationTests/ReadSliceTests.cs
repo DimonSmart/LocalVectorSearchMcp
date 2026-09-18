@@ -18,6 +18,107 @@ namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 public sealed class ReadSliceTests
 {
     [Fact]
+    public async Task ReadSliceAsync_DocumentRootStartsAtFirstRealElement()
+    {
+        using var context = await CreateContextAsync("# Title\n\nText.");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
+
+        Assert.Equal("document", slice.Pointer);
+        Assert.Equal(new[] { "1", "1.p1" }, slice.Elements.Select(element => element.Pointer).ToArray());
+        Assert.DoesNotContain(slice.Elements, element => element.Kind == MarkdownElementKind.Document);
+        Assert.Equal("# Title\n\nText.", slice.Markdown);
+        Assert.Null(slice.NextPointer);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_DocumentRootIncludesContentBeforeFirstHeading()
+    {
+        using var context = await CreateContextAsync("Introduction.\n\n# Chapter\n\nText.");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
+
+        Assert.Equal(
+            new[] { "p1", "1", "1.p1" },
+            slice.Elements.Select(element => element.Pointer).ToArray());
+        Assert.StartsWith("Introduction.", slice.Markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_DocumentRootIncludesFrontMatterInSourceOrder()
+    {
+        using var context = await CreateContextAsync("---\ntitle: Book\n---\n\nPreface.\n\n## Chapter");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
+
+        Assert.Equal(
+            new[] { "frontmatter", "p1", "1" },
+            slice.Elements.Select(element => element.Pointer).ToArray());
+        Assert.Equal(MarkdownElementKind.FrontMatter, slice.Elements[0].Kind);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_DocumentRootReadsDocumentWithoutHeadings()
+    {
+        using var context = await CreateContextAsync("First paragraph.\n\nSecond paragraph.");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
+
+        Assert.Equal(
+            new[] { "p1", "p2" },
+            slice.Elements.Select(element => element.Pointer).ToArray());
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_DocumentRootReturnsEmptySliceForEmptyDocument()
+    {
+        using var context = await CreateContextAsync("");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
+
+        Assert.Equal("document", slice.Pointer);
+        Assert.Empty(slice.Elements);
+        Assert.Equal("", slice.Markdown);
+        Assert.Null(slice.NextPointer);
+        Assert.False(string.IsNullOrWhiteSpace(slice.SourceHash));
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_DocumentRootMaxElementsDoesNotCountSyntheticDocument()
+    {
+        using var context = await CreateContextAsync("# Title\n\nOne.\n\nTwo.");
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer("document"), 2, 12_000, context.CancellationToken);
+
+        Assert.Equal(new[] { "1", "1.p1" }, slice.Elements.Select(element => element.Pointer).ToArray());
+        Assert.Equal("1.p2", slice.NextPointer);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_DocumentRootMaxBytesContinuesWithoutLossOrDuplication()
+    {
+        using var context = await CreateContextAsync("Introduction.\n\n# Title\n\nBody.");
+
+        var first = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer("document"), 20, 13, context.CancellationToken);
+        var second = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md", new SemanticPointer(first.NextPointer!), 20, 12_000, context.CancellationToken);
+
+        Assert.Equal(new[] { "p1" }, first.Elements.Select(element => element.Pointer).ToArray());
+        Assert.Equal("1", first.NextPointer);
+        Assert.Equal(new[] { "1", "1.p1" }, second.Elements.Select(element => element.Pointer).ToArray());
+        Assert.Equal(
+            new[] { "p1", "1", "1.p1" },
+            first.Elements.Concat(second.Elements).Select(element => element.Pointer).ToArray());
+    }
+
+    [Fact]
     public async Task ReadSliceAsync_ReturnsNextPointerWhenMaxElementsCutsSlice()
     {
         using var context = await CreateContextAsync("# Title\n\nParagraph one.\n\nParagraph two.\n\nParagraph three.");

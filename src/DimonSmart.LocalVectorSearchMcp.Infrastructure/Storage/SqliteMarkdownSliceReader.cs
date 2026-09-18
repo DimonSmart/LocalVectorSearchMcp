@@ -16,28 +16,48 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
     {
         maxElements = Math.Clamp(maxElements, 1, 100);
         maxBytes = Math.Clamp(maxBytes, 1, 100_000);
+        var isDocumentRoot = SemanticPointerParser.GetKind(pointer) == SemanticPointerKind.Document;
+
         await using var db = factory.Open();
+
+        var documentCommand = db.CreateCommand();
+        documentCommand.CommandText = "select source_hash from documents where path = $path";
+        documentCommand.AddParameter("$path", path);
+        var sourceHash = (string?)await documentCommand.ExecuteScalarAsync(cancellationToken);
+        if (sourceHash is null)
+        {
+            throw new SemanticPointerNotFoundException($"Pointer '{pointer.Value}' was not found in '{path}'.");
+        }
+
         var command = db.CreateCommand();
         command.CommandText = """
-            select e.pointer, e.kind, e.text, e.heading_path, d.source_hash
+            select e.pointer, e.kind, e.text, e.heading_path
             from elements e
             join documents d on d.id = e.document_id
             where d.path = $path
-              and e.ordinal >= (select ordinal from elements e2 where e2.document_id = d.id and e2.pointer = $ptr)
+              and (
+                    ($isDocumentRoot = 1 and e.pointer <> 'document')
+                    or
+                    ($isDocumentRoot = 0 and e.ordinal >= (
+                        select e2.ordinal
+                        from elements e2
+                        where e2.document_id = d.id and e2.pointer = $ptr
+                    ))
+                  )
             order by e.ordinal
             limit $max
             """;
         command.AddParameter("$path", path);
         command.AddParameter("$ptr", pointer.Value);
+        command.AddParameter("$isDocumentRoot", isDocumentRoot ? 1 : 0);
         command.AddParameter("$max", maxElements + 1);
+
         var elements = new List<MarkdownSliceElement>();
         string? nextPointer = null;
-        string? sourceHash = null;
         var bytes = 0;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            sourceHash ??= reader.GetString(4);
             var currentPointer = reader.GetString(0);
             var text = reader.GetString(2);
             if (elements.Count >= maxElements)
@@ -62,12 +82,12 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
             bytes = projectedBytes;
         }
 
-        if (elements.Count == 0)
+        if (elements.Count == 0 && !isDocumentRoot)
         {
             throw new SemanticPointerNotFoundException($"Pointer '{pointer.Value}' was not found in '{path}'.");
         }
 
         var markdown = string.Join("\n\n", elements.Select(element => element.Text));
-        return new MarkdownSlice(path, pointer.Value, elements, markdown, nextPointer, sourceHash!);
+        return new MarkdownSlice(path, pointer.Value, elements, markdown, nextPointer, sourceHash);
     }
 }

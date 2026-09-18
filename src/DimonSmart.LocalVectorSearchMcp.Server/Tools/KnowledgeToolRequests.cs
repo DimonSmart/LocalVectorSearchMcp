@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
 
@@ -16,11 +18,12 @@ public sealed record SearchToolRequest(
 
 public sealed record ReadToolRequest(
     string Path,
-    string Pointer,
+    [property: Description("Semantic pointer to start from. Omit or use \"document\" to start from the document root.")]
+    string? Pointer = null,
     int? MaxElements = null,
     int? MaxBytes = null);
 
-public sealed record PatchToolOperation(string Kind, string Pointer, string? Markdown = null);
+public sealed record PatchToolOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null);
 
 public sealed record PatchToolRequest(
     string Path,
