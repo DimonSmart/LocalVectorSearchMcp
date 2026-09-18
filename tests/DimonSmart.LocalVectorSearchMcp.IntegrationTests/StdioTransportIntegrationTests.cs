@@ -58,7 +58,10 @@ public sealed class StdioTransportIntegrationTests
             $"kb_read schema must expose pointer as optional:{Environment.NewLine}{readTool.JsonSchema}");
 
         var patchTool = Assert.Single(tools, tool => tool.Name == "kb_patch");
-        Assert.Contains("expectedSourceHash", patchTool.Description, StringComparison.Ordinal);
+        Assert.DoesNotContain("expectedSourceHash", patchTool.Description, StringComparison.Ordinal);
+        Assert.False(
+            TryFindSchemaProperty(patchTool.JsonSchema, "expectedSourceHash", out _),
+            $"kb_patch schema must not expose expectedSourceHash:{Environment.NewLine}{patchTool.JsonSchema}");
         Assert.Contains("operations as an array", patchTool.Description, StringComparison.Ordinal);
         Assert.Contains("replace", patchTool.Description, StringComparison.Ordinal);
         Assert.Contains("delete", patchTool.Description, StringComparison.Ordinal);
@@ -148,7 +151,6 @@ public sealed class StdioTransportIntegrationTests
                 ["request"] = new Dictionary<string, object?>
                 {
                     ["path"] = "smoke.md",
-                    ["expectedSourceHash"] = "unused-while-writes-are-disabled",
                     ["operations"] = new object[]
                     {
                         new Dictionary<string, object?>

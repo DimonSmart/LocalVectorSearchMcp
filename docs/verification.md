@@ -138,10 +138,16 @@ This validates the normal end-to-end workflow: search, semantic pointer, and foc
 Use a disposable workspace with `knowledgeBase.allowWrites: true` and `knowledgeBase.watchFiles: true`.
 
 1. Create a Markdown file with `kb_create` and confirm it is immediately returned by `kb_search`.
-2. Read it with `kb_read`, retain `sourceHash`, and replace one paragraph with `kb_patch`.
-3. Edit the file manually, then confirm a patch using the earlier hash returns a conflict without overwriting the manual edit.
-4. Use `kb_outline` and `kb_list_files`; add a binary asset and confirm it appears as `asset` but is not indexed.
-5. Move and delete the Markdown file, confirming each change is immediately reflected in search.
+2. Read it with `kb_read` and confirm concrete element pointers use `<logical-pointer>~<16 lowercase hex>`.
+3. Keep one paragraph anchor, manually edit a different paragraph, then call `kb_patch` with the old target anchor. The patch should succeed and preserve the unrelated manual edit without `expectedSourceHash`.
+4. Keep another paragraph anchor, manually insert a paragraph above it so its logical pointer shifts, then patch through the old anchor. The unique unchanged target should be relocated automatically.
+5. Change the target paragraph itself and confirm the old anchor is rejected without overwriting the human edit.
+6. Create two identical relocation candidates and confirm an old shifted anchor is rejected as ambiguous.
+7. Inspect `kb_outline` and `kb_search`; their concrete pointers and search read hints should also contain canonical fingerprints.
+8. Use `kb_move` and `kb_delete` with the latest `sourceHash` from `kb_read`, confirming their whole-file revision contract remains unchanged.
+9. Use `kb_list_files`; add a binary asset and confirm it appears as `asset` but is not indexed.
+
+Through MCP tool discovery, confirm `kb_patch` has no `expectedSourceHash` property while `kb_move` and `kb_delete` still expose theirs.
 
 ## Developer verification
 

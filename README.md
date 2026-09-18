@@ -14,7 +14,7 @@ Large repositories often contain the answer, but not in the file the agent happe
 - Vector search finds conceptually related documentation even when wording differs.
 - Hybrid search combines both result lists through Reciprocal Rank Fusion.
 - `kb_read` returns focused Markdown slices instead of forcing the agent to read whole files.
-- Optimistic concurrency prevents an agent from overwriting a file changed after it was read.
+- Element-level optimistic concurrency prevents an agent from overwriting a semantic target that changed after it was read, while unrelated document edits do not block the patch.
 - Optional file watching keeps the index synchronized with edits from VS Code, Obsidian, or other editors.
 - Every project gets its own local SQLite index.
 - No cloud database or mandatory YAML configuration is required.
@@ -110,7 +110,7 @@ session-level overrides are expected to work.
 | Hybrid ranking | Reciprocal Rank Fusion |
 | Storage | Project-local SQLite |
 | Indexed content | Markdown |
-| Editable content | Markdown, guarded by exact source hashes |
+| Editable content | Markdown, guarded by exact element fingerprints |
 | Navigation | File listing and heading outlines |
 | Transport | MCP over stdio |
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
@@ -157,11 +157,11 @@ knowledgeBase:
   watchFiles: true
 ```
 
-Markdown files remain the source of truth. A mutation first changes the source file and then synchronizes the derived SQLite index. Semantic pointers address one document revision; mutation calls use the exact `sourceHash` returned by `kb_read` to detect concurrent human edits.
+Markdown files remain the source of truth. A mutation first changes the source file and then synchronizes the derived SQLite index. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers add a 16-character XxHash64 fingerprint of the exact source span, for example `1.2.p2~8f41c721d904a8bc`. `kb_patch` validates those anchors against the current source and can relocate an unchanged element after a structural shift. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
 
 ### `kb_patch` examples
 
-The MCP method accepts one `request` object. Inside it, `operations` is always an array, even when applying a single operation. Use `expectedSourceHash` from the latest `kb_read`.
+The MCP method accepts one `request` object. Inside it, `operations` is always an array, even when applying a single operation. Concrete-element pointers must use the fingerprinted anchors returned by `kb_read`, `kb_search`, or `kb_outline`. `kb_patch` does not accept `expectedSourceHash`.
 
 Replace:
 
@@ -169,11 +169,10 @@ Replace:
 {
   "request": {
     "path": "chapter.md",
-    "expectedSourceHash": "...",
     "operations": [
       {
         "kind": "replace",
-        "pointer": "1.2.p2",
+        "pointer": "1.2.p2~8f41c721d904a8bc",
         "markdown": "New paragraph."
       }
     ]
@@ -187,11 +186,10 @@ Insert after:
 {
   "request": {
     "path": "chapter.md",
-    "expectedSourceHash": "...",
     "operations": [
       {
         "kind": "insert_after",
-        "pointer": "1.2.p2",
+        "pointer": "1.2.p2~8f41c721d904a8bc",
         "markdown": "Additional paragraph."
       }
     ]
@@ -205,18 +203,19 @@ Delete:
 {
   "request": {
     "path": "chapter.md",
-    "expectedSourceHash": "...",
     "operations": [
       {
         "kind": "delete",
-        "pointer": "1.2.p2"
+        "pointer": "1.2.p2~8f41c721d904a8bc"
       }
     ]
   }
 }
 ```
 
-Supported `kind` values are `replace`, `insert_before`, `insert_after`, and `delete`. Replace and insert operations require `markdown`; delete does not. The special `document` pointer can be used with `insert_before` or `insert_after` to insert at document boundaries.
+Supported `kind` values are `replace`, `insert_before`, `insert_after`, and `delete`. Replace and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries.
+
+An unrelated edit elsewhere in the file does not invalidate an element anchor. If the target moved because content was inserted above it, `kb_patch` relocates it only when the same element kind and exact fingerprint identify exactly one current element. If the target itself changed, disappeared, or relocation is ambiguous, the patch is rejected.
 
 ## Current scope
 

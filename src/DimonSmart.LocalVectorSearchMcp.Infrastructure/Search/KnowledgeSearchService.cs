@@ -7,11 +7,23 @@ using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
 
-public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IEmbeddingProvider embeddingProvider, IVectorIndexService vectorSearch, IFullTextSearchService fullTextSearch, ISearchIndexStateReader indexStateReader, IChunkSearchDocumentReader chunkReader) : IKnowledgeSearchService
+public sealed class KnowledgeSearchService(
+    LocalVectorSearchMcpConfig config,
+    IEmbeddingProvider embeddingProvider,
+    IVectorIndexService vectorSearch,
+    IFullTextSearchService fullTextSearch,
+    ISearchIndexStateReader indexStateReader,
+    IChunkSearchDocumentReader chunkReader) : IKnowledgeSearchService
 {
-    public async Task<SearchResponse> SearchAsync(SearchRequest request, CancellationToken cancellationToken)
+    public async Task<SearchResponse> SearchAsync(
+        SearchRequest request,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Query)) throw new ConfigurationException("Query is required.");
+        if (string.IsNullOrWhiteSpace(request.Query))
+        {
+            throw new ConfigurationException("Query is required.");
+        }
+
         var mode = request.Mode ?? config.Search.DefaultMode;
         var topK = Math.Clamp(request.TopK ?? config.Search.MaxResults, 1, 50);
         SearchPathScope? scope = request.IncludeGlobs is null && request.ExcludeGlobs is null
@@ -21,38 +33,81 @@ public sealed class KnowledgeSearchService(LocalVectorSearchMcpConfig config, IE
         {
             _ = new PathScopeMatcher(scope);
         }
-        if (!await indexStateReader.HasChunksAsync(cancellationToken)) throw new IndexNotReadyException("Index is empty. Run kb_reindex first.");
+
+        if (!await indexStateReader.HasChunksAsync(cancellationToken))
+        {
+            throw new IndexNotReadyException("Index is empty. Run kb_reindex first.");
+        }
 
         var semantic = new List<SemanticSearchResult>();
         var lexical = new List<LexicalSearchResult>();
         if (mode is SearchMode.Semantic or SearchMode.Hybrid)
         {
-            var embedding = (await embeddingProvider.EmbedBatchAsync([request.Query], cancellationToken)).Single();
-            semantic.AddRange(await vectorSearch.SearchAsync(embedding, config.Search.SemanticCandidatePoolSize, scope, cancellationToken));
+            var embedding = (await embeddingProvider.EmbedBatchAsync(
+                [request.Query],
+                cancellationToken)).Single();
+            semantic.AddRange(await vectorSearch.SearchAsync(
+                embedding,
+                config.Search.SemanticCandidatePoolSize,
+                scope,
+                cancellationToken));
         }
 
         if (mode is SearchMode.Lexical or SearchMode.Hybrid)
         {
-            lexical.AddRange(await fullTextSearch.SearchAsync(request.Query, config.Search.LexicalCandidatePoolSize, scope, cancellationToken));
+            lexical.AddRange(await fullTextSearch.SearchAsync(
+                request.Query,
+                config.Search.LexicalCandidatePoolSize,
+                scope,
+                cancellationToken));
         }
 
         var ordered = mode switch
         {
-            SearchMode.Semantic => semantic.Take(topK).Select((x, i) => (x.ChunkId, Score: 1d / (i + 1))).ToList(),
-            SearchMode.Lexical => lexical.Take(topK).Select((x, i) => (x.ChunkId, Score: 1d / (i + 1))).ToList(),
-            _ => HybridRanker.Fuse(semantic.Select(x => x.ChunkId), lexical.Select(x => x.ChunkId), config.Search.RrfK, topK).ToList()
+            SearchMode.Semantic => semantic.Take(topK)
+                .Select((x, i) => (x.ChunkId, Score: 1d / (i + 1)))
+                .ToList(),
+            SearchMode.Lexical => lexical.Take(topK)
+                .Select((x, i) => (x.ChunkId, Score: 1d / (i + 1)))
+                .ToList(),
+            _ => HybridRanker.Fuse(
+                    semantic.Select(x => x.ChunkId),
+                    lexical.Select(x => x.ChunkId),
+                    config.Search.RrfK,
+                    topK)
+                .ToList()
         };
 
-        var chunks = (await chunkReader.GetChunksAsync(ordered.Select(x => x.ChunkId).ToList(), cancellationToken)).ToDictionary(x => x.ChunkId);
+        var chunks = (await chunkReader.GetChunksAsync(
+            ordered.Select(x => x.ChunkId).ToList(),
+            cancellationToken)).ToDictionary(x => x.ChunkId);
         var snippets = lexical.ToDictionary(x => x.ChunkId, x => x.Snippet);
         var results = ordered.Where(x => chunks.ContainsKey(x.ChunkId)).Select(x =>
         {
-            var c = chunks[x.ChunkId];
-            var pointer = new SemanticPointer(c.Pointer);
-            return new SearchResultItem(c.Path, c.Pointer, new FullSemanticPointer(c.Path, pointer).ToString(), x.Score, mode, c.HeadingPath, snippets.GetValueOrDefault(c.ChunkId) ?? MakeSnippet(c.Text), new ReadHint(c.Path, c.Pointer, 20, 12000));
+            var chunk = chunks[x.ChunkId];
+            if (chunk.ElementText is null)
+            {
+                throw new InvalidOperationException(
+                    $"Search chunk '{chunk.ChunkId}' has no start element text.");
+            }
+
+            var anchor = new SemanticAnchor(
+                new SemanticPointer(chunk.Pointer),
+                SemanticFingerprint.Compute(chunk.ElementText)).ToString();
+            return new SearchResultItem(
+                chunk.Path,
+                anchor,
+                $"{chunk.Path}::{anchor}",
+                x.Score,
+                mode,
+                chunk.HeadingPath,
+                snippets.GetValueOrDefault(chunk.ChunkId) ?? MakeSnippet(chunk.Text),
+                new ReadHint(chunk.Path, anchor, 20, 12000));
         }).ToList();
+
         return new SearchResponse(results);
     }
 
-    private static string MakeSnippet(string text) => text.Length <= 240 ? text : text[..240] + "...";
+    private static string MakeSnippet(string text)
+        => text.Length <= 240 ? text : text[..240] + "...";
 }

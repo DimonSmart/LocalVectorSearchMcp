@@ -59,8 +59,10 @@ public sealed class IntegrationTests
         var search = new KnowledgeSearchService(config, provider, repository.VectorSearch, repository.FullTextSearch, repository.SearchIndexReader, repository.SearchIndexReader);
         var response = await search.SearchAsync(new SearchRequest("hybrid", SearchMode.Hybrid, 5), cancellationToken);
 
-        Assert.Single(response.Results);
-        Assert.Equal("notes.md::1.p1", response.Results[0].FullPointer);
+        var result = Assert.Single(response.Results);
+        Assert.Matches(@"^1\.p1~[0-9a-f]{16}$", result.Pointer);
+        Assert.Equal($"notes.md::{result.Pointer}", result.FullPointer);
+        Assert.Equal(result.Pointer, result.ReadHint.Pointer);
     }
 
     [Fact]

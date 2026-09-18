@@ -69,23 +69,56 @@ public sealed class KnowledgeMcpTools(
         }
     }
 
-    [McpServerTool(Name = "kb_read")]
-    [Description("Reads indexed Markdown content starting at a semantic pointer. Omit pointer or use \"document\" to read from the beginning of the document.")]
-    public Task<MarkdownSlice> ReadAsync(
+    [McpServerTool(
+        Name = "kb_read",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(MarkdownSlice))]
+    [Description("Reads indexed Markdown content starting at a semantic pointer or fingerprinted semantic anchor. Omit pointer or use \"document\" to read from the beginning of the document.")]
+    public async Task<CallToolResult> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
     {
-        var pointer = SemanticPointerParser.Parse(request.Pointer ?? "document");
-        return reader.ReadAsync(
-            request.Path,
-            pointer,
-            request.MaxElements ?? 20,
-            request.MaxBytes ?? 12000,
-            cancellationToken);
+        try
+        {
+            var anchor = SemanticAnchorParser.Parse(request.Pointer ?? "document");
+            var response = await reader.ReadAsync(
+                request.Path,
+                anchor,
+                request.MaxElements ?? 20,
+                request.MaxBytes ?? 12000,
+                cancellationToken);
+            return new CallToolResult
+            {
+                Content =
+                [
+                    new TextContentBlock
+                    {
+                        Text = System.Text.Json.JsonSerializer.Serialize(
+                            response,
+                            JsonOptions.Default)
+                    }
+                ],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(
+                    response,
+                    JsonOptions.Default)
+            };
+        }
+        catch (Exception exception) when (
+            exception is SemanticPointerFormatException
+                or SemanticPointerNotFoundException
+                or SemanticAnchorConflictException
+                or KnowledgeBaseAccessException)
+        {
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = exception.Message }],
+                IsError = true
+            };
+        }
     }
 
     [McpServerTool(Name = "kb_patch", UseStructuredContent = true, OutputSchemaType = typeof(MutationResponse))]
-    [Description("Atomically edits Markdown using semantic pointers and the current sourceHash. Pass operations as an array with kind replace, insert_before, insert_after, or delete. Each pointer addresses a semantic element. Replace and insert operations require markdown; delete does not. Use expectedSourceHash from the latest read. The document pointer supports insert_before and insert_after at document boundaries.")]
+    [Description("Atomically edits Markdown using fingerprinted semantic anchors. Pass operations as an array with kind replace, insert_before, insert_after, or delete. Concrete element pointers must include the 16-character fingerprint returned by kb_read, kb_search, or kb_outline. Replace and insert operations require markdown; delete does not. The document pointer remains unhashed and supports insert_before and insert_after at document boundaries.")]
     public async Task<CallToolResult> PatchAsync(
         PatchToolRequest request,
         CancellationToken cancellationToken)
@@ -95,7 +128,6 @@ public sealed class KnowledgeMcpTools(
             var response = await mutations.PatchAsync(
                 new PatchRequest(
                     request.Path,
-                    request.ExpectedSourceHash,
                     request.Operations.Select(operation => new PatchOperation(
                         operation.Kind,
                         operation.Pointer,
@@ -109,6 +141,8 @@ public sealed class KnowledgeMcpTools(
         }
         catch (Exception exception) when (exception is WorkspaceMutationException
                                           or DocumentConflictException
+                                          or SemanticAnchorConflictException
+                                          or SemanticPointerFormatException
                                           or KnowledgeBaseAccessException)
         {
             return new CallToolResult

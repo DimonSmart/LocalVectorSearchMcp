@@ -27,7 +27,6 @@ public sealed record PatchToolOperation(PatchOperationKind Kind, string Pointer,
 
 public sealed record PatchToolRequest(
     string Path,
-    string ExpectedSourceHash,
     IReadOnlyList<PatchToolOperation> Operations);
 
 public sealed record CreateToolRequest(string Path, string Markdown);
