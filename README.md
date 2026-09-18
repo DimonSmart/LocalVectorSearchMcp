@@ -159,6 +159,65 @@ knowledgeBase:
 
 Markdown files remain the source of truth. A mutation first changes the source file and then synchronizes the derived SQLite index. Semantic pointers address one document revision; mutation calls use the exact `sourceHash` returned by `kb_read` to detect concurrent human edits.
 
+### `kb_patch` examples
+
+The MCP method accepts one `request` object. Inside it, `operations` is always an array, even when applying a single operation. Use `expectedSourceHash` from the latest `kb_read`.
+
+Replace:
+
+```json
+{
+  "request": {
+    "path": "chapter.md",
+    "expectedSourceHash": "...",
+    "operations": [
+      {
+        "kind": "replace",
+        "pointer": "1.2.p2",
+        "markdown": "New paragraph."
+      }
+    ]
+  }
+}
+```
+
+Insert after:
+
+```json
+{
+  "request": {
+    "path": "chapter.md",
+    "expectedSourceHash": "...",
+    "operations": [
+      {
+        "kind": "insert_after",
+        "pointer": "1.2.p2",
+        "markdown": "Additional paragraph."
+      }
+    ]
+  }
+}
+```
+
+Delete:
+
+```json
+{
+  "request": {
+    "path": "chapter.md",
+    "expectedSourceHash": "...",
+    "operations": [
+      {
+        "kind": "delete",
+        "pointer": "1.2.p2"
+      }
+    ]
+  }
+}
+```
+
+Supported `kind` values are `replace`, `insert_before`, `insert_after`, and `delete`. Replace and insert operations require `markdown`; delete does not. The special `document` pointer can be used with `insert_before` or `insert_after` to insert at document boundaries.
+
 ## Current scope
 
 The current version supports local Markdown and discovers ordinary assets through file listing without indexing them. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.

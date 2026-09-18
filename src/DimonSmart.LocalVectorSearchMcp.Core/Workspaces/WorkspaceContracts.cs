@@ -3,11 +3,19 @@ using System.Text.Json.Serialization;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
+[JsonConverter(typeof(JsonStringEnumConverter<PatchOperationKind>))]
 public enum PatchOperationKind
 {
+    [JsonStringEnumMemberName("replace")]
     Replace,
+
+    [JsonStringEnumMemberName("insert_before")]
     InsertBefore,
+
+    [JsonStringEnumMemberName("insert_after")]
     InsertAfter,
+
+    [JsonStringEnumMemberName("delete")]
     Delete
 }
 
