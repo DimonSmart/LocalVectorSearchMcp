@@ -52,12 +52,12 @@ public sealed class KnowledgeMcpTools(
     }
 
     [McpServerTool(Name = "kb_read")]
-    [Description("Reads indexed Markdown content from a document starting at a semantic pointer.")]
+    [Description("Reads indexed Markdown content starting at a semantic pointer. Omit pointer or use \"document\" to read from the beginning of the document.")]
     public Task<MarkdownSlice> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
     {
-        var pointer = SemanticPointerParser.Parse(request.Pointer);
+        var pointer = SemanticPointerParser.Parse(request.Pointer ?? "document");
         return reader.ReadAsync(
             request.Path,
             pointer,
