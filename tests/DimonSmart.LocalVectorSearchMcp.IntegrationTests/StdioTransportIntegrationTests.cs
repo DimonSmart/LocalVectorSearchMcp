@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
 using ModelContextProtocol.Client;
@@ -48,6 +49,13 @@ public sealed class StdioTransportIntegrationTests
             ExpectedTools,
             tools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
 
+        var readTool = Assert.Single(tools, tool => tool.Name == "kb_read");
+        Assert.Contains("Omit pointer", readTool.Description, StringComparison.Ordinal);
+        Assert.Contains("\"document\"", readTool.Description, StringComparison.Ordinal);
+        Assert.True(
+            HasOptionalSchemaProperty(readTool.JsonSchema, "pointer"),
+            $"kb_read schema must expose pointer as optional:{Environment.NewLine}{readTool.JsonSchema}");
+
         var status = await client.CallToolAsync(
             "kb_status",
             new Dictionary<string, object?>(),
@@ -76,6 +84,47 @@ public sealed class StdioTransportIntegrationTests
 
         Assert.Equal(0, process.ExitCode);
         Assert.True(string.IsNullOrEmpty(stdout), $"Unexpected stdout before any MCP request:{Environment.NewLine}{stdout}{Environment.NewLine}{stderr}");
+    }
+
+    private static bool HasOptionalSchemaProperty(JsonElement schema, string propertyName)
+    {
+        if (schema.ValueKind == JsonValueKind.Object)
+        {
+            if (schema.TryGetProperty("properties", out var properties)
+                && properties.ValueKind == JsonValueKind.Object
+                && properties.TryGetProperty(propertyName, out _))
+            {
+                if (!schema.TryGetProperty("required", out var required)
+                    || required.ValueKind != JsonValueKind.Array)
+                {
+                    return true;
+                }
+
+                return !required.EnumerateArray().Any(item =>
+                    item.ValueKind == JsonValueKind.String
+                    && item.GetString() == propertyName);
+            }
+
+            foreach (var property in schema.EnumerateObject())
+            {
+                if (HasOptionalSchemaProperty(property.Value, propertyName))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (schema.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in schema.EnumerateArray())
+            {
+                if (HasOptionalSchemaProperty(item, propertyName))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static Process StartServer(string configPath, string workingDirectory)
