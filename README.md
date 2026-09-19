@@ -116,7 +116,7 @@ session-level overrides are expected to work.
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
 | Default embeddings | Local Ollama-compatible endpoint |
 
-The MCP server exposes ten focused tools:
+The MCP server exposes ten workspace tools plus two transfer diagnostics:
 
 - `kb_status` — inspect the current index.
 - `kb_reindex` — build or rebuild the index.
@@ -126,6 +126,8 @@ The MCP server exposes ten focused tools:
 - `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
 - `kb_list_files` — list Markdown files and non-indexed assets.
 - `kb_outline` — return a deterministic heading tree.
+- `debug_receive_file` — verify ChatGPT → MCP file handoff without persisting the received bytes.
+- `debug_return_test_image` — verify MCP → ChatGPT image-content transfer with a tiny PNG.
 
 ## Local-first and project-isolated
 
@@ -219,6 +221,6 @@ An unrelated edit elsewhere in the file does not invalidate an element anchor. I
 
 ## Current scope
 
-The current version supports local Markdown and discovers ordinary assets through file listing without indexing them. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
+The current version supports local Markdown and discovers ordinary assets through file listing without indexing them. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server. Two diagnostic tools can transfer a temporary file into the server for hashing and return a test PNG, but they do not persist binary assets or edit Markdown image references.
 
 PDF/DOCX/OCR, binary editing, image embeddings, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
