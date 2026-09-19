@@ -95,7 +95,7 @@ After the tunnel runtime reports ready:
 
 1. Add or select the Secure MCP Tunnel in ChatGPT using the tunnel created for this runtime.
 2. Refresh or scan the connector so ChatGPT discovers the MCP tools.
-3. Verify that the ten LocalVectorSearchMcp tools are visible.
+3. Verify that the twelve LocalVectorSearchMcp tools are visible.
 4. Call `kb_status`.
 5. Call `kb_search` and `kb_read` against the configured workspace.
 
@@ -112,7 +112,27 @@ kb_move
 kb_delete
 kb_list_files
 kb_outline
+debug_receive_file
+debug_return_test_image
 ```
+
+## File and image transfer diagnostics
+
+The two `debug_*` tools exist specifically to isolate ChatGPT/Secure-Tunnel file-transfer behavior before binary asset upload is added to the workspace model.
+
+`debug_receive_file` declares its top-level `file` argument through `_meta["openai/fileParams"]`. ChatGPT should therefore pass the OpenAI file object containing `download_url` and `file_id`, plus optional `mime_type` and `file_name`. The server downloads the temporary HTTPS URL, streams at most 25 MiB, does not save the bytes, and returns byte count, SHA-256, MIME information, and a short hexadecimal prefix.
+
+Use it for three manual checks:
+
+1. Attach a small PNG to the conversation and ask ChatGPT to pass that file to `debug_receive_file`.
+2. Generate an image in ChatGPT, then ask ChatGPT to pass the just-generated image to `debug_receive_file`.
+3. Select an existing image from ChatGPT's file library, then pass it to `debug_receive_file`.
+
+If the second scenario works, the desired Image Generation → ChatGPT file object → Secure MCP Tunnel → local MCP chain is available without base64 arguments or a custom upload protocol.
+
+`debug_return_test_image` performs the independent reverse-direction check. It returns a tiny valid PNG as standard MCP `ImageContentBlock`. Ask ChatGPT to call it and confirm that an image is received/rendered.
+
+These diagnostics intentionally do not write assets into the configured workspace. They can be removed or replaced by the chosen production asset-import workflow after the experiment.
 
 ## Read-only deployment
 
@@ -154,10 +174,12 @@ Use this sequence after initial setup or after changing tunnel configuration:
 6. Start the tunnel runtime.
 7. Confirm that the runtime reports ready.
 8. Add or select the tunnel in ChatGPT and refresh tool discovery.
-9. Confirm that all ten tools are discovered.
+9. Confirm that all twelve tools are discovered.
 10. Call `kb_status`.
 11. Call `kb_search`.
 12. Call `kb_read`.
+13. Call `debug_return_test_image` and verify that ChatGPT receives a PNG.
+14. Pass a small attached PNG to `debug_receive_file` and verify the returned size and SHA-256.
 
 For a workspace intended to be writable, additionally verify both configurations:
 
