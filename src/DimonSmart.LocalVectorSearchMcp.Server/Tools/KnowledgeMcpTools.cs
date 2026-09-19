@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using DimonSmart.LocalVectorSearchMcp.Core;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
@@ -39,7 +40,7 @@ public sealed class KnowledgeMcpTools(
     }
 
     [McpServerTool(Name = "kb_search", UseStructuredContent = true, OutputSchemaType = typeof(SearchResponse))]
-    [Description("Searches the local Markdown knowledge base using lexical, semantic or hybrid search.")]
+    [Description("Searches the local Markdown knowledge base using lexical, semantic or hybrid search. Hybrid search falls back to lexical search when the embedding provider is unavailable.")]
     public async Task<CallToolResult> SearchAsync(
         SearchToolRequest request,
         CancellationToken cancellationToken)
@@ -64,6 +65,22 @@ public sealed class KnowledgeMcpTools(
             return new CallToolResult
             {
                 Content = [new TextContentBlock { Text = exception.Message }],
+                IsError = true
+            };
+        }
+        catch (EmbeddingProviderException exception)
+        {
+            return new CallToolResult
+            {
+                Content =
+                [
+                    new TextContentBlock
+                    {
+                        Text =
+                            $"Semantic search is unavailable: {exception.Message} " +
+                            "Use mode=\"lexical\"; hybrid search falls back to lexical automatically."
+                    }
+                ],
                 IsError = true
             };
         }

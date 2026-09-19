@@ -41,19 +41,30 @@ public sealed class KnowledgeSearchService(
 
         var semantic = new List<SemanticSearchResult>();
         var lexical = new List<LexicalSearchResult>();
+        var effectiveMode = mode;
+        string? warning = null;
         if (mode is SearchMode.Semantic or SearchMode.Hybrid)
         {
-            var embedding = (await embeddingProvider.EmbedBatchAsync(
-                [request.Query],
-                cancellationToken)).Single();
-            semantic.AddRange(await vectorSearch.SearchAsync(
-                embedding,
-                config.Search.SemanticCandidatePoolSize,
-                scope,
-                cancellationToken));
+            try
+            {
+                var embedding = (await embeddingProvider.EmbedBatchAsync(
+                    [request.Query],
+                    cancellationToken)).Single();
+                semantic.AddRange(await vectorSearch.SearchAsync(
+                    embedding,
+                    config.Search.SemanticCandidatePoolSize,
+                    scope,
+                    cancellationToken));
+            }
+            catch (EmbeddingProviderException exception) when (mode == SearchMode.Hybrid)
+            {
+                effectiveMode = SearchMode.Lexical;
+                warning =
+                    $"Semantic search is unavailable: {exception.Message} Falling back to lexical search.";
+            }
         }
 
-        if (mode is SearchMode.Lexical or SearchMode.Hybrid)
+        if (effectiveMode is SearchMode.Lexical or SearchMode.Hybrid)
         {
             lexical.AddRange(await fullTextSearch.SearchAsync(
                 request.Query,
@@ -62,7 +73,7 @@ public sealed class KnowledgeSearchService(
                 cancellationToken));
         }
 
-        var ordered = mode switch
+        var ordered = effectiveMode switch
         {
             SearchMode.Semantic => semantic.Take(topK)
                 .Select((x, i) => (x.ChunkId, Score: 1d / (i + 1)))
@@ -99,13 +110,13 @@ public sealed class KnowledgeSearchService(
                 anchor,
                 $"{chunk.Path}::{anchor}",
                 x.Score,
-                mode,
+                effectiveMode,
                 chunk.HeadingPath,
                 snippets.GetValueOrDefault(chunk.ChunkId) ?? MakeSnippet(chunk.Text),
                 new ReadHint(chunk.Path, anchor, 20, 12000));
         }).ToList();
 
-        return new SearchResponse(results);
+        return new SearchResponse(results, warning);
     }
 
     private static string MakeSnippet(string text)
