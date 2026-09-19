@@ -12,6 +12,8 @@ public sealed class StdioTransportIntegrationTests
 {
     private static readonly string[] ExpectedTools =
     [
+        "debug_receive_file",
+        "debug_return_test_image",
         "kb_create",
         "kb_delete",
         "kb_list_files",
@@ -50,6 +52,26 @@ public sealed class StdioTransportIntegrationTests
             ExpectedTools,
             tools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
 
+        var receiveFileTool = Assert.Single(tools, tool => tool.Name == "debug_receive_file");
+        Assert.Equal(
+            """["file"]""",
+            receiveFileTool.ProtocolTool.Meta?["openai/fileParams"]?.ToJsonString());
+        Assert.True(
+            HasRequiredSchemaProperty(receiveFileTool.JsonSchema, "file"),
+            $"debug_receive_file schema must require the top-level file parameter:{Environment.NewLine}{receiveFileTool.JsonSchema}");
+        Assert.True(
+            HasRequiredSchemaProperty(receiveFileTool.JsonSchema, "download_url"),
+            $"debug_receive_file schema must require download_url:{Environment.NewLine}{receiveFileTool.JsonSchema}");
+        Assert.True(
+            HasRequiredSchemaProperty(receiveFileTool.JsonSchema, "file_id"),
+            $"debug_receive_file schema must require file_id:{Environment.NewLine}{receiveFileTool.JsonSchema}");
+        Assert.True(
+            HasOptionalSchemaProperty(receiveFileTool.JsonSchema, "mime_type"),
+            $"debug_receive_file schema must expose mime_type as optional:{Environment.NewLine}{receiveFileTool.JsonSchema}");
+        Assert.True(
+            HasOptionalSchemaProperty(receiveFileTool.JsonSchema, "file_name"),
+            $"debug_receive_file schema must expose file_name as optional:{Environment.NewLine}{receiveFileTool.JsonSchema}");
+
         var readTool = Assert.Single(tools, tool => tool.Name == "kb_read");
         Assert.Contains("Omit pointer", readTool.Description, StringComparison.Ordinal);
         Assert.Contains("\"document\"", readTool.Description, StringComparison.Ordinal);
@@ -87,6 +109,20 @@ public sealed class StdioTransportIntegrationTests
             cancellationToken: cancellationToken);
 
         Assert.False(status.IsError is true, string.Join(Environment.NewLine, stderr));
+
+        var imageResult = await client.CallToolAsync(
+            "debug_return_test_image",
+            new Dictionary<string, object?>(),
+            cancellationToken: cancellationToken);
+
+        Assert.False(imageResult.IsError is true, string.Join(Environment.NewLine, stderr));
+        var image = Assert.Single(imageResult.Content.OfType<ImageContentBlock>());
+        Assert.Equal("image/png", image.MimeType);
+        var imageBytes = image.DecodedData.ToArray();
+        Assert.True(imageBytes.Length >= 8);
+        Assert.Equal(
+            new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a },
+            imageBytes[..8]);
     }
 
     [Fact]
@@ -239,6 +275,44 @@ public sealed class StdioTransportIntegrationTests
         }
 
         propertySchema = default;
+        return false;
+    }
+
+    private static bool HasRequiredSchemaProperty(JsonElement schema, string propertyName)
+    {
+        if (schema.ValueKind == JsonValueKind.Object)
+        {
+            if (schema.TryGetProperty("properties", out var properties)
+                && properties.ValueKind == JsonValueKind.Object
+                && properties.TryGetProperty(propertyName, out _)
+                && schema.TryGetProperty("required", out var required)
+                && required.ValueKind == JsonValueKind.Array
+                && required.EnumerateArray().Any(item =>
+                    item.ValueKind == JsonValueKind.String
+                    && item.GetString() == propertyName))
+            {
+                return true;
+            }
+
+            foreach (var property in schema.EnumerateObject())
+            {
+                if (HasRequiredSchemaProperty(property.Value, propertyName))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (schema.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in schema.EnumerateArray())
+            {
+                if (HasRequiredSchemaProperty(item, propertyName))
+                {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 
