@@ -63,9 +63,26 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             var elements = parser.Parse(document);
             var chunks = chunker.BuildChunks(document, elements);
             var vectors = new List<EmbeddingVector>();
-            foreach (var batch in chunks.Chunk(config.Embedding.BatchSize))
+            try
             {
-                vectors.AddRange(await embeddingProvider.EmbedBatchAsync(batch.Select(c => c.EmbeddingText).ToList(), cancellationToken));
+                foreach (var batch in chunks.Chunk(config.Embedding.BatchSize))
+                {
+                    vectors.AddRange(await embeddingProvider.EmbedBatchAsync(
+                        batch.Select(c => c.EmbeddingText).ToList(),
+                        cancellationToken));
+                }
+            }
+            catch (EmbeddingProviderException exception)
+            {
+                synchronizationState?.MarkDirty(document.RelativePath, exception.Message);
+                return new ReindexResponse(
+                    scanned,
+                    indexed,
+                    skipped,
+                    deleted,
+                    chunksIndexed,
+                    $"Vector embeddings are unavailable: {exception.Message} " +
+                    "Reindex stopped; successfully indexed content remains available for lexical search.");
             }
 
             await documentIndexStore.SaveDocumentIndexAsync(document, elements, chunks, vectors, cancellationToken);

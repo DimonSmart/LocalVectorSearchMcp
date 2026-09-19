@@ -38,11 +38,11 @@ public sealed class OpenAiCompatibleEmbeddingProvider(HttpClient httpClient, Loc
         }
         catch (HttpRequestException exception)
         {
-            throw new EmbeddingProviderException("Embedding endpoint request failed.", exception);
+            throw new EmbeddingProviderException($"Embedding endpoint is unavailable: {config.Embedding.Endpoint}.", exception);
         }
         catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new EmbeddingProviderException("Embedding endpoint request timed out.", exception);
+            throw new EmbeddingProviderException($"Embedding endpoint timed out: {config.Embedding.Endpoint}.", exception);
         }
         catch (IOException exception)
         {
