@@ -190,8 +190,10 @@ public sealed class StdioTransportIntegrationTests
             "kb_save_image",
             new Dictionary<string, object?>
             {
-                ["file"] =
-                    "not-an-openai-file-object"
+                ["file"] = new
+                {
+                    file_id = "missing-download-url"
+                }
             },
             cancellationToken: cancellationToken);
         Assert.True(malformedSave.IsError is true);

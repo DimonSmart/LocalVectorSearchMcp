@@ -31,12 +31,6 @@ public sealed class WorkspaceImageMcpTools(
             "Optional alt text used to build the returned Markdown image reference.")]
         string? altText = null)
     {
-        if (file.InputError is not null)
-        {
-            return Error(
-                $"Invalid OpenAI file parameter: {file.InputError}");
-        }
-
         if (string.IsNullOrWhiteSpace(file.DownloadUrl))
         {
             return Error(
