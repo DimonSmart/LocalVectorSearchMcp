@@ -181,7 +181,7 @@ public sealed class StdioTransportIntegrationTests
             kindSchema
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString())
+                .Select(item => item.GetString()!)
                 .ToArray());
 
         var malformedSave = await client.CallToolAsync(

@@ -34,6 +34,7 @@ public sealed class WorkspaceImageServerLayerTests
             ],
             tools
                 .Select(item => item.Attribute!.Name)
+                .OfType<string>()
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray());
 
