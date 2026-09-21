@@ -52,10 +52,7 @@ public sealed class WorkspaceImageServerLayerTests
     {
         var service = new RecordingImageService();
         var tools = new WorkspaceImageMcpTools(service);
-        var malformed = new OpenAiFileParameter("", "")
-        {
-            InputError = "expected a JSON object, received String."
-        };
+        var malformed = new OpenAiFileParameter();
 
         var result = await tools.SaveImageAsync(
             malformed,
