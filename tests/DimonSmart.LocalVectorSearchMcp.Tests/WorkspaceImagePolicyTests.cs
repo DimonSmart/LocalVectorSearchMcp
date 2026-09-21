@@ -19,19 +19,14 @@ public sealed class WorkspaceImagePolicyTests
                 [0xff, 0xd8, 0xff, 0x00])?.Format);
         Assert.Equal(
             WorkspaceImageFormat.WebP,
-            WorkspaceImageFormats.Detect(
-                "RIFF1234WEBP"u8)?.Format);
+            WorkspaceImageFormats.Detect("RIFF1234WEBP"u8)?.Format);
         Assert.Equal(
             WorkspaceImageFormat.Gif,
-            WorkspaceImageFormats.Detect(
-                "GIF87a"u8)?.Format);
+            WorkspaceImageFormats.Detect("GIF87a"u8)?.Format);
         Assert.Equal(
             WorkspaceImageFormat.Gif,
-            WorkspaceImageFormats.Detect(
-                "GIF89a"u8)?.Format);
-        Assert.Null(
-            WorkspaceImageFormats.Detect(
-                "not an image"u8));
+            WorkspaceImageFormats.Detect("GIF89a"u8)?.Format);
+        Assert.Null(WorkspaceImageFormats.Detect("not an image"u8));
     }
 
     [Fact]
@@ -45,9 +40,7 @@ public sealed class WorkspaceImagePolicyTests
         WorkspaceImageFormats.ValidateDeclaredMime(
             "application/octet-stream",
             png);
-        WorkspaceImageFormats.ValidateDeclaredMime(
-            "image/png",
-            png);
+        WorkspaceImageFormats.ValidateDeclaredMime("image/png", png);
 
         Assert.Throws<WorkspaceImageException>(
             () => WorkspaceImageFormats.ValidateDeclaredMime(
@@ -92,16 +85,10 @@ public sealed class WorkspaceImagePolicyTests
 
         Assert.Equal(
             "обложка.png",
-            ImageFileNamePolicy.Resolve(
-                "обложка",
-                null,
-                png));
+            ImageFileNamePolicy.Resolve("обложка", null, png));
         Assert.Equal(
             "cover.PNG",
-            ImageFileNamePolicy.Resolve(
-                "cover.PNG",
-                null,
-                png));
+            ImageFileNamePolicy.Resolve("cover.PNG", null, png));
     }
 
     [Fact]
