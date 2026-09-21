@@ -87,11 +87,13 @@ public sealed class StdioTransportIntegrationTests
         Assert.True(
             HasRequiredSchemaProperty(
                 saveTool.JsonSchema,
-                "download_url"));
+                "download_url"),
+            $"kb_save_image schema must require download_url:{Environment.NewLine}{saveTool.JsonSchema}");
         Assert.True(
             HasRequiredSchemaProperty(
                 saveTool.JsonSchema,
-                "file_id"));
+                "file_id"),
+            $"kb_save_image schema must require file_id:{Environment.NewLine}{saveTool.JsonSchema}");
         Assert.True(
             HasOptionalSchemaProperty(
                 saveTool.JsonSchema,
