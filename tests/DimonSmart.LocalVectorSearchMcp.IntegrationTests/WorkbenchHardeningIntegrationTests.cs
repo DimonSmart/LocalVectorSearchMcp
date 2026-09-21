@@ -20,14 +20,14 @@ namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 public sealed class WorkbenchHardeningIntegrationTests
 {
     [Fact]
-    public async Task EmptyDocument_CanBeReadFilledAndImmediatelySearched()
+    public async Task EmptyDocument_CanBeReadFilledAndSynchronizesAfterCommit()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TemporaryDirectory();
         var services = CreateServices(temp.Path);
 
         var created = await services.Mutations.CreateAsync("chapter.md", "", cancellationToken);
-        Assert.True(created.IndexSynchronized);
+        Assert.False(created.IndexSynchronized);
         var empty = await services.Repository.SliceReader.ReadSliceAsync(
             "chapter.md",
             new SemanticPointer("document"),
@@ -50,7 +50,7 @@ public sealed class WorkbenchHardeningIntegrationTests
                     "# Chapter 1\n\nhardening-marker")]),
             cancellationToken);
 
-        Assert.True(patched.IndexSynchronized);
+        Assert.False(patched.IndexSynchronized);
         Assert.Equal(
             "# Chapter 1\n\nhardening-marker",
             await File.ReadAllTextAsync(Path.Combine(temp.Path, "chapter.md"), cancellationToken));
@@ -210,7 +210,8 @@ public sealed class WorkbenchHardeningIntegrationTests
             guard,
             loader,
             parser,
-            synchronizer);
+            new ImmediateIndexSynchronizationScheduler(synchronizer),
+            state);
         var navigation = new WorkspaceNavigationService(
             config,
             guard,

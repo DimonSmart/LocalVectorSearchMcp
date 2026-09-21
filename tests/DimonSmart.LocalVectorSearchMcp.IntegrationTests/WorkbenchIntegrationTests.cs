@@ -56,7 +56,7 @@ public sealed class WorkbenchIntegrationTests
     }
 
     [Fact]
-    public async Task Mutations_CreatePatchMoveDelete_AreImmediatelyIndexed()
+    public async Task Mutations_CreatePatchMoveDelete_ReportPendingSynchronization()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TemporaryDirectory();
@@ -66,7 +66,7 @@ public sealed class WorkbenchIntegrationTests
             "chapters/one.md",
             "# Original Heading\n\nold-marker body.\n",
             cancellationToken);
-        Assert.True(created.IndexSynchronized);
+        Assert.False(created.IndexSynchronized);
         Assert.NotEmpty(await services.Repository.FullTextSearch.SearchAsync(
             "old-marker", 10, cancellationToken));
         await Assert.ThrowsAsync<WorkspaceMutationException>(() => services.Mutations.CreateAsync(
@@ -97,7 +97,7 @@ public sealed class WorkbenchIntegrationTests
                 "chapters/one.md",
                 [new PatchOperation(PatchOperationKind.Replace, paragraphAnchor, "new-marker body.")]),
             cancellationToken);
-        Assert.True(patched.IndexSynchronized);
+        Assert.False(patched.IndexSynchronized);
         Assert.Empty(await services.Repository.FullTextSearch.SearchAsync(
             "old-marker", 10, cancellationToken));
         Assert.NotEmpty(await services.Repository.FullTextSearch.SearchAsync(
@@ -106,7 +106,7 @@ public sealed class WorkbenchIntegrationTests
         var moved = await services.Mutations.MoveAsync(
             new MoveRequest("chapters/one.md", "chapters/two.md", patched.SourceHash!),
             cancellationToken);
-        Assert.True(moved.IndexSynchronized);
+        Assert.False(moved.IndexSynchronized);
         var indexedPaths = await services.Repository.DocumentStore.GetDocumentHashesAsync(cancellationToken);
         Assert.DoesNotContain("chapters/one.md", indexedPaths.Keys);
         Assert.Contains("chapters/two.md", indexedPaths.Keys);
@@ -114,7 +114,7 @@ public sealed class WorkbenchIntegrationTests
         var deleted = await services.Mutations.DeleteAsync(
             new DeleteRequest("chapters/two.md", moved.SourceHash!),
             cancellationToken);
-        Assert.True(deleted.IndexSynchronized);
+        Assert.False(deleted.IndexSynchronized);
         Assert.Empty(await services.Repository.DocumentStore.GetDocumentHashesAsync(cancellationToken));
         Assert.Empty(await services.Repository.FullTextSearch.SearchAsync(
             "new-marker", 10, cancellationToken));
@@ -429,7 +429,12 @@ public sealed class WorkbenchIntegrationTests
             state,
             operationGate);
         var mutations = new WorkspaceMutationService(
-            config, guard, loader, parser, synchronizer);
+            config,
+            guard,
+            loader,
+            parser,
+            new ImmediateIndexSynchronizationScheduler(synchronizer),
+            state);
         var navigation = new WorkspaceNavigationService(
             config, guard, loader, parser);
         var indexer = new KnowledgeBaseIndexer(

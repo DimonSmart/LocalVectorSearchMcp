@@ -12,7 +12,8 @@ public sealed class WorkspaceMutationService(
     KnowledgeBasePathGuard pathGuard,
     IMarkdownDocumentLoader loader,
     IMarkdownElementParser parser,
-    IWorkspaceIndexSynchronizer synchronizer) : IWorkspaceMutationService
+    IWorkspaceIndexSynchronizationScheduler synchronizationScheduler,
+    IIndexSynchronizationState synchronizationState) : IWorkspaceMutationService
 {
     private const int MaxPatchAttempts = 3;
     private readonly SemaphoreSlim mutationGate = new(1, 1);
@@ -52,9 +53,10 @@ public sealed class WorkspaceMutationService(
                 elements,
                 resolvedOperations);
 
+            string updatedSourceHash;
             try
             {
-                await WriteAtomicallyAsync(
+                updatedSourceHash = await WriteAtomicallyAsync(
                     absolute,
                     resultingSource,
                     document.HasUtf8Bom,
@@ -71,15 +73,7 @@ public sealed class WorkspaceMutationService(
                     "The document kept changing while the patch was being applied.");
             }
 
-            var updated = await loader.LoadFileAsync(
-                config.KnowledgeBase,
-                normalized,
-                cancellationToken);
-            return await SynchronizeMutationAsync(
-                normalized,
-                updated.SourceHash,
-                null,
-                cancellationToken);
+            return ScheduleSynchronization(normalized, updatedSourceHash, null);
         }
 
         throw new DocumentConflictException(
@@ -158,15 +152,10 @@ public sealed class WorkspaceMutationService(
             await stream.FlushAsync(cancellationToken);
         }
 
-        var document = await loader.LoadFileAsync(
-            config.KnowledgeBase,
+        return ScheduleSynchronization(
             normalized,
-            cancellationToken);
-        return await SynchronizeMutationAsync(
-            normalized,
-            document.SourceHash,
-            null,
-            cancellationToken);
+            Core.Storage.StableHash.HashBytes(bytes),
+            null);
     }
 
     public Task<MutationResponse> MoveAsync(
@@ -210,32 +199,9 @@ public sealed class WorkspaceMutationService(
             cancellationToken);
         File.Move(sourceAbsolute, targetAbsolute);
 
-        var errors = new List<string>();
-        try
-        {
-            await synchronizer.ReconcileAsync(sourcePath, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            errors.Add($"{sourcePath}: {exception.Message}");
-        }
-
-        try
-        {
-            await synchronizer.ReconcileAsync(targetPath, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            errors.Add($"{targetPath}: {exception.Message}");
-        }
-
-        var error = errors.Count == 0 ? null : string.Join("; ", errors);
-        return new MutationResponse(
-            targetPath,
-            document.SourceHash,
-            error is null,
-            error,
-            sourcePath);
+        synchronizationState.MarkDirty(sourcePath, "Index synchronization is pending.");
+        synchronizationScheduler.Schedule(sourcePath);
+        return ScheduleSynchronization(targetPath, document.SourceHash, sourcePath);
     }
 
     public Task<MutationResponse> DeleteAsync(
@@ -268,38 +234,17 @@ public sealed class WorkspaceMutationService(
             document.SourceHash,
             cancellationToken);
         File.Delete(absolute);
-        return await SynchronizeMutationAsync(
-            normalized,
-            null,
-            null,
-            cancellationToken);
+        return ScheduleSynchronization(normalized, null, null);
     }
 
-    private async Task<MutationResponse> SynchronizeMutationAsync(
+    private MutationResponse ScheduleSynchronization(
         string path,
         string? sourceHash,
-        string? previousPath,
-        CancellationToken cancellationToken)
+        string? previousPath)
     {
-        try
-        {
-            await synchronizer.ReconcileAsync(path, cancellationToken);
-            return new MutationResponse(
-                path,
-                sourceHash,
-                true,
-                null,
-                previousPath);
-        }
-        catch (Exception exception)
-        {
-            return new MutationResponse(
-                path,
-                sourceHash,
-                false,
-                exception.Message,
-                previousPath);
-        }
+        synchronizationState.MarkDirty(path, "Index synchronization is pending.");
+        synchronizationScheduler.Schedule(path);
+        return new MutationResponse(path, sourceHash, false, null, previousPath);
     }
 
     private void EnsureWritesEnabled()
@@ -329,7 +274,7 @@ public sealed class WorkspaceMutationService(
         }
     }
 
-    private static async Task WriteAtomicallyAsync(
+    private static async Task<string> WriteAtomicallyAsync(
         string absolutePath,
         string source,
         bool includeBom,
@@ -359,6 +304,7 @@ public sealed class WorkspaceMutationService(
                 expectedSourceHash,
                 cancellationToken);
             File.Move(temporaryPath, absolutePath, true);
+            return Core.Storage.StableHash.HashBytes(payload);
         }
         finally
         {
