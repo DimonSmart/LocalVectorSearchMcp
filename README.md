@@ -2,7 +2,7 @@
 
 **Give Codex, Claude Code, and ChatGPT a local, editable, project-aware Markdown workbench.**
 
-LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database. Agents can search, read focused semantic slices, edit by semantic pointer, manage Markdown files, and navigate the workspace.
+LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database. Agents can search, read focused semantic slices, edit by semantic pointer, manage Markdown files, navigate the workspace, and manage ordinary image assets.
 
 It helps an agent find the right specification, architectural decision, guide, or invariant without loading the entire documentation set into its context.
 
@@ -16,6 +16,7 @@ Large repositories often contain the answer, but not in the file the agent happe
 - `kb_read` returns focused Markdown slices instead of forcing the agent to read whole files.
 - Element-level optimistic concurrency prevents an agent from overwriting a semantic target that changed after it was read, while unrelated document edits do not block the patch.
 - Optional file watching keeps the index synchronized with edits from VS Code, Obsidian, or other editors.
+- PNG, JPEG, WebP, and GIF files can be stored as non-indexed workspace assets under `images/`.
 - Every project gets its own local SQLite index.
 - No cloud database or mandatory YAML configuration is required.
 
@@ -31,6 +32,12 @@ SQLite FTS5 + sqlite-vec
 Scoped retrieval + semantic editing
        ↓
 MCP tools over stdio
+
+images/ assets
+       ↓
+save / list / load / delete
+       ↓
+not indexed
 ```
 
 Claude Code and Codex can launch the stdio server directly. ChatGPT can use the same MCP surface through OpenAI Secure MCP Tunnel, where the external `tunnel-client` bridges ChatGPT to the local stdio process.
@@ -97,8 +104,8 @@ Summarize the relevant invariants and cite the source files.
 ```
 
 ```text
-Find documentation related to FileAccessProvider and explain how
-session-level overrides are expected to work.
+Attach this PNG and save it as cover.png in the project images folder.
+Return the Markdown image reference.
 ```
 
 ## Capabilities
@@ -111,12 +118,13 @@ session-level overrides are expected to work.
 | Storage | Project-local SQLite |
 | Indexed content | Markdown |
 | Editable content | Markdown, guarded by exact element fingerprints |
-| Navigation | File listing and heading outlines |
+| Image assets | PNG, JPEG, WebP, GIF under `images/` |
+| Navigation | File listing, image listing, and heading outlines |
 | Transport | MCP over stdio |
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
 | Default embeddings | Local Ollama-compatible endpoint |
 
-The MCP server exposes ten workspace tools plus two transfer diagnostics:
+The MCP server exposes fourteen tools:
 
 - `kb_status` — inspect the current index.
 - `kb_reindex` — build or rebuild the index.
@@ -126,14 +134,59 @@ The MCP server exposes ten workspace tools plus two transfer diagnostics:
 - `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
 - `kb_list_files` — list Markdown files and non-indexed assets.
 - `kb_outline` — return a deterministic heading tree.
-- `debug_receive_file` — verify ChatGPT → MCP file handoff without persisting the received bytes.
-- `debug_return_test_image` — verify MCP → ChatGPT image-content transfer with a tiny PNG.
+- `kb_save_image` — save an image supplied through the OpenAI file parameter into `images/`.
+- `kb_list_images` — list supported image assets recursively with cursor pagination.
+- `kb_load_image` — return an existing image as a real MCP image content block.
+- `kb_delete_image` — delete one image asset under `images/`.
+
+## Image assets
+
+Image assets are intentionally simple files in the workspace rather than a media subsystem.
+
+`kb_save_image` accepts PNG, JPEG, WebP, and GIF, detects the real format from the file signature, and limits the incoming file to 25 MiB. It saves only directly under:
+
+```text
+<knowledgeBase.root>/images/
+```
+
+An explicit `fileName` must be a portable basename. It cannot choose a subdirectory, contain traversal/path components, use a Windows device name, or declare an extension that conflicts with the detected format. If the name is omitted, a safe basename from the OpenAI file metadata is used when possible; otherwise a generated name is used.
+
+Existing files are never overwritten. Collisions are resolved with suffixes:
+
+```text
+cover.png
+cover-2.png
+cover-3.png
+```
+
+The final move uses no-overwrite semantics, so concurrent saves cannot replace an existing asset.
+
+The response contains `path`, detected `mimeType`, byte count, lowercase SHA-256, and a Markdown reference such as:
+
+```markdown
+![Cover](images/cover.png)
+```
+
+`kb_list_images` and `kb_load_image` are read-only and work even when `knowledgeBase.allowWrites` is false. Listing is recursive so externally created paths such as `images/chapter-01/diagram.webp` can be discovered. The default page size is 50 and the maximum is 200.
+
+`kb_load_image` revalidates size, signature, and extension/signature agreement, computes SHA-256, and returns the real bytes as MCP `ImageContentBlock`.
+
+`kb_save_image` and `kb_delete_image` require:
+
+```yaml
+knowledgeBase:
+  allowWrites: true
+```
+
+Image paths are guarded against traversal, symlink/junction/reparse-point escape, and access outside `images/`. The OpenAI temporary download URL must be absolute HTTPS and cannot resolve to loopback/private/link-local destinations. Redirect targets are revalidated. Signed download URLs and query secrets are not logged or returned in controlled errors.
+
+Images are visible through `kb_list_files` as `asset`, but they do not create search chunks, enter FTS, call embeddings, or change the Markdown source set.
 
 ## Local-first and project-isolated
 
 Each server process belongs to one project and one configured Markdown root. It cannot select or search another project's index through the MCP API.
 
-The default embedding endpoint is local Ollama. Remote embedding endpoints are rejected unless they are explicitly enabled in YAML. Document text, embedding text, API keys, and raw vectors are not logged.
+The default embedding endpoint is local Ollama. Remote embedding endpoints are rejected unless they are explicitly enabled in YAML. Document text, embedding text, API keys, raw vectors, and signed image download URLs are not logged.
 
 ## Documentation
 
@@ -159,7 +212,9 @@ knowledgeBase:
   watchFiles: true
 ```
 
-Markdown files remain the source of truth. A mutation first changes the source file and then synchronizes the derived SQLite index. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers add a 16-character XxHash64 fingerprint of the exact source span, for example `1.2.p2~8f41c721d904a8bc`. `kb_patch` validates those anchors against the current source and can relocate an unchanged element after a structural shift. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
+Markdown files remain the source of truth for indexed knowledge. A Markdown mutation first changes the source file and then synchronizes the derived SQLite index. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers add a 16-character XxHash64 fingerprint of the exact source span, for example `1.2.p2~8f41c721d904a8bc`. `kb_patch` validates those anchors against the current source and can relocate an unchanged element after a structural shift. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
+
+Image save/delete are independent asset mutations and do not synchronize the Markdown index.
 
 ### `kb_patch` examples
 
@@ -221,6 +276,6 @@ An unrelated edit elsewhere in the file does not invalidate an element anchor. I
 
 ## Current scope
 
-The current version supports local Markdown and discovers ordinary assets through file listing without indexing them. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server. Two diagnostic tools can transfer a temporary file into the server for hashing and return a test PNG, but they do not persist binary assets or edit Markdown image references.
+The current version supports indexed local Markdown plus ordinary image assets under `images/`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
 
-PDF/DOCX/OCR, binary editing, image embeddings, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
+PDF/DOCX/OCR, arbitrary binary upload, image embeddings/search, image resizing/transcoding/thumbnails, automatic Markdown image insertion, a media database, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.

@@ -11,7 +11,7 @@ tunnel-client
     ↓ stdio
 local-vector-search-mcp
     ↓
-configured Markdown workspace
+configured Markdown workspace + images/
 ```
 
 LocalVectorSearchMcp does not implement tunnel authentication, HTTP hosting, OAuth, or tunnel protocol logic. Tunnel credentials belong to `tunnel-client`.
@@ -19,8 +19,8 @@ LocalVectorSearchMcp does not implement tunnel authentication, HTTP hosting, OAu
 ## Prerequisites
 
 - LocalVectorSearchMcp installed and runnable as `local-vector-search-mcp`.
-- The embedding provider required by your LocalVectorSearchMcp configuration, if you plan to reindex or run semantic search.
-- Access to OpenAI Secure MCP Tunnel and its `tunnel-client` distribution.
+- The embedding provider required by your configuration if you plan to reindex or run semantic search.
+- Access to OpenAI Secure MCP Tunnel and its current `tunnel-client` distribution.
 - A tunnel ID and runtime API key created through the OpenAI tunnel setup flow.
 
 Use the `tunnel-client` version and distribution provided by OpenAI for your account/workspace. The tunnel CLI can evolve independently of this project.
@@ -41,17 +41,11 @@ storage:
   path: C:/Projects/MyKnowledgeBase/.local-vector-search-mcp/index.db
 ```
 
-For this deployment style, use:
-
-- an absolute `--config` path;
-- an explicit `knowledgeBase.root`;
-- an explicit `storage.path`.
-
-The ordinary configless Claude Code and Codex scenarios remain supported; these recommendations are specific to the tunnel scenario.
+For this deployment style, use an absolute `--config` path, explicit `knowledgeBase.root`, and explicit `storage.path`.
 
 ## Initialize the tunnel runtime
 
-The following PowerShell example uses a local stdio MCP child process:
+A PowerShell setup for a local stdio child process may look like:
 
 ```powershell
 $env:CONTROL_PLANE_API_KEY = "<runtime-key>"
@@ -63,43 +57,26 @@ $env:CONTROL_PLANE_API_KEY = "<runtime-key>"
   --mcp-command "local-vector-search-mcp --config C:/Configs/my-kb.yml"
 ```
 
-Do not put the runtime key or other secrets inside `--mcp-command`, LocalVectorSearchMcp YAML, source control, shell scripts committed to the repository, or LocalVectorSearchMcp CLI options.
+Do not put the runtime key or other secrets inside `--mcp-command`, LocalVectorSearchMcp YAML, source control, or LocalVectorSearchMcp CLI options.
 
-Validate the profile before starting it:
-
-```powershell
-.\tunnel-client.exe doctor `
-  --profile local-vector-search `
-  --explain
-```
-
-Then run it:
+Validate and run the profile using the commands exposed by your current OpenAI tunnel distribution, for example:
 
 ```powershell
-.\tunnel-client.exe run `
-  --profile local-vector-search
+.\tunnel-client.exe doctor --profile local-vector-search --explain
+.\tunnel-client.exe run --profile local-vector-search
 ```
-
-If your `tunnel-client` version uses the managed runtime flow, the equivalent setup may use:
-
-```text
-tunnel-client runtimes connect
-tunnel-client runtimes status
-```
-
-Use the flow exposed by your current OpenAI tunnel setup. LocalVectorSearchMcp itself is unchanged in either case.
 
 ## Connect from ChatGPT
 
 After the tunnel runtime reports ready:
 
-1. Add or select the Secure MCP Tunnel in ChatGPT using the tunnel created for this runtime.
-2. Refresh or scan the connector so ChatGPT discovers the MCP tools.
-3. Verify that the twelve LocalVectorSearchMcp tools are visible.
+1. Add or select the Secure MCP Tunnel in ChatGPT.
+2. Refresh tool discovery.
+3. Confirm that all fourteen LocalVectorSearchMcp tools are visible.
 4. Call `kb_status`.
 5. Call `kb_search` and `kb_read` against the configured workspace.
 
-The MCP surface is the same surface used by Claude Code and Codex:
+The surface is:
 
 ```text
 kb_status
@@ -112,27 +89,67 @@ kb_move
 kb_delete
 kb_list_files
 kb_outline
-debug_receive_file
-debug_return_test_image
+kb_save_image
+kb_list_images
+kb_load_image
+kb_delete_image
 ```
 
-## File and image transfer diagnostics
+## Image transfer and storage
 
-The two `debug_*` tools exist specifically to isolate ChatGPT/Secure-Tunnel file-transfer behavior before binary asset upload is added to the workspace model.
+### ChatGPT → workspace
 
-`debug_receive_file` declares its top-level `file` argument through `_meta["openai/fileParams"]`. ChatGPT should therefore pass the OpenAI file object containing `download_url` and `file_id`, plus optional `mime_type` and `file_name`. The server downloads the temporary HTTPS URL, streams at most 25 MiB, does not save the bytes, and returns byte count, SHA-256, MIME information, and a short hexadecimal prefix.
+`kb_save_image` declares its top-level `file` argument through:
 
-Use it for three manual checks:
+```text
+_meta["openai/fileParams"] = ["file"]
+```
 
-1. Attach a small PNG to the conversation and ask ChatGPT to pass that file to `debug_receive_file`.
-2. Generate an image in ChatGPT, then ask ChatGPT to pass the just-generated image to `debug_receive_file`.
-3. Select an existing image from ChatGPT's file library, then pass it to `debug_receive_file`.
+ChatGPT passes the OpenAI file object containing `download_url` and `file_id`, with optional `mime_type` and `file_name`. The server downloads the temporary URL over HTTPS, enforces a 25 MiB hard limit, detects the real image format from its signature, computes SHA-256, and stores it in:
 
-If the second scenario works, the desired Image Generation → ChatGPT file object → Secure MCP Tunnel → local MCP chain is available without base64 arguments or a custom upload protocol.
+```text
+<knowledgeBase.root>/images/
+```
 
-`debug_return_test_image` performs the independent reverse-direction check. It returns a tiny valid PNG as standard MCP `ImageContentBlock`. Ask ChatGPT to call it and confirm that an image is received/rendered.
+Supported formats are PNG, JPEG, WebP, and GIF.
 
-These diagnostics intentionally do not write assets into the configured workspace. They can be removed or replaced by the chosen production asset-import workflow after the experiment.
+The temporary URL is security-sensitive. LocalVectorSearchMcp rejects non-HTTPS URLs, URL user-info, loopback/private/link-local destinations, and unsafe redirect targets. It does not log the complete signed URL or query string.
+
+Saving requires:
+
+```yaml
+knowledgeBase:
+  allowWrites: true
+```
+
+Example request intent:
+
+```text
+Save this attached image as chapter-10-01.png with alt text
+"Diagram for chapter 10".
+```
+
+A successful response includes a Markdown snippet such as:
+
+```markdown
+![Diagram for chapter 10](images/chapter-10-01.png)
+```
+
+Existing files are not overwritten. A collision produces `chapter-10-01-2.png`, then `-3`, and so on.
+
+### Workspace → ChatGPT
+
+`kb_list_images` recursively lists supported image assets beneath `images/` with cursor pagination. It is read-only.
+
+`kb_load_image("images/chapter-10-01.png")` revalidates size and signature, computes SHA-256, and returns the actual image as standard MCP `ImageContentBlock` plus structured metadata. ChatGPT can therefore inspect or analyze an existing workspace image without a custom base64 protocol.
+
+Both list and load work when `knowledgeBase.allowWrites=false`.
+
+### Delete
+
+`kb_delete_image` deletes exactly one supported image file beneath `images/` and requires writes to be enabled. Nested paths created by external tools are supported. Parent directories are not removed automatically.
+
+Images remain ordinary assets. They are visible in `kb_list_files` but are not indexed, embedded, or added to FTS/vector search.
 
 ## Read-only deployment
 
@@ -143,52 +160,40 @@ knowledgeBase:
   allowWrites: false
 ```
 
-The server still exposes its normal MCP surface, but mutation calls are rejected by the existing application-level write guard. No tunnel-specific scopes or authentication rules are required.
+Search/read/list operations, including `kb_list_images` and `kb_load_image`, remain available. Markdown mutations plus image save/delete are rejected by the application write guard.
 
 ## Writable deployment
 
-Enable writes only for a workspace where ChatGPT should be allowed to modify Markdown:
+Enable writes only for a workspace where ChatGPT should be allowed to modify sources/assets:
 
 ```yaml
 knowledgeBase:
   allowWrites: true
 ```
 
-The existing `kb_patch`, `kb_create`, `kb_move`, and `kb_delete` behavior is then used without any tunnel-specific implementation. Whether ChatGPT can execute write actions also depends on the capabilities and policy of the ChatGPT product/workspace in which the connector is used.
+Whether ChatGPT can execute write actions also depends on the capabilities and policy of the ChatGPT product/workspace in which the connector is used.
 
 ## One active stdio runtime per tunnel ID
 
 For one tunnel ID that bridges a stdio MCP server, run only one active `tunnel-client` instance. During restart or upgrade, stop the old runtime before starting the new one.
 
-This is a Secure MCP Tunnel runtime constraint, not a LocalVectorSearchMcp multi-process or storage rule.
+This is a Secure MCP Tunnel runtime constraint, not a LocalVectorSearchMcp storage rule.
 
 ## Manual verification
 
-Use this sequence after initial setup or after changing tunnel configuration:
+After setup:
 
-1. Install or update the OpenAI-provided `tunnel-client`.
-2. Create or select the tunnel.
-3. Create a runtime API key.
-4. Configure the local stdio command with an absolute LocalVectorSearchMcp config path.
-5. Run `tunnel-client doctor --profile local-vector-search --explain`.
-6. Start the tunnel runtime.
-7. Confirm that the runtime reports ready.
-8. Add or select the tunnel in ChatGPT and refresh tool discovery.
-9. Confirm that all twelve tools are discovered.
-10. Call `kb_status`.
-11. Call `kb_search`.
-12. Call `kb_read`.
-13. Call `debug_return_test_image` and verify that ChatGPT receives a PNG.
-14. Pass a small attached PNG to `debug_receive_file` and verify the returned size and SHA-256.
-
-For a workspace intended to be writable, additionally verify both configurations:
-
-```text
-allowWrites=false -> mutation is rejected
-allowWrites=true  -> mutation succeeds
-```
-
-Run the writable check only when the ChatGPT product/workspace permits write MCP actions.
+1. Start the configured LocalVectorSearchMcp stdio command locally and verify it starts cleanly.
+2. Run tunnel doctor and start the tunnel runtime.
+3. Connect ChatGPT and refresh tool discovery.
+4. Confirm exactly fourteen tools.
+5. Call `kb_status`, `kb_search`, and `kb_read`.
+6. Call `kb_list_images`.
+7. Call `kb_load_image` for an existing PNG and confirm ChatGPT receives an image.
+8. In a disposable writable workspace, attach a small PNG and call `kb_save_image`; verify the file, SHA-256, and Markdown response.
+9. Save the same name twice and confirm no overwrite.
+10. Call `kb_delete_image` and confirm only the target asset disappears.
+11. Repeat list/load with writes disabled and confirm they remain available.
 
 ## Troubleshooting
 
@@ -198,24 +203,29 @@ Use an absolute `--config` path and explicit absolute `knowledgeBase.root` and `
 
 ### MCP initialization or tool discovery fails
 
-Run `tunnel-client doctor --profile local-vector-search --explain`. Also run the same LocalVectorSearchMcp command locally to confirm that it starts as a stdio server.
+Run the diagnostic command provided by your current `tunnel-client` distribution and also run the same LocalVectorSearchMcp command locally.
 
-LocalVectorSearchMcp stdout is reserved for MCP protocol traffic. Diagnostics and logs must go to stderr. Do not add `Console.WriteLine` startup messages or logging providers that write diagnostics to stdout.
+LocalVectorSearchMcp stdout is reserved for MCP protocol traffic. Diagnostics and logs must go to stderr.
 
-### A restarted tunnel behaves inconsistently
+### Image save is rejected
 
-Make sure the previous `tunnel-client` instance using the same stdio tunnel ID is stopped before the replacement instance starts.
+Check all of the following:
 
-### Writes are rejected
+- `knowledgeBase.allowWrites=true`;
+- the source is PNG/JPEG/WebP/GIF and not over 25 MiB;
+- explicit `fileName` is a basename, not a path;
+- the extension agrees with the actual image signature.
 
-Check `knowledgeBase.allowWrites`. The default is `false`. Enabling writes is a LocalVectorSearchMcp application decision; tunnel authentication does not replace or override this guard.
+### Image list/load works but save/delete does not
+
+This is expected when `allowWrites=false`. List/load are read-only; save/delete are mutations.
 
 ### Credentials appear in repository configuration
 
-Remove them from LocalVectorSearchMcp configuration and history. Runtime/tunnel credentials belong to `tunnel-client` or its environment, for example `CONTROL_PLANE_API_KEY`; they are not LocalVectorSearchMcp settings.
+Remove them from LocalVectorSearchMcp configuration and history. Runtime/tunnel credentials belong to `tunnel-client` or its environment. OpenAI signed file download URLs are transient input and must not be copied into logs or configuration.
 
 ## Scope boundary
 
 Secure MCP Tunnel provides remote connectivity to the existing local stdio process. It does not turn LocalVectorSearchMcp into an HTTP MCP server.
 
-Direct remote HTTP MCP hosting, OAuth/OIDC, JWT validation, CORS, reverse proxy configuration, TLS termination, HTTP health endpoints, and a custom tunnel protocol client remain outside this project's current scope.
+Direct remote HTTP MCP hosting, OAuth/OIDC, JWT validation, CORS, reverse proxy configuration, TLS termination, HTTP health endpoints, and a custom tunnel protocol client remain outside this project's scope.
