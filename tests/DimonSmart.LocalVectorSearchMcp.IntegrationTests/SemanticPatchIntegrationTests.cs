@@ -4,6 +4,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
@@ -249,6 +250,131 @@ public sealed class SemanticPatchIntegrationTests
                 TestContext.Current.CancellationToken));
     }
 
+    [Theory]
+    [InlineData(PatchOperationKind.InsertAfter)]
+    [InlineData(PatchOperationKind.InsertBefore)]
+    public async Task Patch_SingleImageInsertion_AddsExactlyOneElement(PatchOperationKind kind)
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "chapter.md");
+        await File.WriteAllTextAsync(
+            path,
+            "# Test\n\nParagraph A\n\nParagraph B\n",
+            TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+
+        await service.PatchAsync(
+            new PatchRequest(
+                "chapter.md",
+                [new PatchOperation(
+                    kind,
+                    Anchor("1.p1", "Paragraph A"),
+                    "![image](images/test.png)")]),
+            TestContext.Current.CancellationToken);
+
+        var result = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(1, result.Split("![image](images/test.png)").Length - 1);
+        Assert.Equal(3, new MarkdownElementParser()
+            .Parse(await new MarkdownDocumentLoader().LoadFileAsync(
+                new KnowledgeBaseConfig { Root = temp.Path },
+                "chapter.md",
+                TestContext.Current.CancellationToken))
+            .Count(element => element.Kind == MarkdownElementKind.Paragraph));
+    }
+
+    [Theory]
+    [InlineData("1.p1", "First replacement.")]
+    [InlineData("1.p2", "Second replacement.")]
+    public async Task Patch_ReplacesOnlyTheDirectlyAddressedIdenticalParagraph(
+        string pointer,
+        string replacement)
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "chapter.md");
+        await File.WriteAllTextAsync(
+            path,
+            "# Test\n\nSame paragraph\n\nSame paragraph\n",
+            TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+
+        await service.PatchAsync(
+            new PatchRequest(
+                "chapter.md",
+                [new PatchOperation(
+                    PatchOperationKind.Replace,
+                    Anchor(pointer, "Same paragraph"),
+                    replacement)]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            pointer == "1.p1"
+                ? "# Test\n\nFirst replacement.\n\nSame paragraph\n"
+                : "# Test\n\nSame paragraph\n\nSecond replacement.\n",
+            await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("1.p1")]
+    [InlineData("1.p2")]
+    public async Task Patch_DeletesOnlyOneDirectlyAddressedIdenticalParagraph(string pointer)
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "chapter.md");
+        await File.WriteAllTextAsync(
+            path,
+            "# Test\n\nSame paragraph\n\nSame paragraph\n",
+            TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+
+        await service.PatchAsync(
+            new PatchRequest(
+                "chapter.md",
+                [new PatchOperation(
+                    PatchOperationKind.Delete,
+                    Anchor(pointer, "Same paragraph"))]),
+            TestContext.Current.CancellationToken);
+
+        var result = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(1, result.Split("Same paragraph").Length - 1);
+    }
+
+    [Fact]
+    public async Task Patch_CommitsOnceAndReturnsBeforeSlowIndexSynchronization()
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "chapter.md");
+        await File.WriteAllTextAsync(
+            path,
+            "# Test\n\nParagraph A\n",
+            TestContext.Current.CancellationToken);
+        var scheduler = new RecordingScheduler();
+        var config = new LocalVectorSearchMcpConfig
+        {
+            KnowledgeBase = new KnowledgeBaseConfig { Root = temp.Path, AllowWrites = true }
+        };
+        var service = new WorkspaceMutationService(
+            config,
+            new KnowledgeBasePathGuard(config),
+            new MarkdownDocumentLoader(),
+            new MarkdownElementParser(),
+            scheduler,
+            new InMemoryIndexSynchronizationState());
+
+        var response = await service.PatchAsync(
+            new PatchRequest(
+                "chapter.md",
+                [new PatchOperation(
+                    PatchOperationKind.InsertAfter,
+                    Anchor("1.p1", "Paragraph A"),
+                    "![image](images/test.png)")]),
+            TestContext.Current.CancellationToken);
+
+        var result = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        Assert.False(response.IndexSynchronized);
+        Assert.Equal(["chapter.md"], scheduler.Paths);
+        Assert.Equal(1, result.Split("![image](images/test.png)").Length - 1);
+    }
+
     [Fact]
     public async Task Patch_ResolvesAllOperationsAgainstSameRevision()
     {
@@ -365,7 +491,8 @@ public sealed class SemanticPatchIntegrationTests
             new KnowledgeBasePathGuard(config),
             new MarkdownDocumentLoader(),
             new MarkdownElementParser(),
-            new NoOpSynchronizer());
+            new ImmediateIndexSynchronizationScheduler(new NoOpSynchronizer()),
+            new InMemoryIndexSynchronizationState());
     }
 
     private static string Anchor(string pointer, string exactText)
@@ -379,5 +506,12 @@ public sealed class SemanticPatchIntegrationTests
             string relativePath,
             CancellationToken cancellationToken)
             => Task.FromResult(true);
+    }
+
+    private sealed class RecordingScheduler : IWorkspaceIndexSynchronizationScheduler
+    {
+        public List<string> Paths { get; } = [];
+
+        public void Schedule(string relativePath) => Paths.Add(relativePath);
     }
 }

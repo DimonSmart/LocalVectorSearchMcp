@@ -69,12 +69,16 @@ public static class ServiceRegistration
             sp => sp.GetRequiredService<SqliteFullTextSearchService>());
         services.AddSingleton<IKnowledgeBaseIndexer, KnowledgeBaseIndexer>();
         services.AddSingleton<IWorkspaceIndexSynchronizer, WorkspaceIndexSynchronizer>();
+        services.AddSingleton<WorkspaceIndexSynchronizationScheduler>();
+        services.AddSingleton<IWorkspaceIndexSynchronizationScheduler>(
+            sp => sp.GetRequiredService<WorkspaceIndexSynchronizationScheduler>());
         services.AddSingleton<IKnowledgeSearchService, KnowledgeSearchService>();
         services.AddSingleton<ISemanticPointerReader, SemanticPointerReader>();
         services.AddSingleton<IWorkspaceMutationService, WorkspaceMutationService>();
         services.AddSingleton<IWorkspaceNavigationService, WorkspaceNavigationService>();
         services.AddTransient<IWorkspaceImageService, WorkspaceImageService>();
         services.AddHostedService<MarkdownWorkspaceWatcher>();
+        services.AddHostedService(sp => sp.GetRequiredService<WorkspaceIndexSynchronizationScheduler>());
 
         services
             .AddHttpClient<IEmbeddingProvider, OpenAiCompatibleEmbeddingProvider>(

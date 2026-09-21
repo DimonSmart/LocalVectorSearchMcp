@@ -106,6 +106,11 @@ public interface IWorkspaceIndexSynchronizer
     Task<bool> ReconcileAsync(string relativePath, CancellationToken cancellationToken);
 }
 
+public interface IWorkspaceIndexSynchronizationScheduler
+{
+    void Schedule(string relativePath);
+}
+
 public sealed record IndexSynchronizationStatus(
     int PendingFiles,
     IReadOnlyList<string> Paths,
