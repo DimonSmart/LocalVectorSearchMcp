@@ -76,9 +76,11 @@ public static class ServiceRegistration
         services.AddTransient<IWorkspaceImageService, WorkspaceImageService>();
         services.AddHostedService<MarkdownWorkspaceWatcher>();
 
-        services.AddHttpClient<IEmbeddingProvider, OpenAiCompatibleEmbeddingProvider>(
-            client => client.Timeout =
-                TimeSpan.FromSeconds(config.Embedding.TimeoutSeconds));
+        services
+            .AddHttpClient<IEmbeddingProvider, OpenAiCompatibleEmbeddingProvider>(
+                client => client.Timeout =
+                    TimeSpan.FromSeconds(config.Embedding.TimeoutSeconds))
+            .RemoveAllLoggers();
         services
             .AddHttpClient<IRemoteFileDownloader, SecureFileDownloader>(
                 client => client.Timeout = TimeSpan.FromSeconds(30))
