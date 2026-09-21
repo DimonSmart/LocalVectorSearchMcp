@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -6,10 +7,10 @@ namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
 [JsonConverter(typeof(OpenAiFileParameterJsonConverter))]
 public sealed record OpenAiFileParameter(
     [property: JsonPropertyName("download_url")]
-    [property: JsonRequired]
+    [property: Required]
     string DownloadUrl,
     [property: JsonPropertyName("file_id")]
-    [property: JsonRequired]
+    [property: Required]
     string FileId,
     [property: JsonPropertyName("mime_type")]
     string MimeType = "",
