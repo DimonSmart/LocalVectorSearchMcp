@@ -6,8 +6,10 @@ namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
 [JsonConverter(typeof(OpenAiFileParameterJsonConverter))]
 public sealed record OpenAiFileParameter(
     [property: JsonPropertyName("download_url")]
+    [property: JsonRequired]
     string DownloadUrl,
     [property: JsonPropertyName("file_id")]
+    [property: JsonRequired]
     string FileId,
     [property: JsonPropertyName("mime_type")]
     string MimeType = "",
