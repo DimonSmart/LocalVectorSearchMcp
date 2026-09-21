@@ -18,9 +18,13 @@ internal static class ImageFileNamePolicy
         }
 
         var sourceName = TryResolveSourceName(sourceFileName, format);
-        return sourceName
-            ?? $"image-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"[..36]
-                + format.CanonicalExtension;
+        if (sourceName is not null)
+        {
+            return sourceName;
+        }
+
+        var random = Guid.NewGuid().ToString("N")[..12];
+        return $"image-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{random}{format.CanonicalExtension}";
     }
 
     public static string WithCollisionSuffix(string fileName, int suffix)
@@ -33,11 +37,9 @@ internal static class ImageFileNamePolicy
     public static string BuildMarkdown(string path, string? altText)
     {
         var alt = (altText ?? "")
-            .Replace("
-", " ", StringComparison.Ordinal)
-            .Replace('', ' ')
-            .Replace('
-', ' ')
+            .Replace("\r\n", " ", StringComparison.Ordinal)
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
             .Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("[", "\\[", StringComparison.Ordinal)
             .Replace("]", "\\]", StringComparison.Ordinal);
@@ -112,17 +114,20 @@ internal static class ImageFileNamePolicy
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new WorkspaceImageException($"{source} must be a non-empty file basename.");
+            throw new WorkspaceImageException(
+                $"{source} must be a non-empty file basename.");
         }
 
         if (value is "." or "..")
         {
-            throw new WorkspaceImageException($"{source} must be a file basename.");
+            throw new WorkspaceImageException(
+                $"{source} must be a file basename.");
         }
 
         if (value.EndsWith(' ') || value.EndsWith('.'))
         {
-            throw new WorkspaceImageException($"{source} cannot end with a space or dot.");
+            throw new WorkspaceImageException(
+                $"{source} cannot end with a space or dot.");
         }
 
         if (value.Any(char.IsControl)
@@ -134,7 +139,8 @@ internal static class ImageFileNamePolicy
         }
 
         var firstDot = value.IndexOf('.');
-        var deviceStem = (firstDot >= 0 ? value[..firstDot] : value).ToUpperInvariant();
+        var deviceStem = (firstDot >= 0 ? value[..firstDot] : value)
+            .ToUpperInvariant();
         if (deviceStem is "CON" or "PRN" or "AUX" or "NUL"
             || IsNumberedDevice(deviceStem, "COM")
             || IsNumberedDevice(deviceStem, "LPT"))
