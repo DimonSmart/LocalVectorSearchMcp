@@ -117,7 +117,7 @@ Return the Markdown image reference.
 | Hybrid ranking | Reciprocal Rank Fusion |
 | Storage | Project-local SQLite |
 | Indexed content | Markdown |
-| Editable content | Markdown, guarded by exact element fingerprints |
+| Editable content | Markdown, guarded by exact element and subtree hashes |
 | Image assets | PNG, JPEG, WebP, GIF under `images/` |
 | Navigation | File listing, image listing, and heading outlines |
 | Transport | MCP over stdio |
