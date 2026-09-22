@@ -128,17 +128,9 @@ public sealed class KnowledgeMcpTools(
                     JsonOptions.Default)
             };
         }
-        catch (Exception exception) when (
-            exception is SemanticPointerFormatException
-                or SemanticPointerNotFoundException
-                or SemanticAnchorConflictException
-                or KnowledgeBaseAccessException)
+        catch (Exception exception) when (IsControlledToolException(exception))
         {
-            return new CallToolResult
-            {
-                Content = [new TextContentBlock { Text = exception.Message }],
-                IsError = true
-            };
+            return ControlledToolError(exception);
         }
     }
 
@@ -223,22 +215,27 @@ public sealed class KnowledgeMcpTools(
                     JsonOptions.Default)
             };
         }
-        catch (Exception exception) when (IsControlledMutationException(exception))
+        catch (Exception exception) when (IsControlledToolException(exception))
         {
-            return new CallToolResult
-            {
-                Content = [new TextContentBlock { Text = exception.Message }],
-                IsError = true
-            };
+            return ControlledToolError(exception);
         }
     }
 
-    private static bool IsControlledMutationException(Exception exception)
+    private static bool IsControlledToolException(Exception exception)
         => exception is WorkspaceMutationException
+            or DocumentNotFoundException
             or DocumentConflictException
             or SemanticAnchorConflictException
             or SemanticPointerFormatException
+            or SemanticPointerNotFoundException
             or KnowledgeBaseAccessException;
+
+    private static CallToolResult ControlledToolError(Exception exception)
+        => new()
+        {
+            Content = [new TextContentBlock { Text = exception.Message }],
+            IsError = true
+        };
 
     private bool IsDestructiveRebuildRunning()
         => reindexCoordinator?.GetStatus().Current?.IsDestructiveRebuild == true;
@@ -267,8 +264,31 @@ public sealed class KnowledgeMcpTools(
 
     [McpServerTool(Name = "kb_outline")]
     [Description("Returns a deterministic heading outline for one Markdown file.")]
-    public Task<MarkdownOutline> OutlineAsync(
+    public async Task<CallToolResult> OutlineAsync(
         OutlineToolRequest request,
         CancellationToken cancellationToken)
-        => navigation.GetOutlineAsync(request.Path, cancellationToken);
+    {
+        try
+        {
+            var response = await navigation.GetOutlineAsync(
+                request.Path,
+                cancellationToken);
+            return new CallToolResult
+            {
+                Content =
+                [
+                    new TextContentBlock
+                    {
+                        Text = System.Text.Json.JsonSerializer.Serialize(
+                            response,
+                            JsonOptions.Default)
+                    }
+                ]
+            };
+        }
+        catch (Exception exception) when (IsControlledToolException(exception))
+        {
+            return ControlledToolError(exception);
+        }
+    }
 }

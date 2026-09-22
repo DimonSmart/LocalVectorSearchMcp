@@ -3,6 +3,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 namespace DimonSmart.LocalVectorSearchMcp.Server;
 
@@ -17,5 +18,6 @@ internal static class KnownCliExceptionFilter
             or VectorIndexException
             or FullTextSearchException
             or SemanticPointerFormatException
-            or SemanticPointerNotFoundException;
+            or SemanticPointerNotFoundException
+            or DocumentNotFoundException;
 }
