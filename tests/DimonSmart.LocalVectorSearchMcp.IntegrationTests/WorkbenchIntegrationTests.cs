@@ -313,7 +313,7 @@ public sealed class WorkbenchIntegrationTests
         Assert.Matches(@"^1~[0-9a-f]{16}~[0-9a-f]{16}$", outline.Headings[0].Pointer);
         Assert.Equal("Part", outline.Headings[0].Children[0].Title);
         Assert.Matches(
-            @"^1\.1\.1~[0-9a-f]{16}$",
+            @"^1\.1\.1~[0-9a-f]{16}~[0-9a-f]{16}$",
             outline.Headings[0].Children[0].Children[0].Pointer);
     }
 
