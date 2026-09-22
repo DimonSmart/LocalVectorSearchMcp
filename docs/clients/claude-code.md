@@ -90,7 +90,7 @@ Then ask:
 
 ```text
 Use kb_status to inspect the documentation index.
-If it is missing, call kb_reindex and report how many documents were indexed.
+If it is missing, call kb_reindex, poll kb_status until indexing.isRunning is false, and report kb_status.indexing.last.result.
 ```
 
 ## Remove the registration
