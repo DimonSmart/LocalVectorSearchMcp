@@ -60,7 +60,7 @@ public sealed class IntegrationTests
         var response = await search.SearchAsync(new SearchRequest("hybrid", SearchMode.Hybrid, 5), cancellationToken);
 
         var result = Assert.Single(response.Results);
-        Assert.Matches(@"^1\.p1~[0-9a-f]{16}$", result.Pointer);
+        Assert.Matches(@"^1\.p1~[0-9a-f]{16}~[0-9a-f]{16}$", result.Pointer);
         Assert.Equal($"notes.md::{result.Pointer}", result.FullPointer);
         Assert.Equal(result.Pointer, result.ReadHint.Pointer);
     }
