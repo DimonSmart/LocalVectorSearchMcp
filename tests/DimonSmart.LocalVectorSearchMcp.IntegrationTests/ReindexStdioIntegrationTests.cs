@@ -69,20 +69,28 @@ public sealed class ReindexStdioIntegrationTests
         Assert.NotNull(start);
         Assert.True(start.Started);
 
-        await embeddings.RequestReceived.Task.WaitAsync(cancellationToken);
-
-        var statusResult = await client.CallToolAsync(
-            "kb_status",
-            new Dictionary<string, object?>(),
-            cancellationToken: cancellationToken);
-        Assert.False(statusResult.IsError is true);
-        var status = JsonSerializer.Deserialize<StatusResponse>(
-            ResultText(statusResult),
-            JsonOptions.Default);
-        Assert.True(status?.Indexing?.IsRunning);
-        Assert.Equal(
-            "smoke.md",
-            status!.Indexing!.Current!.CurrentPath);
+        StatusResponse status;
+        do
+        {
+            var statusResult = await client.CallToolAsync(
+                "kb_status",
+                new Dictionary<string, object?>(),
+                cancellationToken: cancellationToken);
+            Assert.False(statusResult.IsError is true);
+            status = JsonSerializer.Deserialize<StatusResponse>(
+                ResultText(statusResult),
+                JsonOptions.Default)
+                ?? throw new Xunit.Sdk.XunitException(
+                    "kb_status returned invalid JSON.");
+            Assert.True(
+                status.Indexing?.IsRunning,
+                "Reindex finished before reaching the controlled embedding barrier.");
+            if (status.Indexing?.Current?.CurrentPath != "smoke.md")
+            {
+                await Task.Delay(10, cancellationToken);
+            }
+        }
+        while (status.Indexing?.Current?.CurrentPath != "smoke.md");
 
         var listResult = await client.CallToolAsync(
             "kb_list_files",
