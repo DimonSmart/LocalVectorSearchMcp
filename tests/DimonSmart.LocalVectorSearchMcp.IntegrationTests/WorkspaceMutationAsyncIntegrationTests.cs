@@ -7,6 +7,7 @@ using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
+using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
