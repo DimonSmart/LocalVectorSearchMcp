@@ -27,7 +27,7 @@ public sealed class SectionReplacementIntegrationTests
         await service.PatchAsync(
             new PatchRequest(
                 "chapter.md",
-                [new PatchOperation(kind, Anchor("1", "### Section A"), "### Renamed Section")]),
+                [new PatchOperation(kind, LegacyAnchor("1", "### Section A"), "### Renamed Section")]),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(
@@ -51,12 +51,36 @@ public sealed class SectionReplacementIntegrationTests
                     "chapter.md",
                     [new PatchOperation(
                         kind,
-                        Anchor("1", "### Section A"),
+                        LegacyAnchor("1", "### Section A"),
                         "### Section A\n\nNew paragraph.")]),
                 TestContext.Current.CancellationToken));
 
         Assert.Contains("exactly one editable Markdown element", exception.Message, StringComparison.Ordinal);
         Assert.Equal(source, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SelfMutation_V2HeadingPointerSurvivesDescendantEdit()
+    {
+        using var temp = new TemporaryDirectory();
+        const string original = "### Section A\n\nOld text.\n";
+        const string current = "### Section A\n\nHuman changed body.\n";
+        var path = await WriteAsync(temp.Path, current);
+        var pointer = V2Anchor(original, "1");
+        var service = CreateService(temp.Path);
+
+        await service.PatchAsync(
+            new PatchRequest(
+                "chapter.md",
+                [new PatchOperation(
+                    PatchOperationKind.ReplaceElement,
+                    pointer,
+                    "### Renamed Section")]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            "### Renamed Section\n\nHuman changed body.\n",
+            await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -73,7 +97,7 @@ public sealed class SectionReplacementIntegrationTests
                     "chapter.md",
                     [new PatchOperation(
                         PatchOperationKind.ReplaceElement,
-                        Anchor("1", "### Section A"),
+                        LegacyAnchor("1", "### Section A"),
                         "## Section A")]),
                 TestContext.Current.CancellationToken));
 
@@ -102,7 +126,7 @@ public sealed class SectionReplacementIntegrationTests
                 "chapter.md",
                 [new PatchOperation(
                     PatchOperationKind.ReplaceSection,
-                    Anchor("1.1", "### Section A"),
+                    V2Anchor(source, "1.1"),
                     "### Section A\n\nNew paragraph.")]),
             TestContext.Current.CancellationToken);
 
@@ -115,9 +139,8 @@ public sealed class SectionReplacementIntegrationTests
     public async Task ReplaceSection_AtEofConsumesRemainingSource()
     {
         using var temp = new TemporaryDirectory();
-        var path = await WriteAsync(
-            temp.Path,
-            "### Section A\n\nOld.\n\n#### Child\n\nChild text.\n");
+        const string source = "### Section A\n\nOld.\n\n#### Child\n\nChild text.\n";
+        var path = await WriteAsync(temp.Path, source);
         var service = CreateService(temp.Path);
 
         await service.PatchAsync(
@@ -125,7 +148,7 @@ public sealed class SectionReplacementIntegrationTests
                 "chapter.md",
                 [new PatchOperation(
                     PatchOperationKind.ReplaceSection,
-                    Anchor("1", "### Section A"),
+                    V2Anchor(source, "1"),
                     "### Section A\n\nNew.")]),
             TestContext.Current.CancellationToken);
 
@@ -148,7 +171,7 @@ public sealed class SectionReplacementIntegrationTests
                     "chapter.md",
                     [new PatchOperation(
                         PatchOperationKind.ReplaceSection,
-                        Anchor("1.p1", "Old text."),
+                        V2Anchor(source, "1.p1"),
                         "### Section A\n\nNew.")]),
                 TestContext.Current.CancellationToken));
 
@@ -172,7 +195,7 @@ public sealed class SectionReplacementIntegrationTests
                     "chapter.md",
                     [new PatchOperation(
                         PatchOperationKind.ReplaceSection,
-                        Anchor("1", "### Section A"),
+                        V2Anchor(source, "1"),
                         replacement)]),
                 TestContext.Current.CancellationToken));
 
@@ -184,9 +207,8 @@ public sealed class SectionReplacementIntegrationTests
     public async Task ReplaceSection_AllowsNestedReplacementHeadings()
     {
         using var temp = new TemporaryDirectory();
-        var path = await WriteAsync(
-            temp.Path,
-            "### Section A\n\nOld.\n\n### Section B\n\nKeep.\n");
+        const string source = "### Section A\n\nOld.\n\n### Section B\n\nKeep.\n";
+        var path = await WriteAsync(temp.Path, source);
         var service = CreateService(temp.Path);
 
         await service.PatchAsync(
@@ -194,7 +216,7 @@ public sealed class SectionReplacementIntegrationTests
                 "chapter.md",
                 [new PatchOperation(
                     PatchOperationKind.ReplaceSection,
-                    Anchor("1", "### Section A"),
+                    V2Anchor(source, "1"),
                     "### Section A\n\nText.\n\n#### Child\n\nChild text.\n\n##### Details\n\nDetails text.")]),
             TestContext.Current.CancellationToken);
 
@@ -207,9 +229,9 @@ public sealed class SectionReplacementIntegrationTests
     public async Task ReplaceSection_SafelyRelocatesShiftedHeading()
     {
         using var temp = new TemporaryDirectory();
-        var path = await WriteAsync(
-            temp.Path,
-            "# First\n\nA.\n\n# Inserted\n\nX.\n\n# Target\n\nOld.\n");
+        const string original = "# First\n\nA.\n\n# Target\n\nOld.\n";
+        const string current = "# First\n\nA.\n\n# Inserted\n\nX.\n\n# Target\n\nOld.\n";
+        var path = await WriteAsync(temp.Path, current);
         var service = CreateService(temp.Path);
 
         await service.PatchAsync(
@@ -217,7 +239,7 @@ public sealed class SectionReplacementIntegrationTests
                 "chapter.md",
                 [new PatchOperation(
                     PatchOperationKind.ReplaceSection,
-                    Anchor("2", "# Target"),
+                    V2Anchor(original, "2"),
                     "# Target\n\nNew.")]),
             TestContext.Current.CancellationToken);
 
@@ -227,28 +249,124 @@ public sealed class SectionReplacementIntegrationTests
     }
 
     [Fact]
-    public async Task ReplaceSection_RejectsAmbiguousRelocation()
+    public async Task ReplaceSection_RelocationThenRejectsChangedSubtree()
     {
         using var temp = new TemporaryDirectory();
-        const string source =
-            "# First\n\nA.\n\n" +
-            "# Changed\n\nB.\n\n" +
-            "# Target\n\nC.\n\n" +
-            "# Target\n\nD.\n";
-        var path = await WriteAsync(temp.Path, source);
+        const string original = "# First\n\nA.\n\n# Target\n\nOld.\n";
+        const string current = "# First\n\nA.\n\n# Inserted\n\nX.\n\n# Target\n\nHuman edit.\n";
+        var path = await WriteAsync(temp.Path, current);
         var service = CreateService(temp.Path);
 
-        await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
             () => service.PatchAsync(
                 new PatchRequest(
                     "chapter.md",
                     [new PatchOperation(
                         PatchOperationKind.ReplaceSection,
-                        Anchor("2", "# Target"),
+                        V2Anchor(original, "2"),
                         "# Target\n\nNew.")]),
                 TestContext.Current.CancellationToken));
 
+        Assert.Equal(SemanticAnchorConflictReason.SubtreeHashMismatch, exception.Reason);
+        Assert.Equal(current, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceSection_RejectsDescendantEdit()
+    {
+        using var temp = new TemporaryDirectory();
+        const string original = "### Section A\n\nOld.\n\n### Section B\n\nKeep.\n";
+        const string current = "### Section A\n\nHuman edit.\n\n### Section B\n\nKeep.\n";
+        var path = await WriteAsync(temp.Path, current);
+        var service = CreateService(temp.Path);
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => service.PatchAsync(
+                new PatchRequest(
+                    "chapter.md",
+                    [new PatchOperation(
+                        PatchOperationKind.ReplaceSection,
+                        V2Anchor(original, "1"),
+                        "### Section A\n\nNew.")]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(SemanticAnchorConflictReason.SubtreeHashMismatch, exception.Reason);
+        Assert.Equal(current, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceSection_RejectsRawNonElementEdit()
+    {
+        using var temp = new TemporaryDirectory();
+        const string original =
+            "### Section A\n\nText.\n\n<!-- original comment -->\n\n### Section B\n";
+        const string current =
+            "### Section A\n\nText.\n\n<!-- human comment edit -->\n\n### Section B\n";
+        var path = await WriteAsync(temp.Path, current);
+        var service = CreateService(temp.Path);
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => service.PatchAsync(
+                new PatchRequest(
+                    "chapter.md",
+                    [new PatchOperation(
+                        PatchOperationKind.ReplaceSection,
+                        V2Anchor(original, "1"),
+                        "### Section A\n\nNew.")]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(SemanticAnchorConflictReason.SubtreeHashMismatch, exception.Reason);
+        Assert.Equal(current, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceSection_LegacyAnchorIsRejectedBeforeMutation()
+    {
+        using var temp = new TemporaryDirectory();
+        const string source = "### Section A\n\nOld.\n";
+        var path = await WriteAsync(temp.Path, source);
+        var service = CreateService(temp.Path);
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => service.PatchAsync(
+                new PatchRequest(
+                    "chapter.md",
+                    [new PatchOperation(
+                        PatchOperationKind.ReplaceSection,
+                        LegacyAnchor("1", "### Section A"),
+                        "### Section A\n\nNew.")]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(SemanticAnchorConflictReason.MissingSubtreeHash, exception.Reason);
+        Assert.Contains("subtree hash", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(source, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceSection_RejectsAmbiguousRelocation()
+    {
+        using var temp = new TemporaryDirectory();
+        const string original = "# First\n\nA.\n\n# Target\n\nC.\n";
+        const string current =
+            "# First\n\nA.\n\n" +
+            "# Changed\n\nB.\n\n" +
+            "# Target\n\nC.\n\n" +
+            "# Target\n\nD.\n";
+        var path = await WriteAsync(temp.Path, current);
+        var service = CreateService(temp.Path);
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => service.PatchAsync(
+                new PatchRequest(
+                    "chapter.md",
+                    [new PatchOperation(
+                        PatchOperationKind.ReplaceSection,
+                        V2Anchor(original, "2"),
+                        "# Target\n\nNew.")]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(SemanticAnchorConflictReason.AmbiguousSemanticPointer, exception.Reason);
+        Assert.Equal(current, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -266,11 +384,11 @@ public sealed class SectionReplacementIntegrationTests
                     [
                         new PatchOperation(
                             PatchOperationKind.ReplaceSection,
-                            Anchor("1", "### Section A"),
+                            V2Anchor(source, "1"),
                             "### Section A\n\nNew."),
                         new PatchOperation(
                             PatchOperationKind.ReplaceElement,
-                            Anchor("1.p1", "Paragraph A1."),
+                            V2Anchor(source, "1.p1"),
                             "Changed.")
                     ]),
                 TestContext.Current.CancellationToken));
@@ -279,12 +397,42 @@ public sealed class SectionReplacementIntegrationTests
     }
 
     [Fact]
+    public async Task BatchWithValidSelfAndStaleSubtreeRejectsEverything()
+    {
+        using var temp = new TemporaryDirectory();
+        const string original =
+            "### Section A\n\nOld A.\n\n### Section B\n\nStable B.\n";
+        const string current =
+            "### Section A\n\nHuman A.\n\n### Section B\n\nStable B.\n";
+        var path = await WriteAsync(temp.Path, current);
+        var service = CreateService(temp.Path);
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => service.PatchAsync(
+                new PatchRequest(
+                    "chapter.md",
+                    [
+                        new PatchOperation(
+                            PatchOperationKind.ReplaceElement,
+                            V2Anchor(original, "2.p1"),
+                            "Agent B."),
+                        new PatchOperation(
+                            PatchOperationKind.ReplaceSection,
+                            V2Anchor(original, "1"),
+                            "### Section A\n\nAgent A.")
+                    ]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(SemanticAnchorConflictReason.SubtreeHashMismatch, exception.Reason);
+        Assert.Equal(current, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task ReplaceSection_BoundarySiblingCanBeEditedInSamePatch()
     {
         using var temp = new TemporaryDirectory();
-        var path = await WriteAsync(
-            temp.Path,
-            "### Section A\n\nOld.\n\n### Section B\n\nKeep.\n");
+        const string source = "### Section A\n\nOld.\n\n### Section B\n\nKeep.\n";
+        var path = await WriteAsync(temp.Path, source);
         var service = CreateService(temp.Path);
 
         await service.PatchAsync(
@@ -293,11 +441,11 @@ public sealed class SectionReplacementIntegrationTests
                 [
                     new PatchOperation(
                         PatchOperationKind.ReplaceSection,
-                        Anchor("1", "### Section A"),
+                        V2Anchor(source, "1"),
                         "### Section A\n\nNew."),
                     new PatchOperation(
                         PatchOperationKind.ReplaceElement,
-                        Anchor("2", "### Section B"),
+                        V2Anchor(source, "2"),
                         "### Renamed B")
                 ]),
             TestContext.Current.CancellationToken);
@@ -327,7 +475,7 @@ public sealed class SectionReplacementIntegrationTests
                 "chapter.md",
                 [new PatchOperation(
                     PatchOperationKind.ReplaceSection,
-                    Anchor("1", "### Section A"),
+                    V2Anchor(source, "1"),
                     "### Section A\n\nNew.")]),
             TestContext.Current.CancellationToken);
 
@@ -373,10 +521,23 @@ public sealed class SectionReplacementIntegrationTests
             new InMemoryIndexSynchronizationState());
     }
 
-    private static string Anchor(string pointer, string exactText)
+    private static string LegacyAnchor(string pointer, string exactText)
         => new SemanticAnchor(
             new SemanticPointer(pointer),
             SemanticFingerprint.Compute(exactText)).ToString();
+
+    private static string V2Anchor(string source, string pointer)
+    {
+        var document = new MarkdownSourceDocument(
+            "chapter.md",
+            "chapter.md",
+            source,
+            "hash",
+            DateTimeOffset.UtcNow);
+        var element = new MarkdownElementParser().Parse(document)
+            .Single(candidate => candidate.Pointer.Value == pointer);
+        return SemanticAnchor.FromElement(element).ToString();
+    }
 
     private sealed class NoOpSynchronizer : IWorkspaceIndexSynchronizer
     {

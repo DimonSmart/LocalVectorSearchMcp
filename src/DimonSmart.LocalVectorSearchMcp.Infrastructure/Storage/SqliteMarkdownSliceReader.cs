@@ -77,7 +77,7 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
             SemanticPointerParser.GetKind(resolvedPointer) == SemanticPointerKind.Document;
         var command = db.CreateCommand();
         command.CommandText = """
-            select e.pointer, e.kind, e.text, e.heading_path
+            select e.pointer, e.kind, e.text, e.heading_path, e.self_hash, e.subtree_hash
             from elements e
             where e.document_id = $documentId
               and (
@@ -109,7 +109,8 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
             var publicPointer = includeFingerprints
                 ? new SemanticAnchor(
                     new SemanticPointer(logicalPointer),
-                    SemanticFingerprint.Compute(elementText)).ToString()
+                    reader.GetString(4),
+                    reader.GetString(5)).ToString()
                 : logicalPointer;
 
             if (elements.Count >= maxElements)
@@ -162,7 +163,7 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
     {
         var command = db.CreateCommand();
         command.CommandText = """
-            select pointer, kind, text
+            select pointer, kind, text, self_hash, subtree_hash
             from elements
             where document_id = $documentId
               and source_length > 0
@@ -177,7 +178,9 @@ public sealed class SqliteMarkdownSliceReader(SqliteConnectionFactory factory) :
             result.Add(new SemanticAnchorCandidate(
                 new SemanticPointer(reader.GetString(0)),
                 Enum.Parse<MarkdownElementKind>(reader.GetString(1)),
-                reader.GetString(2)));
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4)));
         }
 
         return result;

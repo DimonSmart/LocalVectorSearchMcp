@@ -25,6 +25,20 @@ public enum PatchOperationKind
     Delete
 }
 
+public enum MutationScope
+{
+    Self,
+    Subtree
+}
+
+public static class PatchOperationKindExtensions
+{
+    public static MutationScope GetMutationScope(this PatchOperationKind kind)
+        => kind == PatchOperationKind.ReplaceSection
+            ? MutationScope.Subtree
+            : MutationScope.Self;
+}
+
 public sealed record PatchOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null);
 
 public sealed record PatchRequest(

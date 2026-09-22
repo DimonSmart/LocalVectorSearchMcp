@@ -117,7 +117,7 @@ Return the Markdown image reference.
 | Hybrid ranking | Reciprocal Rank Fusion |
 | Storage | Project-local SQLite |
 | Indexed content | Markdown |
-| Editable content | Markdown, guarded by exact element fingerprints |
+| Editable content | Markdown, guarded by exact element and subtree hashes |
 | Image assets | PNG, JPEG, WebP, GIF under `images/` |
 | Navigation | File listing, image listing, and heading outlines |
 | Transport | MCP over stdio |
@@ -212,17 +212,17 @@ knowledgeBase:
   watchFiles: true
 ```
 
-Markdown files remain the source of truth for indexed knowledge. A Markdown mutation commits the source file first and then schedules synchronization of the derived SQLite index. The mutation call does not wait for reconciliation to finish; `indexSynchronized: false` means the source commit succeeded but derived-index synchronization has not yet been confirmed. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers add a 16-character XxHash64 fingerprint of the exact source span, for example `1.2.p2~8f41c721d904a8bc`. `kb_patch` validates those anchors against the current source and can relocate an unchanged element after a structural shift. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
+Markdown files remain the source of truth for indexed knowledge. A Markdown mutation commits the source file first and then schedules synchronization of the derived SQLite index. The mutation call does not wait for reconciliation to finish; `indexSynchronized: false` means the source commit succeeded but derived-index synchronization has not yet been confirmed. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers use `logical~selfHash~subtreeHash`, where both values are 16-character lowercase XxHash64 hashes over exact UTF-8 source. `selfHash` covers the element itself; heading `subtreeHash` covers the complete section source range owned by `replace_section`, while leaf hashes are equal. `kb_patch` relocates only by kind plus `selfHash`; `replace_section` additionally validates `subtreeHash`. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
 
 Image save/delete are independent asset mutations and do not synchronize the Markdown index.
 
 ### `kb_patch` examples
 
-The MCP method accepts one `request` object. Inside it, `operations` is always an array, even when applying a single operation. Concrete-element pointers must use the fingerprinted anchors returned by `kb_read`, `kb_search`, or `kb_outline`. `kb_patch` does not accept `expectedSourceHash`.
+The MCP method accepts one `request` object. Inside it, `operations` is always an array, even when applying a single operation. New concrete-element pointers should use the canonical v2 anchors returned by `kb_read`, `kb_search`, or `kb_outline`. Legacy `logical~selfHash` anchors remain accepted for navigation and `Self` mutations, but `replace_section` requires the v2 subtree hash. `kb_patch` does not accept `expectedSourceHash`.
 
 Use `replace_element` to replace exactly one editable Markdown element. For a heading, it changes only the heading itself and keeps the existing section body. The replacement must parse as exactly one editable element, and a heading replacement must keep the same heading level. Legacy `replace` remains supported as a deprecated alias with the same validation.
 
-Use `replace_section` to rewrite a complete heading section atomically. The target must be a fingerprinted heading anchor. The replaced range starts at that heading and continues through all nested content until the next heading with level less than or equal to the target level, or EOF. The replacement must start with a heading of the same level and may contain only deeper headings after it.
+Use `replace_section` to rewrite a complete heading section atomically. The target must be a canonical v2 heading anchor with both `selfHash` and `subtreeHash`. The replaced range starts at that heading and continues through all nested content until the next heading with level less than or equal to the target level, or EOF. The replacement must start with a heading of the same level and may contain only deeper headings after it.
 
 Replace one element:
 
@@ -233,7 +233,7 @@ Replace one element:
     "operations": [
       {
         "kind": "replace_element",
-        "pointer": "1.2.p2~8f41c721d904a8bc",
+        "pointer": "1.2.p2~8f41c721d904a8bc~8f41c721d904a8bc",
         "markdown": "New paragraph."
       }
     ]
@@ -250,7 +250,7 @@ Replace a whole section:
     "operations": [
       {
         "kind": "replace_section",
-        "pointer": "1.2~0123456789abcdef",
+        "pointer": "1.2~0123456789abcdef~fedcba9876543210",
         "markdown": "## Updated section\n\nNew body.\n\n### Nested heading\n\nNested body."
       }
     ]
@@ -267,7 +267,7 @@ Insert after:
     "operations": [
       {
         "kind": "insert_after",
-        "pointer": "1.2.p2~8f41c721d904a8bc",
+        "pointer": "1.2.p2~8f41c721d904a8bc~8f41c721d904a8bc",
         "markdown": "Additional paragraph."
       }
     ]
@@ -284,7 +284,7 @@ Delete:
     "operations": [
       {
         "kind": "delete",
-        "pointer": "1.2.p2~8f41c721d904a8bc"
+        "pointer": "1.2.p2~8f41c721d904a8bc~8f41c721d904a8bc"
       }
     ]
   }
@@ -293,7 +293,7 @@ Delete:
 
 Supported `kind` values are `replace`, `replace_element`, `replace_section`, `insert_before`, `insert_after`, and `delete`. `replace`, `replace_element`, `replace_section`, and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries. Existing valid single-element `replace` requests remain compatible; multi-element replacement through `replace` is intentionally rejected and should use `replace_section` or other explicit operations.
 
-An unrelated edit elsewhere in the file does not invalidate an element anchor. If the target moved because content was inserted above it, `kb_patch` relocates it only when the same element kind and exact fingerprint identify exactly one current element. If the target itself changed, disappeared, or relocation is ambiguous, the patch is rejected.
+An unrelated edit elsewhere in the file does not invalidate a `Self` mutation when the target `selfHash` is still valid. If the target moved because content was inserted above it, `kb_patch` relocates it only when the same element kind and exact `selfHash` identify exactly one current element. `replace_section` then also verifies the original `subtreeHash`, so edits anywhere in the owned section range—including raw/non-indexed Markdown—are rejected rather than overwritten.
 
 ## Current scope
 

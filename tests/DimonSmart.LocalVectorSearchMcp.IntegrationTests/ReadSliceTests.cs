@@ -229,10 +229,10 @@ public sealed class ReadSliceTests
         Assert.All(
             slice.Elements,
             element => Assert.Matches(
-                @"^[^~]+~[0-9a-f]{16}$",
+                @"^[^~]+~[0-9a-f]{16}~[0-9a-f]{16}$",
                 element.Pointer));
         Assert.NotNull(slice.NextPointer);
-        Assert.Matches(@"^1\.p2~[0-9a-f]{16}$", slice.NextPointer!);
+        Assert.Matches(@"^1\.p2~[0-9a-f]{16}~[0-9a-f]{16}$", slice.NextPointer!);
     }
 
     [Fact]
@@ -247,7 +247,7 @@ public sealed class ReadSliceTests
             12_000,
             context.CancellationToken);
 
-        Assert.Matches(@"^1\.p1~[0-9a-f]{16}$", slice.Pointer);
+        Assert.Matches(@"^1\.p1~[0-9a-f]{16}~[0-9a-f]{16}$", slice.Pointer);
         Assert.Equal(slice.Pointer, slice.Elements[0].Pointer);
         Assert.Equal("Target.", slice.Elements[0].Text);
     }
@@ -268,7 +268,7 @@ public sealed class ReadSliceTests
             12_000,
             context.CancellationToken);
 
-        Assert.Matches(@"^1\.p2~[0-9a-f]{16}$", slice.Pointer);
+        Assert.Matches(@"^1\.p2~[0-9a-f]{16}~[0-9a-f]{16}$", slice.Pointer);
         Assert.Equal("Target.", slice.Elements[0].Text);
     }
 

@@ -93,7 +93,9 @@ public sealed class WorkspaceMutationService(
             .Select(element => new SemanticAnchorCandidate(
                 element.Pointer,
                 element.Kind,
-                element.Text))
+                element.Text,
+                element.SelfHash,
+                element.SubtreeHash))
             .ToList();
         var result = new List<PatchOperation>(operations.Count);
 
@@ -106,14 +108,34 @@ public sealed class WorkspaceMutationService(
                 continue;
             }
 
-            if (anchor.Fingerprint is null)
+            if (anchor.SelfHash is null)
             {
                 throw new WorkspaceMutationException(
                     "A fingerprint is required when mutating a concrete semantic element.");
             }
 
-            var resolved = SemanticAnchorResolver.Resolve(anchor, candidates);
-            result.Add(operation with { Pointer = resolved.Value });
+            var scope = operation.Kind.GetMutationScope();
+            if (scope == MutationScope.Subtree && anchor.SubtreeHash is null)
+            {
+                throw new SemanticAnchorConflictException(
+                    SemanticAnchorConflictReason.MissingSubtreeHash,
+                    "The semantic pointer does not contain a subtree hash. " +
+                    "Read the document again and use the current semantic pointer.");
+            }
+
+            var resolved = SemanticAnchorResolver.ResolveCandidate(anchor, candidates);
+            if (scope == MutationScope.Subtree
+                && !string.Equals(
+                    anchor.SubtreeHash,
+                    resolved.SubtreeHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new SemanticAnchorConflictException(
+                    SemanticAnchorConflictReason.SubtreeHashMismatch,
+                    "The target section changed after the pointer was created.");
+            }
+
+            result.Add(operation with { Pointer = resolved.Pointer.Value });
         }
 
         return result;

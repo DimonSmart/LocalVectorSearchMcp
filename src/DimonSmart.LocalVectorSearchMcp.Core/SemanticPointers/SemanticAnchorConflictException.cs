@@ -1,3 +1,17 @@
 namespace DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 
-public sealed class SemanticAnchorConflictException(string message) : Exception(message);
+public enum SemanticAnchorConflictReason
+{
+    SelfHashMismatch,
+    SubtreeHashMismatch,
+    AmbiguousSemanticPointer,
+    SemanticTargetNotFound,
+    MissingSubtreeHash
+}
+
+public sealed class SemanticAnchorConflictException(
+    SemanticAnchorConflictReason reason,
+    string message) : Exception(message)
+{
+    public SemanticAnchorConflictReason Reason { get; } = reason;
+}

@@ -6,4 +6,6 @@ public sealed record ChunkSearchDocument(
     string Pointer,
     string Text,
     string? HeadingPath,
-    string? ElementText = null);
+    string? ElementText = null,
+    string? ElementSelfHash = null,
+    string? ElementSubtreeHash = null);

@@ -96,15 +96,16 @@ public sealed class KnowledgeSearchService(
         var results = ordered.Where(x => chunks.ContainsKey(x.ChunkId)).Select(x =>
         {
             var chunk = chunks[x.ChunkId];
-            if (chunk.ElementText is null)
+            if (chunk.ElementSelfHash is null || chunk.ElementSubtreeHash is null)
             {
                 throw new InvalidOperationException(
-                    $"Search chunk '{chunk.ChunkId}' has no start element text.");
+                    $"Search chunk '{chunk.ChunkId}' has no semantic anchor hashes.");
             }
 
             var anchor = new SemanticAnchor(
                 new SemanticPointer(chunk.Pointer),
-                SemanticFingerprint.Compute(chunk.ElementText)).ToString();
+                chunk.ElementSelfHash,
+                chunk.ElementSubtreeHash).ToString();
             return new SearchResultItem(
                 chunk.Path,
                 anchor,

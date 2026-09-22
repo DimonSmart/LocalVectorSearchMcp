@@ -90,7 +90,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_read",
         UseStructuredContent = true,
         OutputSchemaType = typeof(MarkdownSlice))]
-    [Description("Reads indexed Markdown content starting at a semantic pointer or fingerprinted semantic anchor. Omit pointer or use \"document\" to read from the beginning of the document.")]
+    [Description("Reads indexed Markdown content starting at a semantic pointer or hashed semantic anchor. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. Omit pointer or use \"document\" to read from the beginning of the document.")]
     public async Task<CallToolResult> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
@@ -138,7 +138,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_patch",
         UseStructuredContent = true,
         OutputSchemaType = typeof(MutationResponse))]
-    [Description("Atomically edits Markdown using fingerprinted semantic anchors, commits the source file, and schedules index reconciliation. Kinds: replace_element replaces exactly one editable Markdown element; its markdown must contain exactly one editable element, and replacing a heading changes only that heading, not its section body. replace_section replaces a heading and all content in its section, including nested headings, up to the next heading with level <= the target level or end of document; use it when rewriting an entire chapter or section. replace is a deprecated alias of replace_element and has the same single-element validation. insert_before and insert_after insert Markdown around one anchored element; delete removes one anchored element. Concrete element pointers must include the 16-character fingerprint returned by kb_read, kb_search, or kb_outline. Do not use replace_element/replace with a heading plus section body. The document pointer remains unhashed and supports insert_before and insert_after at document boundaries. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
+    [Description("Atomically edits Markdown using hashed semantic anchors, commits the source file, and schedules index reconciliation. Public concrete pointers use logical~selfHash~subtreeHash with 16-character lowercase hashes. replace_element, insert_before, insert_after, and delete validate only selfHash, so an unchanged element can survive independent descendant edits. replace is a deprecated alias of replace_element. replace_section replaces a heading and all source in its section through the next heading with level <= the target level or end of document; use it when rewriting an entire chapter or section. It requires canonical v2 input and additionally validates subtreeHash so stale body or raw-content edits cannot be overwritten. Relocation uses only exact element kind plus selfHash. Legacy logical~selfHash input remains accepted for Self operations but is rejected for replace_section with a reread instruction. The document pointer remains unhashed and supports insert_before and insert_after at document boundaries. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
     public Task<CallToolResult> PatchAsync(
         PatchToolRequest request,
         CancellationToken cancellationToken)

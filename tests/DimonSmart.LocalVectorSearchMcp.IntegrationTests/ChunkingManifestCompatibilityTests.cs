@@ -61,7 +61,7 @@ public sealed class ChunkingManifestCompatibilityTests
         await CreateIndexer(config, repository).ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
         var manifest = await ReadManifestAsync(config, cancellationToken);
 
-        Assert.Equal("3", manifest["schema_version"]);
+        Assert.Equal("4", manifest["schema_version"]);
         Assert.Equal(MarkdownChunker.Version, manifest["chunker_version"]);
         Assert.Equal(EmbeddingTextBuilder.Version, manifest["embedding_text_builder_version"]);
         Assert.Equal("model", manifest["embedding_model"]);

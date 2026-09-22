@@ -13,4 +13,6 @@ public sealed record MarkdownElement(
     string? HeadingPath,
     SemanticPointer SectionPointer,
     int SourceStart = 0,
-    int SourceLength = 0);
+    int SourceLength = 0,
+    string? SelfHash = null,
+    string? SubtreeHash = null);
