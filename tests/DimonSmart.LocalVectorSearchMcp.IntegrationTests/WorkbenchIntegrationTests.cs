@@ -23,7 +23,7 @@ namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 public sealed class WorkbenchIntegrationTests
 {
     [Fact]
-    public async Task Schema2Manifest_RequiresForcedRebuildToSchema3()
+    public async Task Schema2Manifest_RequiresForcedRebuildToSchema4()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TemporaryDirectory();
