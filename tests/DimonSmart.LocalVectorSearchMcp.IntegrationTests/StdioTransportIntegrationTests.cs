@@ -1008,7 +1008,7 @@ public sealed class StdioTransportIntegrationTests
         var yaml = $"""
             knowledgeBase:
               root: "{ToYamlPath(root)}"
-              allowWrites: ${allowWrites.ToString().ToLowerInvariant()}
+              allowWrites: {allowWrites.ToString().ToLowerInvariant()}
               watchFiles: false
             storage:
               path: "{ToYamlPath(Path.Combine(storageDirectory, "index.db"))}"
