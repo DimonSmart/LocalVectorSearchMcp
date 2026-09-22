@@ -134,33 +134,88 @@ public sealed class KnowledgeMcpTools(
         }
     }
 
-    [McpServerTool(Name = "kb_patch", UseStructuredContent = true, OutputSchemaType = typeof(MutationResponse))]
-    [Description("Atomically edits Markdown using fingerprinted semantic anchors. Pass operations as an array with kind replace, insert_before, insert_after, or delete. Concrete element pointers must include the 16-character fingerprint returned by kb_read, kb_search, or kb_outline. Replace and insert operations require markdown; delete does not. The document pointer remains unhashed and supports insert_before and insert_after at document boundaries.")]
-    public async Task<CallToolResult> PatchAsync(
+    [McpServerTool(
+        Name = "kb_patch",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(MutationResponse))]
+    [Description("Atomically edits Markdown using fingerprinted semantic anchors, commits the source file, and schedules index reconciliation. Pass operations as an array with kind replace, insert_before, insert_after, or delete. Concrete element pointers must include the 16-character fingerprint returned by kb_read, kb_search, or kb_outline. Replace and insert operations require markdown; delete does not. The document pointer remains unhashed and supports insert_before and insert_after at document boundaries. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
+    public Task<CallToolResult> PatchAsync(
         PatchToolRequest request,
         CancellationToken cancellationToken)
+        => RunMutationAsync(() => mutations.PatchAsync(
+            new PatchRequest(
+                request.Path,
+                request.Operations.Select(operation => new PatchOperation(
+                    operation.Kind,
+                    operation.Pointer,
+                    operation.Markdown)).ToList()),
+            cancellationToken));
+
+    [McpServerTool(
+        Name = "kb_create",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(MutationResponse))]
+    [Description("Creates a new UTF-8 Markdown file, commits it as the source of truth, and schedules index synchronization. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
+    public Task<CallToolResult> CreateAsync(
+        CreateToolRequest request,
+        CancellationToken cancellationToken)
+        => RunMutationAsync(() => mutations.CreateAsync(
+            request.Path,
+            request.Markdown,
+            cancellationToken));
+
+    [McpServerTool(
+        Name = "kb_move",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(MutationResponse))]
+    [Description("Moves a Markdown file when its source revision matches, commits the filesystem move, and schedules index reconciliation for the affected paths. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
+    public Task<CallToolResult> MoveAsync(
+        MoveToolRequest request,
+        CancellationToken cancellationToken)
+        => RunMutationAsync(() => mutations.MoveAsync(
+            new MoveRequest(
+                request.SourcePath,
+                request.TargetPath,
+                request.ExpectedSourceHash),
+            cancellationToken));
+
+    [McpServerTool(
+        Name = "kb_delete",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(MutationResponse))]
+    [Description("Deletes a Markdown file when its source revision matches, commits the source deletion, and schedules removal from the derived index. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
+    public Task<CallToolResult> DeleteAsync(
+        DeleteToolRequest request,
+        CancellationToken cancellationToken)
+        => RunMutationAsync(() => mutations.DeleteAsync(
+            new DeleteRequest(
+                request.Path,
+                request.ExpectedSourceHash),
+            cancellationToken));
+
+    private static async Task<CallToolResult> RunMutationAsync(
+        Func<Task<MutationResponse>> mutation)
     {
         try
         {
-            var response = await mutations.PatchAsync(
-                new PatchRequest(
-                    request.Path,
-                    request.Operations.Select(operation => new PatchOperation(
-                        operation.Kind,
-                        operation.Pointer,
-                        operation.Markdown)).ToList()),
-                cancellationToken);
+            var response = await mutation();
             return new CallToolResult
             {
-                Content = [new TextContentBlock { Text = System.Text.Json.JsonSerializer.Serialize(response, JsonOptions.Default) }],
-                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(response, JsonOptions.Default)
+                Content =
+                [
+                    new TextContentBlock
+                    {
+                        Text = System.Text.Json.JsonSerializer.Serialize(
+                            response,
+                            JsonOptions.Default)
+                    }
+                ],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(
+                    response,
+                    JsonOptions.Default)
             };
         }
-        catch (Exception exception) when (exception is WorkspaceMutationException
-                                          or DocumentConflictException
-                                          or SemanticAnchorConflictException
-                                          or SemanticPointerFormatException
-                                          or KnowledgeBaseAccessException)
+        catch (Exception exception) when (IsControlledMutationException(exception))
         {
             return new CallToolResult
             {
@@ -170,30 +225,12 @@ public sealed class KnowledgeMcpTools(
         }
     }
 
-    [McpServerTool(Name = "kb_create")]
-    [Description("Creates a new UTF-8 Markdown file and synchronizes it with the index.")]
-    public Task<MutationResponse> CreateAsync(
-        CreateToolRequest request,
-        CancellationToken cancellationToken)
-        => mutations.CreateAsync(request.Path, request.Markdown, cancellationToken);
-
-    [McpServerTool(Name = "kb_move")]
-    [Description("Moves a Markdown file when its source revision matches and synchronizes the index.")]
-    public Task<MutationResponse> MoveAsync(
-        MoveToolRequest request,
-        CancellationToken cancellationToken)
-        => mutations.MoveAsync(
-            new MoveRequest(request.SourcePath, request.TargetPath, request.ExpectedSourceHash),
-            cancellationToken);
-
-    [McpServerTool(Name = "kb_delete")]
-    [Description("Deletes a Markdown file when its source revision matches and removes it from the index.")]
-    public Task<MutationResponse> DeleteAsync(
-        DeleteToolRequest request,
-        CancellationToken cancellationToken)
-        => mutations.DeleteAsync(
-            new DeleteRequest(request.Path, request.ExpectedSourceHash),
-            cancellationToken);
+    private static bool IsControlledMutationException(Exception exception)
+        => exception is WorkspaceMutationException
+            or DocumentConflictException
+            or SemanticAnchorConflictException
+            or SemanticPointerFormatException
+            or KnowledgeBaseAccessException;
 
     [McpServerTool(Name = "kb_list_files")]
     [Description("Lists Markdown and asset files under the configured workspace root.")]

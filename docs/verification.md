@@ -109,7 +109,7 @@ knowledgeBase:
 
 Verify:
 
-1. `kb_create` creates Markdown and the new content is immediately searchable.
+1. `kb_create` commits Markdown immediately and returns `indexSynchronized=false` while index reconciliation may still be pending; after reconciliation completes, the new content becomes searchable.
 2. Concrete pointers returned by read/search/outline use fingerprinted semantic anchors.
 3. `kb_patch` preserves unrelated external edits, relocates a uniquely unchanged shifted target, and rejects a changed or ambiguous target.
 4. `kb_move` and `kb_delete` retain their latest-`sourceHash` whole-file contract.

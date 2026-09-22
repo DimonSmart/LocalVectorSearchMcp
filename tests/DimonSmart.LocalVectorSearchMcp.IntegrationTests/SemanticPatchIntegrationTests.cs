@@ -339,7 +339,7 @@ public sealed class SemanticPatchIntegrationTests
     }
 
     [Fact]
-    public async Task Patch_CommitsOnceAndReturnsBeforeSlowIndexSynchronization()
+    public async Task Patch_CommitsOnceAndSchedulesIndexSynchronization()
     {
         using var temp = new TemporaryDirectory();
         var path = Path.Combine(temp.Path, "chapter.md");
