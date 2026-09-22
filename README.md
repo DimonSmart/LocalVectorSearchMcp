@@ -220,7 +220,11 @@ Image save/delete are independent asset mutations and do not synchronize the Mar
 
 The MCP method accepts one `request` object. Inside it, `operations` is always an array, even when applying a single operation. Concrete-element pointers must use the fingerprinted anchors returned by `kb_read`, `kb_search`, or `kb_outline`. `kb_patch` does not accept `expectedSourceHash`.
 
-Replace:
+Use `replace_element` to replace exactly one editable Markdown element. For a heading, it changes only the heading itself and keeps the existing section body. The replacement must parse as exactly one editable element, and a heading replacement must keep the same heading level. Legacy `replace` remains supported as a deprecated alias with the same validation.
+
+Use `replace_section` to rewrite a complete heading section atomically. The target must be a fingerprinted heading anchor. The replaced range starts at that heading and continues through all nested content until the next heading with level less than or equal to the target level, or EOF. The replacement must start with a heading of the same level and may contain only deeper headings after it.
+
+Replace one element:
 
 ```json
 {
@@ -228,9 +232,26 @@ Replace:
     "path": "chapter.md",
     "operations": [
       {
-        "kind": "replace",
+        "kind": "replace_element",
         "pointer": "1.2.p2~8f41c721d904a8bc",
         "markdown": "New paragraph."
+      }
+    ]
+  }
+}
+```
+
+Replace a whole section:
+
+```json
+{
+  "request": {
+    "path": "chapter.md",
+    "operations": [
+      {
+        "kind": "replace_section",
+        "pointer": "1.2~0123456789abcdef",
+        "markdown": "## Updated section\n\nNew body.\n\n### Nested heading\n\nNested body."
       }
     ]
   }
@@ -270,7 +291,7 @@ Delete:
 }
 ```
 
-Supported `kind` values are `replace`, `insert_before`, `insert_after`, and `delete`. Replace and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries.
+Supported `kind` values are `replace`, `replace_element`, `replace_section`, `insert_before`, `insert_after`, and `delete`. `replace`, `replace_element`, `replace_section`, and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries. Existing valid single-element `replace` requests remain compatible; multi-element replacement through `replace` is intentionally rejected and should use `replace_section` or other explicit operations.
 
 An unrelated edit elsewhere in the file does not invalidate an element anchor. If the target moved because content was inserted above it, `kb_patch` relocates it only when the same element kind and exact fingerprint identify exactly one current element. If the target itself changed, disappeared, or relocation is ambiguous, the patch is rejected.
 
