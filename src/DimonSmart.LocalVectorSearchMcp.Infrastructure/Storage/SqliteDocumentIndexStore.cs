@@ -72,7 +72,7 @@ public sealed class SqliteDocumentIndexStore(
             var element = elements[index];
             var command = db.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "insert into elements(document_id,pointer,kind,text,start_line,end_line,source_start,source_length,heading_path,ordinal) values($doc,$ptr,$kind,$text,$start,$end,$sourceStart,$sourceLength,$heading,$ord)";
+            command.CommandText = "insert into elements(document_id,pointer,kind,text,start_line,end_line,source_start,source_length,self_hash,subtree_hash,heading_path,ordinal) values($doc,$ptr,$kind,$text,$start,$end,$sourceStart,$sourceLength,$selfHash,$subtreeHash,$heading,$ord)";
             command.AddParameter("$doc", documentId);
             command.AddParameter("$ptr", element.Pointer.Value);
             command.AddParameter("$kind", element.Kind.ToString());
@@ -81,6 +81,8 @@ public sealed class SqliteDocumentIndexStore(
             command.AddParameter("$end", element.EndLine);
             command.AddParameter("$sourceStart", element.SourceStart);
             command.AddParameter("$sourceLength", element.SourceLength);
+            command.AddParameter("$selfHash", element.SelfHash);
+            command.AddParameter("$subtreeHash", element.SubtreeHash);
             command.AddParameter("$heading", element.HeadingPath);
             command.AddParameter("$ord", index);
             await command.ExecuteNonQueryAsync(cancellationToken);
