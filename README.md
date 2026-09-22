@@ -124,10 +124,11 @@ Return the Markdown image reference.
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
 | Default embeddings | Local Ollama-compatible endpoint |
 
-The MCP server exposes fourteen tools:
+The MCP server exposes fourteen tools. MCP reindexing is asynchronous: `kb_reindex` starts or joins the single active reindex and returns immediately, while `kb_status.indexing` reports progress and the last outcome. The CLI `--reindex` command remains synchronous and exits only after indexing finishes.
+
 
 - `kb_status` — inspect the current index.
-- `kb_reindex` — build or rebuild the index.
+- `kb_reindex` — start a background build or rebuild; monitor `kb_status.indexing` for progress and the final result.
 - `kb_search` — run optionally path-scoped lexical, semantic, or hybrid search.
 - `kb_read` — read indexed Markdown from a semantic pointer and receive its `sourceHash`.
 - `kb_patch` — atomically replace, insert before/after, or delete semantic elements.
