@@ -357,8 +357,7 @@ public sealed class SemanticPatchIntegrationTests
             new KnowledgeBasePathGuard(config),
             new MarkdownDocumentLoader(),
             new MarkdownElementParser(),
-            scheduler,
-            new InMemoryIndexSynchronizationState());
+            scheduler);
 
         var response = await service.PatchAsync(
             new PatchRequest(
