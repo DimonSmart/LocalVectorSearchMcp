@@ -76,10 +76,13 @@ The preferred workflow is to let the agent call the MCP tools:
 ```text
 Use kb_status to inspect the local documentation index.
 If it is empty or missing, run kb_reindex.
+Poll kb_status until indexing.isRunning is false.
 Then search for the project's main architectural decisions.
 ```
 
-You can also build the index directly from the project root:
+`kb_reindex` returns after the background operation is accepted; final counts are reported by `kb_status.indexing.last.result`.
+
+You can also build the index synchronously from the project root:
 
 ```bash
 local-vector-search-mcp --reindex
