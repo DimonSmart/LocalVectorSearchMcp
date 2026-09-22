@@ -491,8 +491,7 @@ public sealed class SemanticPatchIntegrationTests
             new KnowledgeBasePathGuard(config),
             new MarkdownDocumentLoader(),
             new MarkdownElementParser(),
-            new ImmediateIndexSynchronizationScheduler(new NoOpSynchronizer()),
-            new InMemoryIndexSynchronizationState());
+            new ImmediateIndexSynchronizationScheduler(new NoOpSynchronizer()));
     }
 
     private static string Anchor(string pointer, string exactText)
