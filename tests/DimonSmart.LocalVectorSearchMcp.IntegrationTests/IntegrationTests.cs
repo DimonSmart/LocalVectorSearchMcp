@@ -11,6 +11,7 @@ using DimonSmart.LocalVectorSearchMcp.Infrastructure;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Fakes;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
@@ -31,7 +32,17 @@ public sealed class IntegrationTests
         var first = await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
         var second = await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
         var lexical = await repository.FullTextSearch.SearchAsync("SQLite", 10, cancellationToken);
-        var slice = await repository.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 10, 12000, cancellationToken);
+        var sliceReader = new SourceMarkdownSliceReader(
+            config,
+            new KnowledgeBasePathGuard(config),
+            new MarkdownDocumentLoader(),
+            new MarkdownElementParser());
+        var slice = await sliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticPointer("1.p1"),
+            10,
+            12000,
+            cancellationToken);
 
         Assert.Equal(1, first.IndexedFiles);
         Assert.Equal(1, second.SkippedFiles);
