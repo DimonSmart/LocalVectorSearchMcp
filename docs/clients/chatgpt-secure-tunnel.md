@@ -179,6 +179,24 @@ For one tunnel ID that bridges a stdio MCP server, run only one active `tunnel-c
 
 This is a Secure MCP Tunnel runtime constraint, not a LocalVectorSearchMcp storage rule.
 
+## Reindex lifecycle through the tunnel
+
+`kb_reindex` is a short-lived MCP call even when embedding generation takes minutes. The tunnel only bridges the existing stdio server; it does not own the reindex lifecycle.
+
+```text
+kb_reindex
+→ returns started/current
+
+while kb_status.indexing.isRunning:
+    kb_status
+    kb_list_files
+    kb_outline
+
+after completion:
+    kb_status
+    kb_search
+```
+
 ## Manual verification
 
 After setup:
