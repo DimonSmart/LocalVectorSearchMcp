@@ -140,6 +140,17 @@ The MCP server exposes fourteen tools. MCP reindexing is asynchronous: `kb_reind
 - `kb_load_image` — return an existing image as a real MCP image content block.
 - `kb_delete_image` — delete one image asset under `images/`.
 
+For low-level MCP or connector calls, a tool with no user arguments still uses an explicit empty `arguments` object. The canonical `kb_status` wire call is:
+
+```json
+{
+  "name": "kb_status",
+  "arguments": {}
+}
+```
+
+Clients should not rely on omitting the argument object; `{}` is the interoperable contract for parameterless tools.
+
 ## Image assets
 
 Image assets are intentionally simple files in the workspace rather than a media subsystem.
