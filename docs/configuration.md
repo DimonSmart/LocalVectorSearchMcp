@@ -221,7 +221,7 @@ Before enabling a remote endpoint, consider whether project documentation is all
 
 The default is `hybrid`.
 
-If the embedding endpoint is temporarily unavailable, `hybrid` automatically falls back to lexical FTS5 results and returns a warning that semantic search is unavailable. Explicit `semantic` mode does not silently fall back; it returns a controlled tool error. `kb_reindex` also stops cleanly with a warning when embeddings cannot be produced, while already indexed content remains available for lexical search.
+If the embedding endpoint is temporarily unavailable, `hybrid` automatically falls back to lexical FTS5 results and returns a warning that semantic search is unavailable. Explicit `semantic` mode does not silently fall back; it returns a controlled tool error. `kb_reindex` starts the background operation; if embeddings cannot be produced, the operation stops cleanly and its warning is exposed in `kb_status.indexing.last.result`, while already indexed content remains available for lexical search.
 
 ## When a forced rebuild is required
 
