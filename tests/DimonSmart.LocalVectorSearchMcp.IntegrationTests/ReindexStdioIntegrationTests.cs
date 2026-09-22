@@ -18,7 +18,10 @@ public sealed class ReindexStdioIntegrationTests
     [Fact]
     public async Task SlowReindex_DoesNotBlockStdioMcpRequests()
     {
-        var cancellationToken = TestContext.Current.CancellationToken;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        var cancellationToken = timeout.Token;
         using var temp = new TemporaryDirectory();
         await using var embeddings =
             new BlockingEmbeddingEndpoint(cancellationToken);
@@ -276,6 +279,7 @@ public sealed class ReindexStdioIntegrationTests
                 }
             }
 
+            var requestBody = "";
             if (contentLength > 0)
             {
                 var body = new char[contentLength];
@@ -292,16 +296,26 @@ public sealed class ReindexStdioIntegrationTests
                     }
                     offset += read;
                 }
+
+                requestBody = new string(body);
             }
 
             RequestReceived.TrySetResult();
             await release.Task.WaitAsync(cancellationToken);
 
+            using var requestJson = JsonDocument.Parse(requestBody);
+            var inputCount = requestJson.RootElement
+                .GetProperty("input")
+                .GetArrayLength();
             var vector = string.Join(
                 ",",
                 Enumerable.Repeat("0", 1024));
-            var payload =
-                $"{{\"data\":[{{\"index\":0,\"embedding\":[{vector}]}}]}}";
+            var data = string.Join(
+                ",",
+                Enumerable.Range(0, inputCount)
+                    .Select(index =>
+                        $"{{\"index\":{index},\"embedding\":[{vector}]}}"));
+            var payload = $"{{\"data\":[{data}]}}";
             var payloadBytes = Encoding.UTF8.GetBytes(payload);
             var headers = Encoding.ASCII.GetBytes(
                 "HTTP/1.1 200 OK\r\n" +
