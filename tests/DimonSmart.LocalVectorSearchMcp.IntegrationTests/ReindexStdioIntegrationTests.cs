@@ -66,7 +66,7 @@ public sealed class ReindexStdioIntegrationTests
         Assert.NotNull(start);
         Assert.True(start.Started);
 
-        await embeddings.RequestReceived.WaitAsync(cancellationToken);
+        await embeddings.RequestReceived.Task.WaitAsync(cancellationToken);
 
         var statusResult = await client.CallToolAsync(
             "kb_status",
