@@ -94,6 +94,8 @@ public sealed class KnowledgeSearchFallbackTests
                     "1.p1",
                     "needle body",
                     "Notes",
-                    "needle body")]);
+                    "needle body",
+                    "0123456789abcdef",
+                    "0123456789abcdef")]);
     }
 }
