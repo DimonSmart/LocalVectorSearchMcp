@@ -43,7 +43,7 @@ public sealed class KnowledgeMcpTools(
     }
 
     [McpServerTool(Name = "kb_search", UseStructuredContent = true, OutputSchemaType = typeof(SearchResponse))]
-    [Description("Searches the local Markdown knowledge base using lexical, semantic or hybrid search. Hybrid search falls back to lexical search when the embedding provider is unavailable.")]
+    [Description("Searches the derived Markdown index using lexical, semantic or hybrid search. Results belong to an indexed revision identified by indexedSourceHash and may temporarily lag behind the current source. Hybrid search falls back to lexical search when the embedding provider is unavailable.")]
     public async Task<CallToolResult> SearchAsync(
         SearchToolRequest request,
         CancellationToken cancellationToken)
@@ -98,18 +98,13 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_read",
         UseStructuredContent = true,
         OutputSchemaType = typeof(MarkdownSlice))]
-    [Description("Reads indexed Markdown content starting at a semantic pointer or hashed semantic anchor. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. Omit pointer or use \"document\" to read from the beginning of the document.")]
+    [Description("Reads the current Markdown source starting at a semantic pointer or hashed semantic anchor. Reading is independent of embeddings and background indexing. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. Omit pointer or use \"document\" to read from the beginning of the document.")]
     public async Task<CallToolResult> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
     {
         try
         {
-            if (IsDestructiveRebuildRunning())
-            {
-                return IndexRebuildInProgressError();
-            }
-
             var anchor = SemanticAnchorParser.Parse(request.Pointer ?? "document");
             var response = await reader.ReadAsync(
                 request.Path,
