@@ -48,7 +48,9 @@ local-vector-search-mcp \
   --reindex
 ```
 
-The same operation is available through `kb_reindex`.
+`local-vector-search-mcp --reindex` is synchronous: it waits for the final `ReindexResponse` and then exits.
+
+The MCP `kb_reindex` tool uses a different lifecycle. It starts the single process-local reindex operation and returns immediately with `started: true`, or `started: false` when another reindex is already active. Poll `kb_status.indexing.isRunning`; after it becomes `false`, the final result or error is available in `kb_status.indexing.last`.
 
 ## Forced rebuild
 
@@ -63,7 +65,7 @@ Use a forced rebuild after changing:
 - an index format or compatibility-sensitive implementation version;
 - configuration when the server reports that the existing index is incompatible.
 
-A forced rebuild recreates derived index data. It does not modify source Markdown files.
+A forced rebuild recreates derived index data. It does not modify source Markdown files. During the destructive reset window, `kb_status`, `kb_list_files`, and `kb_outline` remain available; index-dependent `kb_read`/`kb_search` return a controlled rebuild-in-progress error instead of waiting for the rebuild.
 
 ## Delete a local index
 
