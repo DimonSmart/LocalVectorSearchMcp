@@ -1,5 +1,6 @@
 namespace DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 
+using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 public sealed record StatusResponse(
@@ -10,4 +11,5 @@ public sealed record StatusResponse(
     string EmbeddingModel,
     int? EmbeddingDimensions,
     ProjectIndexStatus Project,
-    IndexSynchronizationStatus? Synchronization = null);
+    IndexSynchronizationStatus? Synchronization = null,
+    ReindexStatus? Indexing = null);
