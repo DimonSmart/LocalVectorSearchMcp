@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server;
@@ -74,6 +75,12 @@ public sealed class StdioTransportIntegrationTests
             tool => tool.Name.StartsWith(
                 "debug_",
                 StringComparison.Ordinal));
+
+        var statusTool = Assert.Single(
+            tools,
+            tool => tool.Name == "kb_status");
+        AssertParameterlessToolSchema(
+            statusTool.JsonSchema);
 
         var saveTool = Assert.Single(
             tools,
@@ -220,6 +227,15 @@ public sealed class StdioTransportIntegrationTests
         Assert.False(
             status.IsError is true,
             string.Join(Environment.NewLine, stderr));
+        var statusResponse =
+            JsonSerializer.Deserialize<StatusResponse>(
+                ResultText(status),
+                JsonOptions.Default);
+        Assert.NotNull(statusResponse);
+        Assert.False(
+            string.IsNullOrWhiteSpace(
+                statusResponse.SchemaVersion));
+        Assert.NotNull(statusResponse.Project);
 
         var imageResult = await client.CallToolAsync(
             "kb_load_image",
@@ -722,6 +738,45 @@ public sealed class StdioTransportIntegrationTests
         Assert.True(
             string.IsNullOrEmpty(stdout),
             $"Unexpected stdout before any MCP request:{Environment.NewLine}{stdout}{Environment.NewLine}{stderr}");
+    }
+
+    private static void AssertParameterlessToolSchema(
+        JsonElement schema)
+    {
+        Assert.Equal(
+            "object",
+            schema.GetProperty("type").GetString());
+
+        if (schema.TryGetProperty(
+                "properties",
+                out var properties))
+        {
+            Assert.Equal(
+                JsonValueKind.Object,
+                properties.ValueKind);
+            Assert.False(
+                properties.EnumerateObject().Any());
+        }
+
+        if (schema.TryGetProperty(
+                "required",
+                out var required))
+        {
+            Assert.Equal(
+                JsonValueKind.Array,
+                required.ValueKind);
+            Assert.False(
+                required.EnumerateArray().Any());
+        }
+
+        Assert.True(
+            schema.TryGetProperty(
+                "additionalProperties",
+                out var additionalProperties),
+            $"Parameterless tool schema must declare additionalProperties=false:{Environment.NewLine}{schema}");
+        Assert.Equal(
+            JsonValueKind.False,
+            additionalProperties.ValueKind);
     }
 
     private static JsonElement FindSchemaProperty(
