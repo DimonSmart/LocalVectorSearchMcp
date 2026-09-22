@@ -3,6 +3,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using Microsoft.Extensions.FileSystemGlobbing;
 
@@ -113,14 +114,8 @@ public sealed partial class WorkspaceNavigationService(
         CancellationToken cancellationToken)
     {
         var normalized = pathGuard.ValidateRelativePath(path);
-        var absolute = pathGuard.ResolveMarkdownPath(normalized);
-        if (!File.Exists(absolute))
-        {
-            throw new WorkspaceMutationException(
-                $"Markdown file '{normalized}' does not exist.");
-        }
-
-        var document = await loader.LoadFileAsync(
+        _ = pathGuard.ResolveMarkdownPath(normalized);
+        var document = await loader.LoadExistingAsync(
             config.KnowledgeBase,
             normalized,
             cancellationToken);

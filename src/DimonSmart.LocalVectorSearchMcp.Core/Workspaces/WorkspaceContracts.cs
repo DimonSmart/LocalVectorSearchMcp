@@ -145,6 +145,19 @@ public interface IIndexSynchronizationState
     IndexSynchronizationStatus GetStatus();
 }
 
+public sealed class DocumentNotFoundException : Exception
+{
+    public DocumentNotFoundException(string path)
+        : base($"Document '{path}' was not found.")
+    {
+    }
+
+    public DocumentNotFoundException(string path, Exception innerException)
+        : base($"Document '{path}' was not found.", innerException)
+    {
+    }
+}
+
 public sealed class DocumentConflictException(string message) : Exception(message);
 
 public sealed class WorkspaceMutationException(string message) : Exception(message);
