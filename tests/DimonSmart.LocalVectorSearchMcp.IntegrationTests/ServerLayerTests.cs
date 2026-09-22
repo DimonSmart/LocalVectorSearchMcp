@@ -165,6 +165,33 @@ public sealed class ServerLayerTests
     }
 
     [Fact]
+    public async Task KnowledgeMcpTools_OutlineReturnsControlledDocumentNotFoundError()
+    {
+        var tools = new KnowledgeMcpTools(
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            new ThrowingNavigationService(
+                new DocumentNotFoundException("missing.md")));
+
+        var result = await tools.OutlineAsync(
+            new OutlineToolRequest("missing.md"),
+            CancellationToken.None);
+
+        Assert.True(result.IsError is true);
+        Assert.Null(result.StructuredContent);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("Document 'missing.md' was not found.", text);
+        Assert.DoesNotContain(
+            "An error occurred invoking",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task MutationTool_UnexpectedException_IsNotConvertedToControlledError()
     {
         var tools = new KnowledgeMcpTools(
@@ -223,6 +250,10 @@ public sealed class ServerLayerTests
     [Fact]
     public void KnownCliExceptionFilter_RecognizesSemanticPointerFormatException()
         => Assert.True(KnownCliExceptionFilter.IsKnown(new SemanticPointerFormatException("bad")));
+
+    [Fact]
+    public void KnownCliExceptionFilter_RecognizesDocumentNotFoundException()
+        => Assert.True(KnownCliExceptionFilter.IsKnown(new DocumentNotFoundException("missing.md")));
 
     [Fact]
     public void JsonOptions_SerializesWireEnumsAsLowercase()
@@ -320,6 +351,21 @@ public sealed class ServerLayerTests
             DeleteRequest request,
             CancellationToken cancellationToken)
             => Task.FromResult(response);
+    }
+
+    private sealed class ThrowingNavigationService(Exception exception)
+        : IWorkspaceNavigationService
+    {
+        public Task<WorkspaceFileList> ListFilesAsync(
+            string? pathPrefix,
+            string? includeGlob,
+            CancellationToken cancellationToken)
+            => Task.FromException<WorkspaceFileList>(exception);
+
+        public Task<MarkdownOutline> GetOutlineAsync(
+            string path,
+            CancellationToken cancellationToken)
+            => Task.FromException<MarkdownOutline>(exception);
     }
 
     private sealed class EchoSemanticPointerReader : ISemanticPointerReader
