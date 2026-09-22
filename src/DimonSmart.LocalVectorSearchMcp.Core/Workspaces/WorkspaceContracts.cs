@@ -9,6 +9,12 @@ public enum PatchOperationKind
     [JsonStringEnumMemberName("replace")]
     Replace,
 
+    [JsonStringEnumMemberName("replace_element")]
+    ReplaceElement,
+
+    [JsonStringEnumMemberName("replace_section")]
+    ReplaceSection,
+
     [JsonStringEnumMemberName("insert_before")]
     InsertBefore,
 

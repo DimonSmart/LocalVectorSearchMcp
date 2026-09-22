@@ -48,6 +48,10 @@ public sealed class WorkspaceMutationService(
             var resolvedOperations = ResolvePatchOperations(
                 request.Operations,
                 elements);
+            ValidateReplacementOperations(
+                document,
+                elements,
+                resolvedOperations);
             var resultingSource = MarkdownSourcePatcher.Apply(
                 document.Markdown,
                 elements,
@@ -114,6 +118,162 @@ public sealed class WorkspaceMutationService(
 
         return result;
     }
+
+    private void ValidateReplacementOperations(
+        MarkdownSourceDocument document,
+        IReadOnlyList<MarkdownElement> elements,
+        IReadOnlyList<PatchOperation> operations)
+    {
+        var byPointer = elements
+            .Where(element => element.SourceLength > 0)
+            .ToDictionary(
+                element => element.Pointer.Value,
+                StringComparer.Ordinal);
+
+        foreach (var operation in operations)
+        {
+            if (operation.Pointer == "document")
+            {
+                if (operation.Kind == PatchOperationKind.ReplaceSection)
+                {
+                    throw new WorkspaceMutationException(
+                        "replace_section requires a heading pointer.");
+                }
+
+                if (operation.Kind == PatchOperationKind.ReplaceElement)
+                {
+                    throw new WorkspaceMutationException(
+                        "replace_element requires a concrete Markdown element pointer.");
+                }
+
+                continue;
+            }
+
+            if (!byPointer.TryGetValue(operation.Pointer, out var target))
+            {
+                throw new WorkspaceMutationException(
+                    $"Pointer '{operation.Pointer}' was not found in the requested document revision.");
+            }
+
+            switch (operation.Kind)
+            {
+                case PatchOperationKind.Replace:
+                case PatchOperationKind.ReplaceElement:
+                    ValidateElementReplacement(document, target, operation.Markdown);
+                    break;
+
+                case PatchOperationKind.ReplaceSection:
+                    ValidateSectionReplacement(document, target, operation.Markdown);
+                    break;
+            }
+        }
+    }
+
+    private void ValidateElementReplacement(
+        MarkdownSourceDocument document,
+        MarkdownElement target,
+        string? markdown)
+    {
+        if (markdown is null)
+        {
+            return;
+        }
+
+        var replacementElements = ParseReplacement(document, markdown);
+        if (replacementElements.Count != 1
+            || HasNonWhitespaceOutsideElement(
+                markdown,
+                replacementElements.SingleOrDefault()))
+        {
+            throw new WorkspaceMutationException(
+                "replace_element expects markdown containing exactly one editable Markdown element. " +
+                "Use replace_section when replacing a heading together with its section content.");
+        }
+
+        var replacement = replacementElements[0];
+        if (target.Kind == MarkdownElementKind.Heading
+            && (replacement.Kind != MarkdownElementKind.Heading
+                || replacement.HeadingLevel != target.HeadingLevel))
+        {
+            throw new WorkspaceMutationException(
+                "replace_element cannot change a heading level or replace a heading with a non-heading element.");
+        }
+    }
+
+    private void ValidateSectionReplacement(
+        MarkdownSourceDocument document,
+        MarkdownElement target,
+        string? markdown)
+    {
+        if (target.Kind != MarkdownElementKind.Heading)
+        {
+            throw new WorkspaceMutationException(
+                "replace_section requires a heading pointer.");
+        }
+
+        if (markdown is null)
+        {
+            return;
+        }
+
+        var replacementElements = ParseReplacement(document, markdown);
+        if (replacementElements.Count == 0)
+        {
+            throw InvalidSectionReplacement();
+        }
+
+        var root = replacementElements[0];
+        if (root.Kind != MarkdownElementKind.Heading
+            || root.HeadingLevel != target.HeadingLevel
+            || !string.IsNullOrWhiteSpace(markdown[..root.SourceStart])
+            || replacementElements
+                .Skip(1)
+                .Any(element =>
+                    element.Kind == MarkdownElementKind.Heading
+                    && element.HeadingLevel <= target.HeadingLevel))
+        {
+            throw InvalidSectionReplacement();
+        }
+    }
+
+    private IReadOnlyList<MarkdownElement> ParseReplacement(
+        MarkdownSourceDocument document,
+        string markdown)
+    {
+        var fragment = new MarkdownSourceDocument(
+            document.RelativePath,
+            document.AbsolutePath,
+            markdown,
+            "",
+            document.LastWriteTimeUtc);
+
+        return parser.Parse(fragment)
+            .Where(element =>
+                element.Kind != MarkdownElementKind.Document
+                && element.SourceLength > 0)
+            .ToList();
+    }
+
+    private static bool HasNonWhitespaceOutsideElement(
+        string markdown,
+        MarkdownElement? element)
+    {
+        if (element is null)
+        {
+            return true;
+        }
+
+        var before = markdown[..element.SourceStart];
+        var end = element.SourceStart + element.SourceLength;
+        var after = markdown[end..];
+        return !string.IsNullOrWhiteSpace(before)
+            || !string.IsNullOrWhiteSpace(after);
+    }
+
+    private static WorkspaceMutationException InvalidSectionReplacement()
+        => new(
+            "replace_section replacement must contain exactly one root section. " +
+            "Additional headings must be nested below the replacement heading.");
 
     public Task<MutationResponse> CreateAsync(
         string path,
