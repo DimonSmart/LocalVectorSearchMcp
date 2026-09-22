@@ -120,22 +120,17 @@ public static class MarkdownSourcePatcher
                 "replace_section requires a heading pointer.");
         }
 
-        var boundary = elements
-            .Where(element =>
-                element.Kind == MarkdownElementKind.Heading
-                && element.SourceStart > target.SourceStart
-                && element.HeadingLevel <= target.HeadingLevel)
-            .OrderBy(element => element.SourceStart)
-            .FirstOrDefault();
-
-        var end = boundary?.SourceStart ?? source.Length;
-        var replacement = boundary is null
+        var range = MarkdownOwnedSourceRange.GetOwnedSourceRange(
+            source.Length,
+            elements,
+            target);
+        var replacement = range.End == source.Length
             ? markdown
             : EnsureTrailingBlockSeparator(markdown, eol);
 
         return new SourceEdit(
-            target.SourceStart,
-            end - target.SourceStart,
+            range.Start,
+            range.Length,
             replacement,
             pointer);
     }

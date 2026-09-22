@@ -37,11 +37,49 @@ public sealed class IntegrationTests
         Assert.Equal(1, second.SkippedFiles);
         Assert.NotEmpty(lexical);
         Assert.Contains("SQLite FTS5", slice.Markdown);
-        Assert.Equal("3", await ReadManifestValueAsync(config, "schema_version", cancellationToken));
+        Assert.Equal("4", await ReadManifestValueAsync(config, "schema_version", cancellationToken));
         var documentColumns = await ReadColumnNamesAsync(config, "documents", cancellationToken);
         Assert.DoesNotContain("knowledge_base", documentColumns);
         Assert.Contains("source_hash", documentColumns);
         Assert.DoesNotContain("knowledge_base", await ReadColumnNamesAsync(config, "chunks", cancellationToken));
+        var elementColumns = await ReadColumnNamesAsync(config, "elements", cancellationToken);
+        Assert.Contains("self_hash", elementColumns);
+        Assert.Contains("subtree_hash", elementColumns);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_RebuildsLegacyElementsSchemaWithoutSemanticHashes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var config = TestConfig(temp.Path);
+        var factory = new SqliteConnectionFactory(config);
+        await using (var db = factory.Open())
+        {
+            var command = db.CreateCommand();
+            command.CommandText = """
+                create table elements (
+                  id integer primary key,
+                  document_id integer not null,
+                  pointer text not null,
+                  kind text not null,
+                  text text not null,
+                  start_line integer not null,
+                  end_line integer not null,
+                  source_start integer not null,
+                  source_length integer not null,
+                  heading_path text null,
+                  ordinal integer not null
+                );
+                """;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await new SqliteSchemaInitializer(factory, config).InitializeAsync(cancellationToken);
+
+        var columns = await ReadColumnNamesAsync(config, "elements", cancellationToken);
+        Assert.Contains("self_hash", columns);
+        Assert.Contains("subtree_hash", columns);
     }
 
     [Fact]
@@ -60,7 +98,7 @@ public sealed class IntegrationTests
         var response = await search.SearchAsync(new SearchRequest("hybrid", SearchMode.Hybrid, 5), cancellationToken);
 
         var result = Assert.Single(response.Results);
-        Assert.Matches(@"^1\.p1~[0-9a-f]{16}$", result.Pointer);
+        Assert.Matches(@"^1\.p1~[0-9a-f]{16}~[0-9a-f]{16}$", result.Pointer);
         Assert.Equal($"notes.md::{result.Pointer}", result.FullPointer);
         Assert.Equal(result.Pointer, result.ReadHint.Pointer);
     }

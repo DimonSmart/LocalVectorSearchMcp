@@ -110,10 +110,13 @@ knowledgeBase:
 Verify:
 
 1. `kb_create` commits Markdown immediately and returns `indexSynchronized=false` while index reconciliation may still be pending; after reconciliation completes, the new content becomes searchable.
-2. Concrete pointers returned by read/search/outline use fingerprinted semantic anchors.
-3. `kb_patch` preserves unrelated external edits, relocates a uniquely unchanged shifted target, and rejects a changed or ambiguous target.
-4. `kb_move` and `kb_delete` retain their latest-`sourceHash` whole-file contract.
-5. `kb_list_files` returns non-Markdown files as `asset`.
+2. Concrete pointers returned by read/search/outline use canonical `logical~selfHash~subtreeHash` anchors; each hash is 16 lowercase hex characters and leaf hashes are equal.
+3. A heading body edit leaves its `selfHash` unchanged but changes its `subtreeHash`; raw comments or other non-indexed source inside the section also change `subtreeHash`.
+4. `replace_element` with an older still-valid heading `selfHash` survives descendant edits, while `replace_section` with the old v2 anchor is rejected. Legacy `logical~selfHash` remains valid for Self operations but is rejected for `replace_section` with a reread message.
+5. Structural relocation uses only exact element kind plus `selfHash`; direct logical-pointer match wins over duplicates and ambiguous relocation is rejected.
+6. `kb_search` returns both hashes from the same indexed revision even when source reconciliation is pending.
+7. `kb_move` and `kb_delete` retain their latest-`sourceHash` whole-file contract.
+8. `kb_list_files` returns non-Markdown files as `asset`.
 
 ## 8. Verify image save
 
