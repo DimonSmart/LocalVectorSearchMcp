@@ -272,6 +272,12 @@ public sealed class WorkbenchIntegrationTests
 
         Assert.Single(response.Results);
         Assert.Equal("chapters/a.md", response.Results[0].Path);
+        var indexedHashes = await services.Repository.DocumentStore
+            .GetDocumentHashesAsync(cancellationToken);
+        Assert.Equal(
+            indexedHashes["chapters/a.md"],
+            response.Results[0].IndexedSourceHash);
+
         var excluded = await services.Search.SearchAsync(
             new SearchRequest(
                 mode == SearchMode.Lexical ? "shared" : "anything",
