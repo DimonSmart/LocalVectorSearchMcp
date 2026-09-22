@@ -75,7 +75,8 @@ Ask:
 ```text
 Use kb_status to inspect the documentation index.
 If no documents are indexed, call kb_reindex.
-Then report the indexed document count and index path.
+Poll kb_status until indexing.isRunning is false.
+Then report indexing.last.result, the indexed document count, and index path.
 ```
 
 Alternatively:
@@ -178,6 +179,16 @@ Compare index status/search before and after image save/list/load/delete. Image 
 - invoke image embeddings;
 - change the configured Markdown source set;
 - require Markdown index synchronization.
+
+## 12. Verify non-blocking reindex
+
+Use a deliberately slow local embedding endpoint so the embedding request can be held open deterministically.
+
+1. Call `kb_reindex` and confirm the MCP call returns before the embedding request is released.
+2. While indexing is still blocked, confirm `kb_status.indexing.isRunning=true`.
+3. Confirm `kb_list_files` and `kb_outline` return before the slow embedding is released.
+4. Call `kb_reindex` again and confirm it returns `started=false` without queuing another pipeline.
+5. Release the embedding request and confirm `kb_status.indexing.isRunning=false` and `kb_status.indexing.last.outcome` is populated.
 
 ## Developer verification
 
