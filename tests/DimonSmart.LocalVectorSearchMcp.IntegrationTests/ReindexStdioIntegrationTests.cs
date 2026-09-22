@@ -181,7 +181,7 @@ public sealed class ReindexStdioIntegrationTests
         Directory.CreateDirectory(storageDirectory);
         await File.WriteAllTextAsync(
             Path.Combine(root, "smoke.md"),
-            "# Smoke test\n",
+            "# Smoke test\n\nContent that requires an embedding.\n",
             cancellationToken);
 
         var configPath = Path.Combine(root, "slow-reindex.yml");
