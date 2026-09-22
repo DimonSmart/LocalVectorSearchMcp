@@ -13,7 +13,7 @@ Large repositories often contain the answer, but not in the file the agent happe
 - Exact text search finds identifiers, API names, and quoted terminology.
 - Vector search finds conceptually related documentation even when wording differs.
 - Hybrid search combines both result lists through Reciprocal Rank Fusion.
-- `kb_read` returns focused Markdown slices instead of forcing the agent to read whole files.
+- `kb_read` returns focused slices from the current Markdown source instead of forcing the agent to read whole files or wait for indexing.
 - Element-level optimistic concurrency prevents an agent from overwriting a semantic target that changed after it was read, while unrelated document edits do not block the patch.
 - Optional file watching keeps the index synchronized with edits from VS Code, Obsidian, or other editors.
 - PNG, JPEG, WebP, and GIF files can be stored as non-indexed workspace assets under `images/`.
@@ -129,8 +129,8 @@ The MCP server exposes fourteen tools. MCP reindexing is asynchronous: `kb_reind
 
 - `kb_status` — inspect the current index.
 - `kb_reindex` — start a background build or rebuild; monitor `kb_status.indexing` for progress and the final result.
-- `kb_search` — run optionally path-scoped lexical, semantic, or hybrid search.
-- `kb_read` — read indexed Markdown from a semantic pointer and receive its `sourceHash`.
+- `kb_search` — run optionally path-scoped lexical, semantic, or hybrid search against the derived index; each result identifies its indexed revision with `indexedSourceHash`.
+- `kb_read` — read the current Markdown source from a semantic pointer and receive the exact source revision `sourceHash`.
 - `kb_patch` — atomically replace, insert before/after, or delete semantic elements.
 - `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
 - `kb_list_files` — list Markdown files and non-indexed assets.
@@ -224,7 +224,7 @@ knowledgeBase:
   watchFiles: true
 ```
 
-Markdown files remain the source of truth for indexed knowledge. A Markdown mutation commits the source file first and then schedules synchronization of the derived SQLite index. The mutation call does not wait for reconciliation to finish; `indexSynchronized: false` means the source commit succeeded but derived-index synchronization has not yet been confirmed. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers use `logical~selfHash~subtreeHash`, where both values are 16-character lowercase XxHash64 hashes over exact UTF-8 source. `selfHash` covers the element itself; heading `subtreeHash` covers the complete section source range owned by `replace_section`, while leaf hashes are equal. `kb_patch` relocates only by kind plus `selfHash`; `replace_section` additionally validates `subtreeHash`. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
+Markdown files remain the source of truth for indexed knowledge. `kb_read` and `kb_outline` parse the current source directly; `kb_search` uses the derived SQLite index and may temporarily return an older indexed revision. A Markdown mutation commits the source file first and then schedules synchronization of the derived SQLite index. The mutation call does not wait for reconciliation to finish; `indexSynchronized: false` means the source commit succeeded but derived-index synchronization has not yet been confirmed. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers use `logical~selfHash~subtreeHash`, where both values are 16-character lowercase XxHash64 hashes over exact UTF-8 source. `selfHash` covers the element itself; heading `subtreeHash` covers the complete section source range owned by `replace_section`, while leaf hashes are equal. `kb_patch` relocates only by kind plus `selfHash`; `replace_section` additionally validates `subtreeHash`. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
 
 Image save/delete are independent asset mutations and do not synchronize the Markdown index.
 

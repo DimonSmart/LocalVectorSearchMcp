@@ -115,7 +115,7 @@ Verify:
 3. A heading body edit leaves its `selfHash` unchanged but changes its `subtreeHash`; raw comments or other non-indexed source inside the section also change `subtreeHash`.
 4. `replace_element` with an older still-valid heading `selfHash` survives descendant edits, while `replace_section` with the old v2 anchor is rejected. Legacy `logical~selfHash` remains valid for Self operations but is rejected for `replace_section` with a reread message.
 5. Structural relocation uses only exact element kind plus `selfHash`; direct logical-pointer match wins over duplicates and ambiguous relocation is rejected.
-6. `kb_search` returns both hashes from the same indexed revision even when source reconciliation is pending.
+6. After a mutation, an immediate `kb_read` returns the committed source and matching `sourceHash` even while reconciliation is blocked or failing; `kb_search` may still return the previous revision and each result exposes its `indexedSourceHash`.
 7. `kb_move` and `kb_delete` retain their latest-`sourceHash` whole-file contract.
 8. `kb_list_files` returns non-Markdown files as `asset`.
 
@@ -186,7 +186,7 @@ Use a deliberately slow local embedding endpoint so the embedding request can be
 
 1. Call `kb_reindex` and confirm the MCP call returns before the embedding request is released.
 2. While indexing is still blocked, confirm `kb_status.indexing.isRunning=true`.
-3. Confirm `kb_list_files` and `kb_outline` return before the slow embedding is released.
+3. Confirm `kb_read`, `kb_list_files`, and `kb_outline` return before the slow embedding is released. During a destructive forced rebuild, confirm only `kb_search` returns the controlled rebuild-in-progress error.
 4. Call `kb_reindex` again and confirm it returns `started=false` without queuing another pipeline.
 5. Release the embedding request and confirm `kb_status.indexing.isRunning=false` and `kb_status.indexing.last.outcome` is populated.
 

@@ -17,11 +17,13 @@ public sealed class SqliteSearchIndexReader(SqliteConnectionFactory factory) :
         var placeholders = string.Join(",", chunkIds.Select((_, index) => "$id" + index));
         var command = db.CreateCommand();
         command.CommandText = $"""
-            select c.id, c.path, c.pointer, c.text, c.heading_path, e.text, e.self_hash, e.subtree_hash
+            select c.id, c.path, c.pointer, c.text, c.heading_path, e.text, e.self_hash, e.subtree_hash, d.source_hash
             from chunks c
             join elements e
               on e.document_id = c.document_id
              and e.pointer = c.pointer
+            join documents d
+              on d.id = c.document_id
             where c.id in ({placeholders})
             """;
         var index = 0;
@@ -39,7 +41,8 @@ public sealed class SqliteSearchIndexReader(SqliteConnectionFactory factory) :
                 reader.IsDBNull(4) ? null : reader.GetString(4),
                 reader.GetString(5),
                 reader.GetString(6),
-                reader.GetString(7)));
+                reader.GetString(7),
+                reader.GetString(8)));
         }
 
         return result;

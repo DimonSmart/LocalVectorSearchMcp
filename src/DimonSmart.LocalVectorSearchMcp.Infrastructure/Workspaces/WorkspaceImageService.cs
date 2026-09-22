@@ -10,6 +10,8 @@ public sealed class WorkspaceImageService(
     KnowledgeBasePathGuard pathGuard,
     IRemoteFileDownloader downloader) : IWorkspaceImageService
 {
+    private static readonly object FinalMoveGate = new();
+
     public const long MaxImageBytes = 25L * 1024 * 1024;
     private const int DefaultPageSize = 50;
     private const int MaxPageSize = 200;
@@ -254,37 +256,40 @@ public sealed class WorkspaceImageService(
         string temporaryPath,
         string requestedName)
     {
-        for (var suffix = 1; ; suffix++)
+        lock (FinalMoveGate)
         {
-            var fileName = suffix == 1
-                ? requestedName
-                : ImageFileNamePolicy.WithCollisionSuffix(
-                    requestedName,
-                    suffix);
-            var relativePath = $"images/{fileName}";
-            var absolutePath = pathGuard.ResolveImagePath(
-                relativePath);
+            for (var suffix = 1; ; suffix++)
+            {
+                var fileName = suffix == 1
+                    ? requestedName
+                    : ImageFileNamePolicy.WithCollisionSuffix(
+                        requestedName,
+                        suffix);
+                var relativePath = $"images/{fileName}";
+                var absolutePath = pathGuard.ResolveImagePath(
+                    relativePath);
 
-            try
-            {
-                File.Move(
-                    temporaryPath,
-                    absolutePath,
-                    overwrite: false);
-                return relativePath;
-            }
-            catch (IOException) when (
-                File.Exists(absolutePath)
-                || Directory.Exists(absolutePath))
-            {
-                continue;
-            }
-            catch (Exception exception) when (
-                exception is IOException
-                    or UnauthorizedAccessException)
-            {
-                throw new WorkspaceImageException(
-                    "The validated image could not be moved to its final workspace path.");
+                try
+                {
+                    File.Move(
+                        temporaryPath,
+                        absolutePath,
+                        overwrite: false);
+                    return relativePath;
+                }
+                catch (IOException) when (
+                    File.Exists(absolutePath)
+                    || Directory.Exists(absolutePath))
+                {
+                    continue;
+                }
+                catch (Exception exception) when (
+                    exception is IOException
+                        or UnauthorizedAccessException)
+                {
+                    throw new WorkspaceImageException(
+                        "The validated image could not be moved to its final workspace path.");
+                }
             }
         }
     }

@@ -6,7 +6,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.SemanticPointers;
 
 public sealed class SemanticPointerReader(
     KnowledgeBasePathGuard pathGuard,
-    IIndexedMarkdownSliceReader sliceReader) : ISemanticPointerReader
+    IMarkdownSliceReader sliceReader) : ISemanticPointerReader
 {
     public Task<MarkdownSlice> ReadAsync(
         string path,

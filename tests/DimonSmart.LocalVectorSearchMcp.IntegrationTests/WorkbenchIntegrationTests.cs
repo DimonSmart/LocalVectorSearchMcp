@@ -72,7 +72,7 @@ public sealed class WorkbenchIntegrationTests
         await Assert.ThrowsAsync<WorkspaceMutationException>(() => services.Mutations.CreateAsync(
             "chapters/one.md", "duplicate", cancellationToken));
 
-        var slice = await services.Repository.SliceReader.ReadSliceAsync(
+        var slice = await services.Reader.ReadSliceAsync(
             "chapters/one.md",
             new Core.SemanticPointers.SemanticPointer("1.p1"),
             10,
@@ -208,6 +208,69 @@ public sealed class WorkbenchIntegrationTests
     }
 
     [Fact]
+    public async Task FailedIndexing_DoesNotBlockCurrentSourceReadOrOutline()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var provider = new SwitchableEmbeddingProvider();
+        var services = CreateServices(temp.Path, provider: provider);
+
+        var created = await services.Mutations.CreateAsync(
+            "source.md",
+            "# Source\n\nold-marker\n",
+            cancellationToken);
+        var originalRead = await services.Reader.ReadSliceAsync(
+            "source.md",
+            new SemanticAnchor(new SemanticPointer("document")),
+            20,
+            12_000,
+            cancellationToken);
+        var target = Assert.Single(
+            originalRead.Elements,
+            element => element.Text == "old-marker");
+
+        provider.Fail = true;
+        var patched = await services.Mutations.PatchAsync(
+            new PatchRequest(
+                "source.md",
+                [
+                    new PatchOperation(
+                        PatchOperationKind.ReplaceElement,
+                        target.Pointer,
+                        "new-marker")
+                ]),
+            cancellationToken);
+
+        var currentRead = await services.Reader.ReadSliceAsync(
+            "source.md",
+            new SemanticAnchor(new SemanticPointer("document")),
+            20,
+            12_000,
+            cancellationToken);
+        var currentOutline = await services.Navigation.GetOutlineAsync(
+            "source.md",
+            cancellationToken);
+        var oldSearch = await services.Search.SearchAsync(
+            new SearchRequest("old-marker", SearchMode.Lexical, 10),
+            cancellationToken);
+        var newSearch = await services.Search.SearchAsync(
+            new SearchRequest("new-marker", SearchMode.Lexical, 10),
+            cancellationToken);
+
+        Assert.Equal(patched.SourceHash, currentRead.SourceHash);
+        Assert.Equal(patched.SourceHash, currentOutline.SourceHash);
+        Assert.Contains("new-marker", currentRead.Markdown, StringComparison.Ordinal);
+        var staleResult = Assert.Single(oldSearch.Results);
+        Assert.Equal(created.SourceHash, staleResult.IndexedSourceHash);
+        Assert.Empty(newSearch.Results);
+        Assert.Equal(1, services.State.GetStatus().PendingFiles);
+        Assert.Contains(
+            "embedding unavailable",
+            services.State.GetStatus().LastError,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Patch_PreservesBomCrLfAndUntouchedWhitespace()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -272,6 +335,12 @@ public sealed class WorkbenchIntegrationTests
 
         Assert.Single(response.Results);
         Assert.Equal("chapters/a.md", response.Results[0].Path);
+        var indexedHashes = await services.Repository.DocumentStore
+            .GetDocumentHashesAsync(cancellationToken);
+        Assert.Equal(
+            indexedHashes["chapters/a.md"],
+            response.Results[0].IndexedSourceHash);
+
         var excluded = await services.Search.SearchAsync(
             new SearchRequest(
                 mode == SearchMode.Lexical ? "shared" : "anything",
@@ -326,11 +395,16 @@ public sealed class WorkbenchIntegrationTests
         var services = CreateServices(temp.Path, watchFiles: true, provider: provider);
         await services.Repository.Initializer.InitializeAsync(cancellationToken);
         await services.Repository.Manifest.WriteCurrentManifestAsync(cancellationToken);
-        var watcher = new MarkdownWorkspaceWatcher(
-            services.Config,
+        var scheduler = new WorkspaceIndexSynchronizationScheduler(
             services.Synchronizer,
             services.State,
+            NullLogger<WorkspaceIndexSynchronizationScheduler>.Instance);
+        var watcher = new MarkdownWorkspaceWatcher(
+            services.Config,
+            scheduler,
+            services.State,
             NullLogger<MarkdownWorkspaceWatcher>.Instance);
+        await scheduler.StartAsync(cancellationToken);
         await watcher.StartAsync(cancellationToken);
         try
         {
@@ -372,6 +446,7 @@ public sealed class WorkbenchIntegrationTests
         finally
         {
             await watcher.StopAsync(CancellationToken.None);
+            await scheduler.StopAsync(CancellationToken.None);
             watcher.Dispose();
         }
     }
@@ -426,15 +501,20 @@ public sealed class WorkbenchIntegrationTests
             repository.Initializer,
             repository.Manifest,
             repository.DocumentStore,
-            state,
             operationGate);
         var mutations = new WorkspaceMutationService(
             config,
             guard,
             loader,
             parser,
-            new ImmediateIndexSynchronizationScheduler(synchronizer),
-            state);
+            new ImmediateIndexSynchronizationScheduler(
+                synchronizer,
+                state));
+        var reader = new SourceMarkdownSliceReader(
+            config,
+            guard,
+            loader,
+            parser);
         var navigation = new WorkspaceNavigationService(
             config, guard, loader, parser);
         var indexer = new KnowledgeBaseIndexer(
@@ -460,6 +540,7 @@ public sealed class WorkbenchIntegrationTests
             repository,
             state,
             synchronizer,
+            reader,
             mutations,
             navigation,
             indexer,
@@ -471,10 +552,31 @@ public sealed class WorkbenchIntegrationTests
         SqliteTestServices Repository,
         InMemoryIndexSynchronizationState State,
         WorkspaceIndexSynchronizer Synchronizer,
+        SourceMarkdownSliceReader Reader,
         WorkspaceMutationService Mutations,
         WorkspaceNavigationService Navigation,
         KnowledgeBaseIndexer Indexer,
         KnowledgeSearchService Search);
+
+    private sealed class SwitchableEmbeddingProvider : IEmbeddingProvider
+    {
+        public bool Fail { get; set; }
+
+        public Task<IReadOnlyList<EmbeddingVector>> EmbedBatchAsync(
+            IReadOnlyList<string> texts,
+            CancellationToken cancellationToken)
+        {
+            if (Fail)
+            {
+                throw new EmbeddingProviderException("embedding unavailable");
+            }
+
+            IReadOnlyList<EmbeddingVector> result = texts
+                .Select(_ => new EmbeddingVector([0.5f, 0.2f, 0.1f]))
+                .ToList();
+            return Task.FromResult(result);
+        }
+    }
 
     private sealed class FailingEmbeddingProvider : IEmbeddingProvider
     {

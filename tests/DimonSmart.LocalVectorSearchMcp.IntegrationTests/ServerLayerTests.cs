@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
@@ -37,6 +38,49 @@ public sealed class ServerLayerTests
                 "kb_status"
             ],
             names);
+    }
+
+    [Fact]
+    public void KnowledgeMcpTools_DescribeSourceReadAndIndexedSearchContracts()
+    {
+        var readMethod = typeof(KnowledgeMcpTools).GetMethod(
+            nameof(KnowledgeMcpTools.ReadAsync))!;
+        var searchMethod = typeof(KnowledgeMcpTools).GetMethod(
+            nameof(KnowledgeMcpTools.SearchAsync))!;
+
+        var readTool = Assert.Single(
+            readMethod.GetCustomAttributes(typeof(McpServerToolAttribute), false)
+                .Cast<McpServerToolAttribute>());
+        var searchTool = Assert.Single(
+            searchMethod.GetCustomAttributes(typeof(McpServerToolAttribute), false)
+                .Cast<McpServerToolAttribute>());
+
+        Assert.Equal(typeof(MarkdownSlice), readTool.OutputSchemaType);
+        Assert.Equal(typeof(SearchResponse), searchTool.OutputSchemaType);
+
+        var readDescription = Assert.Single(
+            readMethod.GetCustomAttributes(typeof(DescriptionAttribute), false)
+                .Cast<DescriptionAttribute>()).Description;
+        var searchDescription = Assert.Single(
+            searchMethod.GetCustomAttributes(typeof(DescriptionAttribute), false)
+                .Cast<DescriptionAttribute>()).Description;
+
+        Assert.Contains(
+            "current Markdown source",
+            readDescription,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Reads indexed Markdown",
+            readDescription,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "indexedSourceHash",
+            searchDescription,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "may temporarily lag",
+            searchDescription,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

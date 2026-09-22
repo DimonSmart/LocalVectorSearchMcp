@@ -82,7 +82,7 @@ public sealed class CoreTests
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var search = JsonSerializer.Deserialize<SearchRequest>("""{"query":"q","mode":"SEMANTIC"}""", options);
         var reindex = JsonSerializer.Deserialize<ReindexRequest>("""{"scope":"ALL","force":true}""", options);
-        var result = new SearchResultItem("a.md", "1.p1", "a.md::1.p1", 1, SearchMode.Lexical, null, "text", new ReadHint("a.md", "1.p1", 20, 12000));
+        var result = new SearchResultItem("a.md", "1.p1", "a.md::1.p1", 1, SearchMode.Lexical, null, "text", new ReadHint("a.md", "1.p1", 20, 12000), "indexed-hash");
 
         var json = JsonSerializer.Serialize(result, options);
 

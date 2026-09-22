@@ -8,4 +8,5 @@ public sealed record ChunkSearchDocument(
     string? HeadingPath,
     string? ElementText = null,
     string? ElementSelfHash = null,
-    string? ElementSubtreeHash = null);
+    string? ElementSubtreeHash = null,
+    string IndexedSourceHash = "");

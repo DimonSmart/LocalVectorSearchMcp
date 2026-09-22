@@ -8,6 +8,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Search;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
@@ -49,7 +50,7 @@ public sealed class DependencySegregationTests
         Assert.IsType<SqliteSchemaInitializer>(provider.GetRequiredService<IIndexInitializer>());
         Assert.IsType<SqliteDocumentIndexStore>(provider.GetRequiredService<IDocumentIndexStore>());
         Assert.IsType<SqliteIndexStatusReader>(provider.GetRequiredService<IIndexStatusReader>());
-        Assert.IsType<SqliteMarkdownSliceReader>(provider.GetRequiredService<IIndexedMarkdownSliceReader>());
+        Assert.IsType<SourceMarkdownSliceReader>(provider.GetRequiredService<IMarkdownSliceReader>());
         var searchReader = Assert.IsType<SqliteSearchIndexReader>(provider.GetRequiredService<IChunkSearchDocumentReader>());
         Assert.Same(searchReader, provider.GetRequiredService<ISearchIndexStateReader>());
         Assert.IsType<SqliteIndexManifestService>(provider.GetRequiredService<IIndexManifestService>());

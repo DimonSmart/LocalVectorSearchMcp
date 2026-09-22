@@ -9,7 +9,6 @@ internal sealed class SqliteTestServices
     public required SqliteIndexManifestService Manifest { get; init; }
     public required SqliteDocumentIndexStore DocumentStore { get; init; }
     public required SqliteSearchIndexReader SearchIndexReader { get; init; }
-    public required SqliteMarkdownSliceReader SliceReader { get; init; }
     public required SqliteIndexStatusReader StatusReader { get; init; }
     public required SqliteVectorIndexService VectorSearch { get; init; }
     public required SqliteFullTextSearchService FullTextSearch { get; init; }
@@ -24,7 +23,6 @@ internal sealed class SqliteTestServices
             Manifest = new SqliteIndexManifestService(factory, config, initializer),
             DocumentStore = new SqliteDocumentIndexStore(factory, config, new SqliteDocumentDeletionService()),
             SearchIndexReader = new SqliteSearchIndexReader(factory),
-            SliceReader = new SqliteMarkdownSliceReader(factory),
             StatusReader = new SqliteIndexStatusReader(factory, config),
             VectorSearch = new SqliteVectorIndexService(factory),
             FullTextSearch = new SqliteFullTextSearchService(factory)

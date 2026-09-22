@@ -12,8 +12,7 @@ public sealed class WorkspaceMutationService(
     KnowledgeBasePathGuard pathGuard,
     IMarkdownDocumentLoader loader,
     IMarkdownElementParser parser,
-    IWorkspaceIndexSynchronizationScheduler synchronizationScheduler,
-    IIndexSynchronizationState synchronizationState) : IWorkspaceMutationService
+    IWorkspaceIndexSynchronizationScheduler synchronizationScheduler) : IWorkspaceMutationService
 {
     private const int MaxPatchAttempts = 3;
     private readonly SemaphoreSlim mutationGate = new(1, 1);
@@ -381,7 +380,6 @@ public sealed class WorkspaceMutationService(
             cancellationToken);
         File.Move(sourceAbsolute, targetAbsolute);
 
-        synchronizationState.MarkDirty(sourcePath, "Index synchronization is pending.");
         synchronizationScheduler.Schedule(sourcePath);
         return ScheduleSynchronization(targetPath, document.SourceHash, sourcePath);
     }
@@ -424,7 +422,6 @@ public sealed class WorkspaceMutationService(
         string? sourceHash,
         string? previousPath)
     {
-        synchronizationState.MarkDirty(path, "Index synchronization is pending.");
         synchronizationScheduler.Schedule(path);
         return new MutationResponse(path, sourceHash, false, null, previousPath);
     }

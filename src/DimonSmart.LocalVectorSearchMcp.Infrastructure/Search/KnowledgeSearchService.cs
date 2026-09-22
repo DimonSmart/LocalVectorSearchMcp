@@ -114,7 +114,8 @@ public sealed class KnowledgeSearchService(
                 effectiveMode,
                 chunk.HeadingPath,
                 snippets.GetValueOrDefault(chunk.ChunkId) ?? MakeSnippet(chunk.Text),
-                new ReadHint(chunk.Path, anchor, 20, 12000));
+                new ReadHint(chunk.Path, anchor, 20, 12000),
+                chunk.IndexedSourceHash);
         }).ToList();
 
         return new SearchResponse(results, warning);

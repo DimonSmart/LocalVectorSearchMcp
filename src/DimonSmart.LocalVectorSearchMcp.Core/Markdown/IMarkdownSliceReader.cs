@@ -2,7 +2,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
-public interface IIndexedMarkdownSliceReader
+public interface IMarkdownSliceReader
 {
     Task<MarkdownSlice> ReadSliceAsync(
         string path,
