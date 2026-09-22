@@ -29,7 +29,7 @@ try
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()
-        .WithToolsFromAssembly(typeof(KnowledgeMcpTools).Assembly, JsonOptions.Default);
+        .WithLocalVectorSearchToolsFromAssembly(typeof(KnowledgeMcpTools).Assembly, JsonOptions.Default);
 
     await builder.Build().RunAsync();
 }
