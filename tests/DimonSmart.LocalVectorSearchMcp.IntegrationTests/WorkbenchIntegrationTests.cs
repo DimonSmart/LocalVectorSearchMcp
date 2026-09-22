@@ -208,6 +208,69 @@ public sealed class WorkbenchIntegrationTests
     }
 
     [Fact]
+    public async Task FailedIndexing_DoesNotBlockCurrentSourceReadOrOutline()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var provider = new SwitchableEmbeddingProvider();
+        var services = CreateServices(temp.Path, provider: provider);
+
+        var created = await services.Mutations.CreateAsync(
+            "source.md",
+            "# Source\n\nold-marker\n",
+            cancellationToken);
+        var originalRead = await services.Reader.ReadSliceAsync(
+            "source.md",
+            new SemanticAnchor(new SemanticPointer("document")),
+            20,
+            12_000,
+            cancellationToken);
+        var target = Assert.Single(
+            originalRead.Elements,
+            element => element.Text == "old-marker");
+
+        provider.Fail = true;
+        var patched = await services.Mutations.PatchAsync(
+            new PatchRequest(
+                "source.md",
+                [
+                    new PatchOperation(
+                        PatchOperationKind.ReplaceElement,
+                        target.Pointer,
+                        "new-marker")
+                ]),
+            cancellationToken);
+
+        var currentRead = await services.Reader.ReadSliceAsync(
+            "source.md",
+            new SemanticAnchor(new SemanticPointer("document")),
+            20,
+            12_000,
+            cancellationToken);
+        var currentOutline = await services.Navigation.GetOutlineAsync(
+            "source.md",
+            cancellationToken);
+        var oldSearch = await services.Search.SearchAsync(
+            new SearchRequest("old-marker", SearchMode.Lexical, 10),
+            cancellationToken);
+        var newSearch = await services.Search.SearchAsync(
+            new SearchRequest("new-marker", SearchMode.Lexical, 10),
+            cancellationToken);
+
+        Assert.Equal(patched.SourceHash, currentRead.SourceHash);
+        Assert.Equal(patched.SourceHash, currentOutline.SourceHash);
+        Assert.Contains("new-marker", currentRead.Markdown, StringComparison.Ordinal);
+        var staleResult = Assert.Single(oldSearch.Results);
+        Assert.Equal(created.SourceHash, staleResult.IndexedSourceHash);
+        Assert.Empty(newSearch.Results);
+        Assert.Equal(1, services.State.GetStatus().PendingFiles);
+        Assert.Contains(
+            "embedding unavailable",
+            services.State.GetStatus().LastError,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Patch_PreservesBomCrLfAndUntouchedWhitespace()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -494,6 +557,26 @@ public sealed class WorkbenchIntegrationTests
         WorkspaceNavigationService Navigation,
         KnowledgeBaseIndexer Indexer,
         KnowledgeSearchService Search);
+
+    private sealed class SwitchableEmbeddingProvider : IEmbeddingProvider
+    {
+        public bool Fail { get; set; }
+
+        public Task<IReadOnlyList<EmbeddingVector>> EmbedBatchAsync(
+            IReadOnlyList<string> texts,
+            CancellationToken cancellationToken)
+        {
+            if (Fail)
+            {
+                throw new EmbeddingProviderException("embedding unavailable");
+            }
+
+            IReadOnlyList<EmbeddingVector> result = texts
+                .Select(_ => new EmbeddingVector([0.5f, 0.2f, 0.1f]))
+                .ToList();
+            return Task.FromResult(result);
+        }
+    }
 
     private sealed class FailingEmbeddingProvider : IEmbeddingProvider
     {
