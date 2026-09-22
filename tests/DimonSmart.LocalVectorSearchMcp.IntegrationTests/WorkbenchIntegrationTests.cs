@@ -72,7 +72,7 @@ public sealed class WorkbenchIntegrationTests
         await Assert.ThrowsAsync<WorkspaceMutationException>(() => services.Mutations.CreateAsync(
             "chapters/one.md", "duplicate", cancellationToken));
 
-        var slice = await services.Repository.SliceReader.ReadSliceAsync(
+        var slice = await services.Reader.ReadSliceAsync(
             "chapters/one.md",
             new Core.SemanticPointers.SemanticPointer("1.p1"),
             10,
@@ -326,11 +326,16 @@ public sealed class WorkbenchIntegrationTests
         var services = CreateServices(temp.Path, watchFiles: true, provider: provider);
         await services.Repository.Initializer.InitializeAsync(cancellationToken);
         await services.Repository.Manifest.WriteCurrentManifestAsync(cancellationToken);
-        var watcher = new MarkdownWorkspaceWatcher(
-            services.Config,
+        var scheduler = new WorkspaceIndexSynchronizationScheduler(
             services.Synchronizer,
             services.State,
+            NullLogger<WorkspaceIndexSynchronizationScheduler>.Instance);
+        var watcher = new MarkdownWorkspaceWatcher(
+            services.Config,
+            scheduler,
+            services.State,
             NullLogger<MarkdownWorkspaceWatcher>.Instance);
+        await scheduler.StartAsync(cancellationToken);
         await watcher.StartAsync(cancellationToken);
         try
         {
@@ -372,6 +377,7 @@ public sealed class WorkbenchIntegrationTests
         finally
         {
             await watcher.StopAsync(CancellationToken.None);
+            await scheduler.StopAsync(CancellationToken.None);
             watcher.Dispose();
         }
     }
@@ -426,15 +432,20 @@ public sealed class WorkbenchIntegrationTests
             repository.Initializer,
             repository.Manifest,
             repository.DocumentStore,
-            state,
             operationGate);
         var mutations = new WorkspaceMutationService(
             config,
             guard,
             loader,
             parser,
-            new ImmediateIndexSynchronizationScheduler(synchronizer),
-            state);
+            new ImmediateIndexSynchronizationScheduler(
+                synchronizer,
+                state));
+        var reader = new SourceMarkdownSliceReader(
+            config,
+            guard,
+            loader,
+            parser);
         var navigation = new WorkspaceNavigationService(
             config, guard, loader, parser);
         var indexer = new KnowledgeBaseIndexer(
@@ -460,6 +471,7 @@ public sealed class WorkbenchIntegrationTests
             repository,
             state,
             synchronizer,
+            reader,
             mutations,
             navigation,
             indexer,
@@ -471,6 +483,7 @@ public sealed class WorkbenchIntegrationTests
         SqliteTestServices Repository,
         InMemoryIndexSynchronizationState State,
         WorkspaceIndexSynchronizer Synchronizer,
+        SourceMarkdownSliceReader Reader,
         WorkspaceMutationService Mutations,
         WorkspaceNavigationService Navigation,
         KnowledgeBaseIndexer Indexer,
