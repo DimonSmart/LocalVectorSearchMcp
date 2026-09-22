@@ -25,7 +25,11 @@ public sealed class ReindexCoordinatorTests
                 new ReindexRequest(ReindexScope.All, true));
 
             Assert.False(second.Started);
-            Assert.Equal(first.Current, second.Current);
+            Assert.Equal(first.Current.Scope, second.Current.Scope);
+            Assert.Equal(first.Current.Force, second.Current.Force);
+            Assert.Equal(
+                first.Current.StartedAtUtc,
+                second.Current.StartedAtUtc);
             Assert.Equal(1, indexer.CallCount);
 
             var running = coordinator.GetStatus();

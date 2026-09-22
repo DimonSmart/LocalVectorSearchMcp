@@ -270,6 +270,7 @@ public sealed class ReindexStdioIntegrationTests
             }
 
             var contentLength = 0;
+            var isChunked = false;
             while (true)
             {
                 var line = await reader.ReadLineAsync(cancellationToken);
@@ -278,12 +279,28 @@ public sealed class ReindexStdioIntegrationTests
                     break;
                 }
 
-                const string prefix = "Content-Length:";
-                if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                const string contentLengthPrefix = "Content-Length:";
+                if (line.StartsWith(
+                        contentLengthPrefix,
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     contentLength = int.Parse(
-                        line[prefix.Length..].Trim(),
+                        line[contentLengthPrefix.Length..].Trim(),
                         System.Globalization.CultureInfo.InvariantCulture);
+                    continue;
+                }
+
+                const string transferEncodingPrefix =
+                    "Transfer-Encoding:";
+                if (line.StartsWith(
+                        transferEncodingPrefix,
+                        StringComparison.OrdinalIgnoreCase)
+                    && line[transferEncodingPrefix.Length..]
+                        .Contains(
+                            "chunked",
+                            StringComparison.OrdinalIgnoreCase))
+                {
+                    isChunked = true;
                 }
             }
 
@@ -306,6 +323,18 @@ public sealed class ReindexStdioIntegrationTests
                 }
 
                 requestBody = new string(body);
+            }
+            else if (isChunked)
+            {
+                requestBody = await ReadChunkedBodyAsync(
+                    reader,
+                    cancellationToken);
+            }
+
+            if (string.IsNullOrWhiteSpace(requestBody))
+            {
+                throw new IOException(
+                    "Embedding request body was empty.");
             }
 
             RequestReceived.TrySetResult();
@@ -334,6 +363,77 @@ public sealed class ReindexStdioIntegrationTests
             await stream.WriteAsync(headers, cancellationToken);
             await stream.WriteAsync(payloadBytes, cancellationToken);
             await stream.FlushAsync(cancellationToken);
+        }
+
+        private static async Task<string> ReadChunkedBodyAsync(
+            StreamReader reader,
+            CancellationToken cancellationToken)
+        {
+            var body = new StringBuilder();
+
+            while (true)
+            {
+                var sizeLine =
+                    await reader.ReadLineAsync(cancellationToken)
+                    ?? throw new IOException(
+                        "Embedding chunk header ended unexpectedly.");
+                var extensionIndex = sizeLine.IndexOf(';');
+                var sizeText = extensionIndex >= 0
+                    ? sizeLine[..extensionIndex]
+                    : sizeLine;
+
+                if (!int.TryParse(
+                        sizeText,
+                        System.Globalization.NumberStyles.HexNumber,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out var chunkSize))
+                {
+                    throw new IOException(
+                        $"Invalid embedding chunk size '{sizeLine}'.");
+                }
+
+                if (chunkSize == 0)
+                {
+                    while (true)
+                    {
+                        var trailer =
+                            await reader.ReadLineAsync(
+                                cancellationToken);
+                        if (string.IsNullOrEmpty(trailer))
+                        {
+                            return body.ToString();
+                        }
+                    }
+                }
+
+                var chunk = new char[chunkSize];
+                var offset = 0;
+                while (offset < chunk.Length)
+                {
+                    var read = await reader.ReadAsync(
+                        chunk.AsMemory(
+                            offset,
+                            chunk.Length - offset),
+                        cancellationToken);
+                    if (read == 0)
+                    {
+                        throw new IOException(
+                            "Embedding chunk ended unexpectedly.");
+                    }
+
+                    offset += read;
+                }
+
+                body.Append(chunk);
+
+                var terminator =
+                    await reader.ReadLineAsync(cancellationToken);
+                if (terminator is not "")
+                {
+                    throw new IOException(
+                        "Embedding chunk terminator is invalid.");
+                }
+            }
         }
     }
 }
