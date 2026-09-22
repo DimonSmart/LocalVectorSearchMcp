@@ -28,7 +28,7 @@ public sealed class WorkbenchHardeningIntegrationTests
 
         var created = await services.Mutations.CreateAsync("chapter.md", "", cancellationToken);
         Assert.False(created.IndexSynchronized);
-        var empty = await services.Repository.SliceReader.ReadSliceAsync(
+        var empty = await services.Reader.ReadSliceAsync(
             "chapter.md",
             new SemanticPointer("document"),
             10,
@@ -212,6 +212,11 @@ public sealed class WorkbenchHardeningIntegrationTests
             new ImmediateIndexSynchronizationScheduler(
                 synchronizer,
                 state));
+        var reader = new SourceMarkdownSliceReader(
+            config,
+            guard,
+            loader,
+            parser);
         var navigation = new WorkspaceNavigationService(
             config,
             guard,
@@ -237,6 +242,7 @@ public sealed class WorkbenchHardeningIntegrationTests
             repository.SearchIndexReader);
         return new WorkbenchServices(
             repository,
+            reader,
             mutations,
             navigation,
             indexer,
@@ -245,6 +251,7 @@ public sealed class WorkbenchHardeningIntegrationTests
 
     private sealed record WorkbenchServices(
         SqliteTestServices Repository,
+        SourceMarkdownSliceReader Reader,
         WorkspaceMutationService Mutations,
         WorkspaceNavigationService Navigation,
         KnowledgeBaseIndexer Indexer,
