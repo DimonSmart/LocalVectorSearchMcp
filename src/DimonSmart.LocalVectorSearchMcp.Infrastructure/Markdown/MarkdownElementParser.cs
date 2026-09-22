@@ -136,9 +136,10 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
                 length));
         }
 
-        return elements.OrderBy(element => element.SourceStart)
+        var ordered = elements.OrderBy(element => element.SourceStart)
             .ThenBy(element => element.Kind == MarkdownElementKind.Document ? 0 : 1)
             .ToList();
+        return SemanticElementHashing.Attach(document.Markdown, ordered);
     }
 
     private static (int Start, int Length) GetSpan(Block block, int sourceLength)
