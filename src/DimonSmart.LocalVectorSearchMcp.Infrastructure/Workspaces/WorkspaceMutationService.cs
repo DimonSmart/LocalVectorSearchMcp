@@ -3,6 +3,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
@@ -31,15 +32,9 @@ public sealed class WorkspaceMutationService(
         EnsureWritesEnabled();
         var normalized = pathGuard.ValidateRelativePath(request.Path);
         var absolute = pathGuard.ResolveMarkdownPath(normalized);
-        if (!File.Exists(absolute))
-        {
-            throw new WorkspaceMutationException(
-                $"Markdown file '{normalized}' does not exist.");
-        }
-
         for (var attempt = 1; attempt <= MaxPatchAttempts; attempt++)
         {
-            var document = await loader.LoadFileAsync(
+            var document = await loader.LoadExistingAsync(
                 config.KnowledgeBase,
                 normalized,
                 cancellationToken);
@@ -61,6 +56,7 @@ public sealed class WorkspaceMutationService(
             {
                 updatedSourceHash = await WriteAtomicallyAsync(
                     absolute,
+                    normalized,
                     resultingSource,
                     document.HasUtf8Bom,
                     document.SourceHash,
@@ -355,27 +351,22 @@ public sealed class WorkspaceMutationService(
         var targetPath = pathGuard.ValidateRelativePath(request.TargetPath);
         var sourceAbsolute = pathGuard.ResolveMarkdownPath(sourcePath);
         var targetAbsolute = pathGuard.ResolveMarkdownPath(targetPath);
-        if (!File.Exists(sourceAbsolute))
-        {
-            throw new WorkspaceMutationException(
-                $"Markdown file '{sourcePath}' does not exist.");
-        }
+        var document = await loader.LoadExistingAsync(
+            config.KnowledgeBase,
+            sourcePath,
+            cancellationToken);
 
         if (File.Exists(targetAbsolute))
         {
             throw new WorkspaceMutationException(
                 $"Destination '{targetPath}' already exists.");
         }
-
-        var document = await loader.LoadFileAsync(
-            config.KnowledgeBase,
-            sourcePath,
-            cancellationToken);
         EnsureExpectedHash(request.ExpectedSourceHash, document.SourceHash);
         Directory.CreateDirectory(Path.GetDirectoryName(targetAbsolute)!);
         targetAbsolute = pathGuard.ResolveMarkdownPath(targetPath);
         await EnsureFileHashAsync(
             sourceAbsolute,
+            sourcePath,
             document.SourceHash,
             cancellationToken);
         File.Move(sourceAbsolute, targetAbsolute);
@@ -398,19 +389,14 @@ public sealed class WorkspaceMutationService(
         EnsureWritesEnabled();
         var normalized = pathGuard.ValidateRelativePath(request.Path);
         var absolute = pathGuard.ResolveMarkdownPath(normalized);
-        if (!File.Exists(absolute))
-        {
-            throw new WorkspaceMutationException(
-                $"Markdown file '{normalized}' does not exist.");
-        }
-
-        var document = await loader.LoadFileAsync(
+        var document = await loader.LoadExistingAsync(
             config.KnowledgeBase,
             normalized,
             cancellationToken);
         EnsureExpectedHash(request.ExpectedSourceHash, document.SourceHash);
         await EnsureFileHashAsync(
             absolute,
+            normalized,
             document.SourceHash,
             cancellationToken);
         File.Delete(absolute);
@@ -455,6 +441,7 @@ public sealed class WorkspaceMutationService(
 
     private static async Task<string> WriteAtomicallyAsync(
         string absolutePath,
+        string relativePath,
         string source,
         bool includeBom,
         string expectedSourceHash,
@@ -462,6 +449,7 @@ public sealed class WorkspaceMutationService(
     {
         await EnsureFileHashAsync(
             absolutePath,
+            relativePath,
             expectedSourceHash,
             cancellationToken);
 
@@ -480,6 +468,7 @@ public sealed class WorkspaceMutationService(
                 cancellationToken);
             await EnsureFileHashAsync(
                 absolutePath,
+                relativePath,
                 expectedSourceHash,
                 cancellationToken);
             File.Move(temporaryPath, absolutePath, true);
@@ -496,12 +485,23 @@ public sealed class WorkspaceMutationService(
 
     private static async Task EnsureFileHashAsync(
         string absolutePath,
+        string relativePath,
         string expectedSourceHash,
         CancellationToken cancellationToken)
     {
-        var currentBytes = await File.ReadAllBytesAsync(
-            absolutePath,
-            cancellationToken);
+        byte[] currentBytes;
+        try
+        {
+            currentBytes = await File.ReadAllBytesAsync(
+                absolutePath,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            throw new DocumentNotFoundException(relativePath, exception);
+        }
+
         var currentHash = Core.Storage.StableHash.HashBytes(currentBytes);
         EnsureExpectedHash(expectedSourceHash, currentHash);
     }
