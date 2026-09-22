@@ -89,7 +89,7 @@ public sealed class MarkdownWorkspaceWatcher(
         var relativePath = Path.GetRelativePath(
                 config.KnowledgeBase.Root,
                 absolutePath)
-            .Replace('\', '/');
+            .Replace('\\\\', '/');
         if (relativePath.StartsWith("../", StringComparison.Ordinal)
             || !MatchesConfiguredSource(relativePath))
         {
