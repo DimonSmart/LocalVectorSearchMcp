@@ -242,7 +242,7 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
 
     private sealed class BlockingSynchronizer : IWorkspaceIndexSynchronizer
     {
-        private readonly TaskCompletionSource release =
+        private readonly TaskCompletionSource<bool> release =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource<string> Started { get; } =
@@ -259,7 +259,7 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
             return true;
         }
 
-        public void Release() => release.TrySetResult();
+        public void Release() => release.TrySetResult(true);
     }
 
     private sealed class FailFirstSynchronizer : IWorkspaceIndexSynchronizer
