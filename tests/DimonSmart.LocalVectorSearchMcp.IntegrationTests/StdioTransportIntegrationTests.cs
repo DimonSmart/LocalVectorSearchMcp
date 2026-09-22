@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
+using DimonSmart.LocalVectorSearchMcp.Server;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -356,6 +358,330 @@ public sealed class StdioTransportIntegrationTests
     }
 
     [Fact]
+    public async Task StdioCreateDuplicate_ReturnsActionableControlledError()
+    {
+        var cancellationToken =
+            TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(
+            temp.Path,
+            cancellationToken,
+            allowWrites: true);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport(
+            "local-vector-search-create-duplicate",
+            configPath,
+            temp.Path,
+            stderr);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: cancellationToken);
+
+        var request = new Dictionary<string, object?>
+        {
+            ["request"] = new
+            {
+                path = "duplicate.md",
+                markdown = "# Duplicate\n"
+            }
+        };
+        var first = await client.CallToolAsync(
+            "kb_create",
+            request,
+            cancellationToken: cancellationToken);
+        var second = await client.CallToolAsync(
+            "kb_create",
+            request,
+            cancellationToken: cancellationToken);
+
+        Assert.False(first.IsError is true);
+        Assert.True(second.IsError is true);
+        var text = ResultText(second);
+        Assert.Contains(
+            "already exists",
+            text,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "An error occurred invoking 'kb_create'",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StdioMoveAndDeleteWithStaleHash_ReturnActionableControlledErrors()
+    {
+        var cancellationToken =
+            TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(
+            temp.Path,
+            cancellationToken,
+            allowWrites: true);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport(
+            "local-vector-search-stale-hash",
+            configPath,
+            temp.Path,
+            stderr);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: cancellationToken);
+
+        var moveCreate = await CreateMarkdownAsync(
+            client,
+            "move-source.md",
+            "# Move\n\nOriginal.\n",
+            cancellationToken);
+        await File.AppendAllTextAsync(
+            Path.Combine(temp.Path, "move-source.md"),
+            "\nManual edit.\n",
+            cancellationToken);
+        var move = await client.CallToolAsync(
+            "kb_move",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    sourcePath = "move-source.md",
+                    targetPath = "move-target.md",
+                    expectedSourceHash = moveCreate.SourceHash
+                }
+            },
+            cancellationToken: cancellationToken);
+
+        Assert.True(move.IsError is true);
+        Assert.Contains(
+            "Document has changed since it was read",
+            ResultText(move),
+            StringComparison.Ordinal);
+        Assert.True(File.Exists(
+            Path.Combine(temp.Path, "move-source.md")));
+        Assert.False(File.Exists(
+            Path.Combine(temp.Path, "move-target.md")));
+
+        var deleteCreate = await CreateMarkdownAsync(
+            client,
+            "delete-source.md",
+            "# Delete\n\nOriginal.\n",
+            cancellationToken);
+        await File.AppendAllTextAsync(
+            Path.Combine(temp.Path, "delete-source.md"),
+            "\nManual edit.\n",
+            cancellationToken);
+        var delete = await client.CallToolAsync(
+            "kb_delete",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "delete-source.md",
+                    expectedSourceHash = deleteCreate.SourceHash
+                }
+            },
+            cancellationToken: cancellationToken);
+
+        Assert.True(delete.IsError is true);
+        Assert.Contains(
+            "Document has changed since it was read",
+            ResultText(delete),
+            StringComparison.Ordinal);
+        Assert.True(File.Exists(
+            Path.Combine(temp.Path, "delete-source.md")));
+    }
+
+    [Fact]
+    public async Task StdioMarkdownMutations_WhenWritesDisabled_ReturnControlledErrors()
+    {
+        var cancellationToken =
+            TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(
+            temp.Path,
+            cancellationToken);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport(
+            "local-vector-search-writes-disabled",
+            configPath,
+            temp.Path,
+            stderr);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: cancellationToken);
+
+        var calls = new[]
+        {
+            (
+                Name: "kb_create",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            path = "blocked.md",
+                            markdown = "# Blocked\n"
+                        }
+                    }),
+            (
+                Name: "kb_patch",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            path = "smoke.md",
+                            operations = new object[]
+                            {
+                                new
+                                {
+                                    kind = "insert_after",
+                                    pointer = "document",
+                                    markdown = "Blocked."
+                                }
+                            }
+                        }
+                    }),
+            (
+                Name: "kb_move",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            sourcePath = "smoke.md",
+                            targetPath = "moved.md",
+                            expectedSourceHash = "unused"
+                        }
+                    }),
+            (
+                Name: "kb_delete",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            path = "smoke.md",
+                            expectedSourceHash = "unused"
+                        }
+                    })
+        };
+
+        foreach (var call in calls)
+        {
+            var result = await client.CallToolAsync(
+                call.Name,
+                call.Arguments,
+                cancellationToken: cancellationToken);
+
+            Assert.True(result.IsError is true);
+            var text = ResultText(result);
+            Assert.Contains(
+                "Workspace writes are disabled",
+                text,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "An error occurred invoking",
+                text,
+                StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task StdioMutationWithInvalidPath_ReturnsControlledAccessError()
+    {
+        var cancellationToken =
+            TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(
+            temp.Path,
+            cancellationToken,
+            allowWrites: true);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport(
+            "local-vector-search-invalid-path",
+            configPath,
+            temp.Path,
+            stderr);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: cancellationToken);
+
+        var result = await client.CallToolAsync(
+            "kb_create",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "../outside.md",
+                    markdown = "# Outside\n"
+                }
+            },
+            cancellationToken: cancellationToken);
+
+        Assert.True(result.IsError is true);
+        var text = ResultText(result);
+        Assert.DoesNotContain(
+            "An error occurred invoking",
+            text,
+            StringComparison.Ordinal);
+        Assert.False(File.Exists(
+            Path.GetFullPath(Path.Combine(temp.Path, "..", "outside.md"))));
+    }
+
+    [Fact]
+    public async Task StdioCreate_ReturnsStructuredMutationResponse()
+    {
+        var cancellationToken =
+            TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(
+            temp.Path,
+            cancellationToken,
+            allowWrites: true);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport(
+            "local-vector-search-structured-mutation",
+            configPath,
+            temp.Path,
+            stderr);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: cancellationToken);
+
+        var result = await client.CallToolAsync(
+            "kb_create",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "structured.md",
+                    markdown = "# Structured\n"
+                }
+            },
+            cancellationToken: cancellationToken);
+
+        Assert.False(result.IsError is true);
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent.Value
+            .Deserialize<MutationResponse>(JsonOptions.Default);
+        var text = JsonSerializer.Deserialize<MutationResponse>(
+            ResultText(result),
+            JsonOptions.Default);
+
+        Assert.NotNull(structured);
+        Assert.Equal(text, structured);
+        Assert.Equal("structured.md", structured.Path);
+        Assert.False(structured.IndexSynchronized);
+        Assert.Null(structured.IndexError);
+        Assert.True(File.Exists(
+            Path.Combine(temp.Path, "structured.md")));
+    }
+
+    [Fact]
     public async Task StdioServerExitsOnInputCloseWithoutUnsolicitedStdout()
     {
         var cancellationToken =
@@ -574,6 +900,59 @@ public sealed class StdioTransportIntegrationTests
         return false;
     }
 
+    private static StdioClientTransport CreateTransport(
+        string name,
+        string configPath,
+        string workingDirectory,
+        ConcurrentQueue<string> stderr)
+        => new(
+            new StdioClientTransportOptions
+            {
+                Name = name,
+                Command = "dotnet",
+                Arguments =
+                [
+                    typeof(KnowledgeMcpTools).Assembly.Location,
+                    "--config",
+                    configPath
+                ],
+                WorkingDirectory = workingDirectory,
+                StandardErrorLines = stderr.Enqueue
+            });
+
+    private static async Task<MutationResponse> CreateMarkdownAsync(
+        McpClient client,
+        string path,
+        string markdown,
+        CancellationToken cancellationToken)
+    {
+        var result = await client.CallToolAsync(
+            "kb_create",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path,
+                    markdown
+                }
+            },
+            cancellationToken: cancellationToken);
+
+        Assert.False(result.IsError is true);
+        Assert.NotNull(result.StructuredContent);
+        return result.StructuredContent.Value.Deserialize<MutationResponse>(
+                   JsonOptions.Default)
+               ?? throw new Xunit.Sdk.XunitException(
+                   "kb_create returned invalid structured content.");
+    }
+
+    private static string ResultText(CallToolResult result)
+        => string.Join(
+            Environment.NewLine,
+            result.Content
+                .OfType<TextContentBlock>()
+                .Select(content => content.Text));
+
     private static Process StartServer(
         string configPath,
         string workingDirectory)
@@ -599,7 +978,8 @@ public sealed class StdioTransportIntegrationTests
 
     private static async Task<string> CreateConfigAsync(
         string root,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowWrites = false)
     {
         var storageDirectory = Path.Combine(
             root,
@@ -628,7 +1008,7 @@ public sealed class StdioTransportIntegrationTests
         var yaml = $"""
             knowledgeBase:
               root: "{ToYamlPath(root)}"
-              allowWrites: false
+              allowWrites: ${allowWrites.ToString().ToLowerInvariant()}
               watchFiles: false
             storage:
               path: "{ToYamlPath(Path.Combine(storageDirectory, "index.db"))}"
