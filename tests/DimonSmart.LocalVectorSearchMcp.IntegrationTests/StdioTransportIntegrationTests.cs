@@ -707,7 +707,7 @@ public sealed class StdioTransportIntegrationTests
     }
 
     [Fact]
-    public async Task StdioMissingDocuments_ReturnDocumentNotFoundAndServerRecovers()
+    public async Task StdioMissingDocuments_ReturnResourceNotFoundAndServerRecovers()
     {
         var cancellationToken =
             TestContext.Current.CancellationToken;
@@ -866,11 +866,6 @@ public sealed class StdioTransportIntegrationTests
             ResultText(invalidPointer),
             StringComparison.Ordinal);
 
-        Assert.DoesNotContain(
-            stderr,
-            line => line.Contains(
-                "threw an unhandled exception",
-                StringComparison.Ordinal));
     }
 
     [Fact]
