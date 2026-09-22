@@ -9,7 +9,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 
 public sealed class MarkdownWorkspaceWatcher(
     LocalVectorSearchMcpConfig config,
-    IWorkspaceIndexSynchronizer synchronizer,
+    IWorkspaceIndexSynchronizationScheduler scheduler,
     IIndexSynchronizationState state,
     ILogger<MarkdownWorkspaceWatcher> logger) : BackgroundService
 {
@@ -47,21 +47,9 @@ public sealed class MarkdownWorkspaceWatcher(
                 .ToList();
             foreach (var path in due)
             {
-                if (!pending.TryRemove(path, out _)) continue;
-                try
+                if (pending.TryRemove(path, out _))
                 {
-                    await synchronizer.ReconcileAsync(path, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception exception)
-                {
-                    logger.LogWarning(
-                        "Could not synchronize changed Markdown file {Path}: {Error}",
-                        path,
-                        exception.Message);
+                    scheduler.Schedule(path);
                 }
             }
         }
@@ -73,7 +61,8 @@ public sealed class MarkdownWorkspaceWatcher(
         base.Dispose();
     }
 
-    private void OnChanged(object sender, FileSystemEventArgs args) => Queue(args.FullPath);
+    private void OnChanged(object sender, FileSystemEventArgs args)
+        => Queue(args.FullPath);
 
     private void OnRenamed(object sender, RenamedEventArgs args)
     {
@@ -90,17 +79,39 @@ public sealed class MarkdownWorkspaceWatcher(
 
     private void Queue(string absolutePath)
     {
-        if (!Path.GetExtension(absolutePath).Equals(".md", StringComparison.OrdinalIgnoreCase)) return;
-        var relativePath = Path.GetRelativePath(config.KnowledgeBase.Root, absolutePath).Replace('\\', '/');
-        if (relativePath.StartsWith("../", StringComparison.Ordinal) || !MatchesConfiguredSource(relativePath)) return;
+        if (!Path.GetExtension(absolutePath).Equals(
+                ".md",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var relativePath = Path.GetRelativePath(
+                config.KnowledgeBase.Root,
+                absolutePath)
+            .Replace('\', '/');
+        if (relativePath.StartsWith("../", StringComparison.Ordinal)
+            || !MatchesConfiguredSource(relativePath))
+        {
+            return;
+        }
+
         pending[relativePath] = DateTimeOffset.UtcNow;
     }
 
     private bool MatchesConfiguredSource(string relativePath)
     {
         var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
-        foreach (var include in config.KnowledgeBase.Include) matcher.AddInclude(include);
-        foreach (var exclude in config.KnowledgeBase.Exclude) matcher.AddExclude(exclude);
+        foreach (var include in config.KnowledgeBase.Include)
+        {
+            matcher.AddInclude(include);
+        }
+
+        foreach (var exclude in config.KnowledgeBase.Exclude)
+        {
+            matcher.AddExclude(exclude);
+        }
+
         return matcher.Match(relativePath).HasMatches;
     }
 }
