@@ -1,3 +1,4 @@
+using System.Text;
 using DimonSmart.LocalVectorSearchMcp.Core;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
@@ -7,9 +8,12 @@ using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Fakes;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 
@@ -295,6 +299,238 @@ public sealed class ReadSliceTests
             StringComparison.Ordinal);
     }
 
+
+    [Theory]
+    [InlineData("## Ingredients\n\n- eggs\n- tomato\n- salt\n")]
+    [InlineData("## Steps\n\n1. First\n2. Second\n3. Third\n")]
+    [InlineData("- one\n  - child\n  - child 2\n- two\n")]
+    [InlineData("- [ ] first\n- [x] second\n")]
+    [InlineData("## Example\n\n```csharp\nConsole.WriteLine(42);\n```\n")]
+    [InlineData("| Name | Amount |\n| --- | ---: |\n| Eggs | 2 |\n| Salt | 1 g |\n")]
+    [InlineData("Text with **bold**, *italic*, `code`, [link](url) and ![image](image.png).\n\n> Important note\n")]
+    public async Task ReadSliceAsync_DocumentRootPreservesExactMarkdownSource(string source)
+    {
+        using var context = await CreateContextAsync(source);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticPointer("document"),
+            100,
+            100_000,
+            context.CancellationToken);
+
+        Assert.Equal(source, slice.Markdown);
+    }
+
+    [Theory]
+    [InlineData("- first\n- second\n- third\n", "p2", "- second\n")]
+    [InlineData("1. first\n2. second\n3. third\n", "p2", "2. second\n")]
+    [InlineData("- one\n  - child\n  - child 2\n- two\n", "p2", "  - child\n")]
+    [InlineData("- [ ] first\n- [x] second\n", "p2", "- [x] second\n")]
+    public async Task ReadSliceAsync_StartInsideContainerIncludesContainerSyntax(
+        string source,
+        string pointer,
+        string expectedMarkdown)
+    {
+        using var context = await CreateContextAsync(source);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticPointer(pointer),
+            1,
+            100_000,
+            context.CancellationToken);
+
+        Assert.Equal(expectedMarkdown, slice.Markdown);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_PreservesCrLfBlankLinesAndTrailingSpaces()
+    {
+        const string source = "## Title\r\n\r\n- item  \r\n\r\nText.\r\n";
+        using var context = await CreateContextAsync(source);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticPointer("document"),
+            100,
+            100_000,
+            context.CancellationToken);
+
+        Assert.Equal(source, slice.Markdown);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_PaginationConcatenatesBackToExactSource()
+    {
+        const string source = "- one\n- two\n\n<!-- raw comment -->\n\n- three\n";
+        using var context = await CreateContextAsync(source);
+        var pointer = new SemanticPointer("document");
+        var reconstructed = new StringBuilder();
+
+        for (var pageNumber = 0; pageNumber < 10; pageNumber++)
+        {
+            var page = await context.Services.SliceReader.ReadSliceAsync(
+                "notes.md",
+                pointer,
+                1,
+                100_000,
+                context.CancellationToken);
+            reconstructed.Append(page.Markdown);
+
+            if (page.NextPointer is null)
+            {
+                Assert.Equal(source, reconstructed.ToString());
+                return;
+            }
+
+            pointer = new SemanticPointer(page.NextPointer);
+        }
+
+        throw new Xunit.Sdk.XunitException("Pagination did not terminate.");
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_MaxBytesCountsReturnedSourceMarkdown()
+    {
+        const string source = "- one\n- two\n- three\n";
+        using var context = await CreateContextAsync(source);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticPointer("document"),
+            100,
+            6,
+            context.CancellationToken);
+
+        Assert.Equal("- one\n", slice.Markdown);
+        Assert.Equal(6, Encoding.UTF8.GetByteCount(slice.Markdown));
+        Assert.Equal("p2", slice.NextPointer);
+        Assert.Single(slice.Elements);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_HeadingPointerReturnsExactSourceFromHeadingBoundary()
+    {
+        const string source = "Preface.\n\n## Recipe\n\n- item\n\n## Other\n\nKeep.\n";
+        using var context = await CreateContextAsync(source);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticPointer("1"),
+            2,
+            100_000,
+            context.CancellationToken);
+
+        Assert.Equal("## Recipe\n\n- item\n\n", slice.Markdown);
+        Assert.Equal("2", slice.NextPointer);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_DocumentRootPreservesRawSourceWithoutSemanticElements()
+    {
+        const string source = "<!-- raw comment -->\n";
+        using var context = await CreateContextAsync(source);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticPointer("document"),
+            20,
+            1,
+            context.CancellationToken);
+
+        Assert.Empty(slice.Elements);
+        Assert.Equal(source, slice.Markdown);
+        Assert.Null(slice.NextPointer);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_UsesOneIndexedRevisionWhenFilesystemHasChanged()
+    {
+        const string indexedSource = "# Indexed\n\n- one\n- two\n";
+        const string filesystemSource = "# Filesystem\n\nChanged.\n";
+        using var context = await CreateContextAsync(indexedSource);
+        await File.WriteAllTextAsync(
+            Path.Combine(context.TemporaryDirectory.Path, "notes.md"),
+            filesystemSource,
+            context.CancellationToken);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticAnchor(new SemanticPointer("document")),
+            100,
+            100_000,
+            context.CancellationToken);
+
+        var indexedDocument = new MarkdownSourceDocument(
+            "notes.md",
+            "notes.md",
+            indexedSource,
+            "hash",
+            DateTimeOffset.UtcNow);
+        var expectedHeading = new MarkdownElementParser().Parse(indexedDocument)
+            .Single(element => element.Pointer.Value == "1");
+
+        Assert.Equal(indexedSource, slice.Markdown);
+        Assert.Equal("# Indexed", slice.Elements[0].Text);
+        Assert.Equal(
+            SemanticAnchor.FromElement(expectedHeading).ToString(),
+            slice.Elements[0].Pointer);
+        Assert.Equal(
+            StableHash.HashBytes(Encoding.UTF8.GetBytes(indexedSource)),
+            slice.SourceHash);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_ReadModifyReplaceSectionPreservesUntouchedFormatting()
+    {
+        const string source =
+            "## Recipe\n\n" +
+            "Introduction.\n\n" +
+            "### Ingredients\n\n" +
+            "- 2 eggs\n" +
+            "- 1 tomato\n" +
+            "- salt\n\n" +
+            "### Preparation\n\n" +
+            "1. Cut tomato.\n" +
+            "2. Beat eggs.\n" +
+            "3. Fry everything.\n\n" +
+            "## Other\n\n" +
+            "Keep this section.\n";
+        using var context = await CreateContextAsync(source);
+
+        var slice = await context.Services.SliceReader.ReadSliceAsync(
+            "notes.md",
+            new SemanticAnchor(new SemanticPointer("1")),
+            10,
+            100_000,
+            context.CancellationToken);
+        var replacement = slice.Markdown.Replace(
+            "Introduction.",
+            "Updated introduction.",
+            StringComparison.Ordinal);
+
+        var mutations = CreateMutationService(context.TemporaryDirectory.Path);
+        await mutations.PatchAsync(
+            new PatchRequest(
+                "notes.md",
+                [new PatchOperation(
+                    PatchOperationKind.ReplaceSection,
+                    slice.Pointer,
+                    replacement)]),
+            context.CancellationToken);
+
+        var actual = await File.ReadAllTextAsync(
+            Path.Combine(context.TemporaryDirectory.Path, "notes.md"),
+            context.CancellationToken);
+        Assert.Equal(
+            source.Replace(
+                "Introduction.",
+                "Updated introduction.",
+                StringComparison.Ordinal),
+            actual);
+    }
+
     private static async Task<ReadSliceTestContext> CreateContextAsync(string markdown)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -320,11 +556,40 @@ public sealed class ReadSliceTests
         return new ReadSliceTestContext(temp, services, cancellationToken);
     }
 
+
+    private static WorkspaceMutationService CreateMutationService(string root)
+    {
+        var config = new LocalVectorSearchMcpConfig
+        {
+            KnowledgeBase = new KnowledgeBaseConfig
+            {
+                Root = root,
+                AllowWrites = true
+            }
+        };
+
+        return new WorkspaceMutationService(
+            config,
+            new KnowledgeBasePathGuard(config),
+            new MarkdownDocumentLoader(),
+            new MarkdownElementParser(),
+            new ImmediateIndexSynchronizationScheduler(new NoOpSynchronizer()),
+            new InMemoryIndexSynchronizationState());
+    }
+
     private sealed record ReadSliceTestContext(
         TemporaryDirectory TemporaryDirectory,
         SqliteTestServices Services,
         CancellationToken CancellationToken) : IDisposable
     {
         public void Dispose() => TemporaryDirectory.Dispose();
+    }
+
+    private sealed class NoOpSynchronizer : IWorkspaceIndexSynchronizer
+    {
+        public Task<bool> ReconcileAsync(
+            string relativePath,
+            CancellationToken cancellationToken)
+            => Task.FromResult(true);
     }
 }
