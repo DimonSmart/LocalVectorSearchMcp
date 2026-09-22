@@ -212,7 +212,7 @@ knowledgeBase:
   watchFiles: true
 ```
 
-Markdown files remain the source of truth for indexed knowledge. A Markdown mutation first changes the source file and then synchronizes the derived SQLite index. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers add a 16-character XxHash64 fingerprint of the exact source span, for example `1.2.p2~8f41c721d904a8bc`. `kb_patch` validates those anchors against the current source and can relocate an unchanged element after a structural shift. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
+Markdown files remain the source of truth for indexed knowledge. A Markdown mutation commits the source file first and then schedules synchronization of the derived SQLite index. The mutation call does not wait for reconciliation to finish; `indexSynchronized: false` means the source commit succeeded but derived-index synchronization has not yet been confirmed. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers add a 16-character XxHash64 fingerprint of the exact source span, for example `1.2.p2~8f41c721d904a8bc`. `kb_patch` validates those anchors against the current source and can relocate an unchanged element after a structural shift. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
 
 Image save/delete are independent asset mutations and do not synchronize the Markdown index.
 

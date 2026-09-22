@@ -76,6 +76,107 @@ public sealed class ServerLayerTests
     }
 
     [Fact]
+    public void KnowledgeMcpTools_MutationsDeclareStructuredMutationResponse()
+    {
+        foreach (var methodName in new[]
+                 {
+                     nameof(KnowledgeMcpTools.CreateAsync),
+                     nameof(KnowledgeMcpTools.PatchAsync),
+                     nameof(KnowledgeMcpTools.MoveAsync),
+                     nameof(KnowledgeMcpTools.DeleteAsync)
+                 })
+        {
+            var method = typeof(KnowledgeMcpTools).GetMethod(methodName)
+                ?? throw new Xunit.Sdk.XunitException($"Method '{methodName}' was not found.");
+            var attribute = Assert.Single(
+                method.GetCustomAttributes(typeof(McpServerToolAttribute), false)
+                    .Cast<McpServerToolAttribute>());
+
+            Assert.True(attribute.UseStructuredContent);
+            Assert.Equal(typeof(MutationResponse), attribute.OutputSchemaType);
+        }
+    }
+
+    [Fact]
+    public async Task MutationTool_KnownDomainException_ReturnsControlledError()
+    {
+        var tools = new KnowledgeMcpTools(
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            new ThrowingMutationService(
+                new WorkspaceMutationException("expected failure")),
+            null!);
+
+        var result = await tools.CreateAsync(
+            new CreateToolRequest("test.md", "# Test"),
+            CancellationToken.None);
+
+        Assert.True(result.IsError is true);
+        Assert.Null(result.StructuredContent);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Contains("expected failure", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MutationTool_UnexpectedException_IsNotConvertedToControlledError()
+    {
+        var tools = new KnowledgeMcpTools(
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            new ThrowingMutationService(
+                new InvalidOperationException("unexpected failure")),
+            null!);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => tools.CreateAsync(
+                new CreateToolRequest("test.md", "# Test"),
+                CancellationToken.None));
+
+        Assert.Equal("unexpected failure", exception.Message);
+    }
+
+    [Fact]
+    public async Task MutationTool_Success_ReturnsConsistentTextAndStructuredContent()
+    {
+        var expected = new MutationResponse(
+            "test.md",
+            "source-hash",
+            false,
+            null,
+            null);
+        var tools = new KnowledgeMcpTools(
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            new FixedMutationService(expected),
+            null!);
+
+        var result = await tools.CreateAsync(
+            new CreateToolRequest("test.md", "# Test"),
+            CancellationToken.None);
+
+        Assert.False(result.IsError is true);
+        Assert.NotNull(result.StructuredContent);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        var fromText = JsonSerializer.Deserialize<MutationResponse>(
+            text,
+            JsonOptions.Default);
+        var fromStructured = result.StructuredContent.Value.Deserialize<MutationResponse>(
+            JsonOptions.Default);
+
+        Assert.Equal(expected, fromText);
+        Assert.Equal(expected, fromStructured);
+    }
+
+    [Fact]
     public void KnownCliExceptionFilter_RecognizesSemanticPointerFormatException()
         => Assert.True(KnownCliExceptionFilter.IsKnown(new SemanticPointerFormatException("bad")));
 
@@ -125,6 +226,56 @@ public sealed class ServerLayerTests
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         return JsonSerializer.Deserialize<MarkdownSlice>(text, JsonOptions.Default)
             ?? throw new Xunit.Sdk.XunitException("kb_read returned invalid JSON.");
+    }
+
+    private sealed class ThrowingMutationService(Exception exception)
+        : IWorkspaceMutationService
+    {
+        public Task<MutationResponse> PatchAsync(
+            PatchRequest request,
+            CancellationToken cancellationToken)
+            => Task.FromException<MutationResponse>(exception);
+
+        public Task<MutationResponse> CreateAsync(
+            string path,
+            string markdown,
+            CancellationToken cancellationToken)
+            => Task.FromException<MutationResponse>(exception);
+
+        public Task<MutationResponse> MoveAsync(
+            MoveRequest request,
+            CancellationToken cancellationToken)
+            => Task.FromException<MutationResponse>(exception);
+
+        public Task<MutationResponse> DeleteAsync(
+            DeleteRequest request,
+            CancellationToken cancellationToken)
+            => Task.FromException<MutationResponse>(exception);
+    }
+
+    private sealed class FixedMutationService(MutationResponse response)
+        : IWorkspaceMutationService
+    {
+        public Task<MutationResponse> PatchAsync(
+            PatchRequest request,
+            CancellationToken cancellationToken)
+            => Task.FromResult(response);
+
+        public Task<MutationResponse> CreateAsync(
+            string path,
+            string markdown,
+            CancellationToken cancellationToken)
+            => Task.FromResult(response);
+
+        public Task<MutationResponse> MoveAsync(
+            MoveRequest request,
+            CancellationToken cancellationToken)
+            => Task.FromResult(response);
+
+        public Task<MutationResponse> DeleteAsync(
+            DeleteRequest request,
+            CancellationToken cancellationToken)
+            => Task.FromResult(response);
     }
 
     private sealed class EchoSemanticPointerReader : ISemanticPointerReader
