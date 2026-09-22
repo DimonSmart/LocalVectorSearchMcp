@@ -277,6 +277,27 @@ public sealed class ReadSliceTests
     }
 
     [Fact]
+    public async Task ReadSliceAsync_PublicFingerprintedPointerRejectsChangedTarget()
+    {
+        using var context = await CreateContextAsync("# Title\n\nChanged target.\n");
+        var staleAnchor = new SemanticAnchor(
+            new SemanticPointer("1.p1"),
+            SemanticFingerprint.Compute("Original target."));
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => context.Reader.ReadSliceAsync(
+                "notes.md",
+                staleAnchor,
+                20,
+                12_000,
+                context.CancellationToken));
+
+        Assert.Equal(
+            SemanticAnchorConflictReason.SelfHashMismatch,
+            exception.Reason);
+    }
+
+    [Fact]
     public async Task ReadSliceAsync_PublicFingerprintedPointerRejectsAmbiguousRelocation()
     {
         using var context = await CreateContextAsync(
