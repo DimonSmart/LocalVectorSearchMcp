@@ -52,7 +52,7 @@ public sealed class WorkbenchIntegrationTests
         await using var currentDb = new SqliteConnectionFactory(services.Config).Open();
         var current = currentDb.CreateCommand();
         current.CommandText = "select value from index_manifest where key = 'schema_version'";
-        Assert.Equal("3", Convert.ToString(await current.ExecuteScalarAsync(cancellationToken)));
+        Assert.Equal("4", Convert.ToString(await current.ExecuteScalarAsync(cancellationToken)));
     }
 
     [Fact]
@@ -310,7 +310,7 @@ public sealed class WorkbenchIntegrationTests
         Assert.Contains(files.Files, file =>
             file.RelativePath == "BOOK.md" && file.Kind == WorkspaceFileKind.Markdown);
         Assert.Single(outline.Headings);
-        Assert.Matches(@"^1~[0-9a-f]{16}$", outline.Headings[0].Pointer);
+        Assert.Matches(@"^1~[0-9a-f]{16}~[0-9a-f]{16}$", outline.Headings[0].Pointer);
         Assert.Equal("Part", outline.Headings[0].Children[0].Title);
         Assert.Matches(
             @"^1\.1\.1~[0-9a-f]{16}$",
