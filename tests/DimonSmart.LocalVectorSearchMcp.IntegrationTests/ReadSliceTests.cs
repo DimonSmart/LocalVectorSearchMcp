@@ -26,7 +26,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nText.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
 
         Assert.Equal("document", slice.Pointer);
@@ -41,7 +41,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("Introduction.\n\n# Chapter\n\nText.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
 
         Assert.Equal(
@@ -55,7 +55,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("---\ntitle: Book\n---\n\nPreface.\n\n## Chapter");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
 
         Assert.Equal(
@@ -69,7 +69,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("First paragraph.\n\nSecond paragraph.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
 
         Assert.Equal(
@@ -82,7 +82,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer("document"), 20, 12_000, context.CancellationToken);
 
         Assert.Equal("document", slice.Pointer);
@@ -97,7 +97,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nOne.\n\nTwo.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer("document"), 2, 12_000, context.CancellationToken);
 
         Assert.Equal(new[] { "1", "1.p1" }, slice.Elements.Select(element => element.Pointer).ToArray());
@@ -109,9 +109,9 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("Introduction.\n\n# Title\n\nBody.");
 
-        var first = await context.Services.SliceReader.ReadSliceAsync(
+        var first = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer("document"), 20, 13, context.CancellationToken);
-        var second = await context.Services.SliceReader.ReadSliceAsync(
+        var second = await context.Reader.ReadSliceAsync(
             "notes.md", new SemanticPointer(first.NextPointer!), 20, 12_000, context.CancellationToken);
 
         Assert.Equal(new[] { "p1" }, first.Elements.Select(element => element.Pointer).ToArray());
@@ -127,7 +127,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nParagraph one.\n\nParagraph two.\n\nParagraph three.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
+        var slice = await context.Reader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
 
         Assert.Equal(2, slice.Elements.Count);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -143,8 +143,8 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nParagraph one.\n\nParagraph two.\n\nParagraph three.");
 
-        var first = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
-        var second = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer(first.NextPointer!), 2, 12_000, context.CancellationToken);
+        var first = await context.Reader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 2, 12_000, context.CancellationToken);
+        var second = await context.Reader.ReadSliceAsync("notes.md", new SemanticPointer(first.NextPointer!), 2, 12_000, context.CancellationToken);
 
         Assert.Equal("1.p3", first.NextPointer);
         Assert.Single(second.Elements);
@@ -158,7 +158,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nSmall one.\n\nSmall two.\n\nSmall three.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 16, context.CancellationToken);
+        var slice = await context.Reader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 16, context.CancellationToken);
 
         Assert.Single(slice.Elements);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -172,7 +172,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nThis paragraph is intentionally longer than the byte limit.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
+        var slice = await context.Reader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
 
         Assert.Single(slice.Elements);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -185,7 +185,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nThis paragraph is intentionally longer than the byte limit.\n\nSecond paragraph.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
+        var slice = await context.Reader.ReadSliceAsync("notes.md", new SemanticPointer("1.p1"), 20, 5, context.CancellationToken);
 
         Assert.Single(slice.Elements);
         Assert.Equal("1.p1", slice.Elements[0].Pointer);
@@ -200,7 +200,7 @@ public sealed class ReadSliceTests
         using var context = await CreateContextAsync("# Title\n\nText.");
 
         var exception = await Assert.ThrowsAsync<SemanticPointerNotFoundException>(
-            () => context.Services.SliceReader.ReadSliceAsync("notes.md", new SemanticPointer("1.p99"), 20, 12_000, context.CancellationToken));
+            () => context.Reader.ReadSliceAsync("notes.md", new SemanticPointer("1.p99"), 20, 12_000, context.CancellationToken));
 
         Assert.Contains("1.p99", exception.Message);
         Assert.Contains("notes.md", exception.Message);
@@ -212,7 +212,7 @@ public sealed class ReadSliceTests
         using var context = await CreateContextAsync("# Title\n\nText.");
 
         await Assert.ThrowsAsync<SemanticPointerNotFoundException>(
-            () => context.Services.SliceReader.ReadSliceAsync("missing.md", new SemanticPointer("1.p1"), 20, 12_000, context.CancellationToken));
+            () => context.Reader.ReadSliceAsync("missing.md", new SemanticPointer("1.p1"), 20, 12_000, context.CancellationToken));
     }
 
     [Fact]
@@ -221,7 +221,7 @@ public sealed class ReadSliceTests
         using var context = await CreateContextAsync(
             "# Title\n\nParagraph one.\n\nParagraph two.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticAnchor(new SemanticPointer("document")),
             2,
@@ -244,7 +244,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync("# Title\n\nTarget.");
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticAnchor(new SemanticPointer("1.p1")),
             20,
@@ -265,7 +265,7 @@ public sealed class ReadSliceTests
             new SemanticPointer("1.p1"),
             SemanticFingerprint.Compute("Target."));
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             oldAnchor,
             20,
@@ -274,6 +274,27 @@ public sealed class ReadSliceTests
 
         Assert.Matches(@"^1\.p2~[0-9a-f]{16}~[0-9a-f]{16}$", slice.Pointer);
         Assert.Equal("Target.", slice.Elements[0].Text);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_PublicFingerprintedPointerRejectsChangedTarget()
+    {
+        using var context = await CreateContextAsync("# Title\n\nChanged target.\n");
+        var staleAnchor = new SemanticAnchor(
+            new SemanticPointer("1.p1"),
+            SemanticFingerprint.Compute("Original target."));
+
+        var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
+            () => context.Reader.ReadSliceAsync(
+                "notes.md",
+                staleAnchor,
+                20,
+                12_000,
+                context.CancellationToken));
+
+        Assert.Equal(
+            SemanticAnchorConflictReason.SelfHashMismatch,
+            exception.Reason);
     }
 
     [Fact]
@@ -286,7 +307,7 @@ public sealed class ReadSliceTests
             SemanticFingerprint.Compute("TODO"));
 
         var exception = await Assert.ThrowsAsync<SemanticAnchorConflictException>(
-            () => context.Services.SliceReader.ReadSliceAsync(
+            () => context.Reader.ReadSliceAsync(
                 "notes.md",
                 oldAnchor,
                 20,
@@ -312,7 +333,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync(source);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticPointer("document"),
             100,
@@ -334,7 +355,7 @@ public sealed class ReadSliceTests
     {
         using var context = await CreateContextAsync(source);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticPointer(pointer),
             1,
@@ -350,7 +371,7 @@ public sealed class ReadSliceTests
         const string source = "## Title\r\n\r\n- item  \r\n\r\nText.\r\n";
         using var context = await CreateContextAsync(source);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticPointer("document"),
             100,
@@ -370,7 +391,7 @@ public sealed class ReadSliceTests
 
         for (var pageNumber = 0; pageNumber < 10; pageNumber++)
         {
-            var page = await context.Services.SliceReader.ReadSliceAsync(
+            var page = await context.Reader.ReadSliceAsync(
                 "notes.md",
                 pointer,
                 1,
@@ -396,7 +417,7 @@ public sealed class ReadSliceTests
         const string source = "- one\n- two\n- three\n";
         using var context = await CreateContextAsync(source);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticPointer("document"),
             100,
@@ -415,7 +436,7 @@ public sealed class ReadSliceTests
         const string source = "Preface.\n\n## Recipe\n\n- item\n\n## Other\n\nKeep.\n";
         using var context = await CreateContextAsync(source);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticPointer("1"),
             2,
@@ -432,7 +453,7 @@ public sealed class ReadSliceTests
         const string source = "<!-- raw comment -->\n";
         using var context = await CreateContextAsync(source);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticPointer("document"),
             20,
@@ -445,40 +466,65 @@ public sealed class ReadSliceTests
     }
 
     [Fact]
-    public async Task ReadSliceAsync_UsesOneIndexedRevisionWhenFilesystemHasChanged()
+    public async Task ReadSliceAsync_UsesCurrentSourceWhenFilesystemHasChanged()
     {
-        const string indexedSource = "# Indexed\n\n- one\n- two\n";
+        const string initialSource = "# Indexed\n\n- one\n- two\n";
         const string filesystemSource = "# Filesystem\n\nChanged.\n";
-        using var context = await CreateContextAsync(indexedSource);
+        using var context = await CreateContextAsync(initialSource);
         await File.WriteAllTextAsync(
             Path.Combine(context.TemporaryDirectory.Path, "notes.md"),
             filesystemSource,
             context.CancellationToken);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticAnchor(new SemanticPointer("document")),
             100,
             100_000,
             context.CancellationToken);
 
-        var indexedDocument = new MarkdownSourceDocument(
+        var currentDocument = await new MarkdownDocumentLoader().LoadFileAsync(
+            context.Config.KnowledgeBase,
             "notes.md",
-            "notes.md",
-            indexedSource,
-            "hash",
-            DateTimeOffset.UtcNow);
-        var expectedHeading = new MarkdownElementParser().Parse(indexedDocument)
+            context.CancellationToken);
+        var expectedHeading = new MarkdownElementParser().Parse(currentDocument)
             .Single(element => element.Pointer.Value == "1");
 
-        Assert.Equal(indexedSource, slice.Markdown);
-        Assert.Equal("# Indexed", slice.Elements[0].Text);
+        Assert.Equal(filesystemSource, slice.Markdown);
+        Assert.Equal("# Filesystem", slice.Elements[0].Text);
         Assert.Equal(
             SemanticAnchor.FromElement(expectedHeading).ToString(),
             slice.Elements[0].Pointer);
+        Assert.Equal(currentDocument.SourceHash, slice.SourceHash);
+    }
+
+    [Fact]
+    public async Task ReadSliceAsync_ChangedHeadingSubtreeDoesNotBlockNavigation()
+    {
+        using var context = await CreateContextAsync("# Title\n\nCurrent body.\n");
+        var current = await new MarkdownDocumentLoader().LoadFileAsync(
+            context.Config.KnowledgeBase,
+            "notes.md",
+            context.CancellationToken);
+        var heading = new MarkdownElementParser().Parse(current)
+            .Single(element => element.Pointer.Value == "1");
+        var staleSubtreeAnchor = new SemanticAnchor(
+            heading.Pointer,
+            heading.SelfHash,
+            "0000000000000000");
+
+        var slice = await context.Reader.ReadSliceAsync(
+            "notes.md",
+            staleSubtreeAnchor,
+            20,
+            12_000,
+            context.CancellationToken);
+
+        Assert.StartsWith("# Title", slice.Markdown, StringComparison.Ordinal);
+        Assert.Contains("Current body.", slice.Markdown, StringComparison.Ordinal);
         Assert.Equal(
-            StableHash.HashBytes(Encoding.UTF8.GetBytes(indexedSource)),
-            slice.SourceHash);
+            SemanticAnchor.FromElement(heading).ToString(),
+            slice.Pointer);
     }
 
     [Fact]
@@ -499,7 +545,7 @@ public sealed class ReadSliceTests
             "Keep this section.\n";
         using var context = await CreateContextAsync(source);
 
-        var slice = await context.Services.SliceReader.ReadSliceAsync(
+        var slice = await context.Reader.ReadSliceAsync(
             "notes.md",
             new SemanticAnchor(new SemanticPointer("1")),
             10,
@@ -535,25 +581,24 @@ public sealed class ReadSliceTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var temp = new TemporaryDirectory();
-        await File.WriteAllTextAsync(Path.Combine(temp.Path, "notes.md"), markdown, cancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(temp.Path, "notes.md"),
+            markdown,
+            cancellationToken);
         var config = new LocalVectorSearchMcpConfig
         {
-            Storage = new StorageConfig { Path = Path.Combine(temp.Path, ".local-vector-search-mcp", "index.db") },
-            Embedding = new EmbeddingConfig { Model = "test", Dimensions = 3 },
             KnowledgeBase = new KnowledgeBaseConfig { Root = temp.Path }
         };
-        var services = SqliteTestServices.Create(config);
-        var indexer = new KnowledgeBaseIndexer(
+        var reader = new SourceMarkdownSliceReader(
             config,
+            new KnowledgeBasePathGuard(config),
             new MarkdownDocumentLoader(),
-            new MarkdownElementParser(),
-            new MarkdownChunker(config.Chunking, new EmbeddingTextBuilder()),
-            new FakeEmbeddingProvider(),
-            services.Initializer,
-            services.DocumentStore,
-            services.Manifest);
-        await indexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
-        return new ReadSliceTestContext(temp, services, cancellationToken);
+            new MarkdownElementParser());
+        return new ReadSliceTestContext(
+            temp,
+            config,
+            reader,
+            cancellationToken);
     }
 
 
@@ -573,13 +618,13 @@ public sealed class ReadSliceTests
             new KnowledgeBasePathGuard(config),
             new MarkdownDocumentLoader(),
             new MarkdownElementParser(),
-            new ImmediateIndexSynchronizationScheduler(new NoOpSynchronizer()),
-            new InMemoryIndexSynchronizationState());
+            new ImmediateIndexSynchronizationScheduler(new NoOpSynchronizer()));
     }
 
     private sealed record ReadSliceTestContext(
         TemporaryDirectory TemporaryDirectory,
-        SqliteTestServices Services,
+        LocalVectorSearchMcpConfig Config,
+        SourceMarkdownSliceReader Reader,
         CancellationToken CancellationToken) : IDisposable
     {
         public void Dispose() => TemporaryDirectory.Dispose();

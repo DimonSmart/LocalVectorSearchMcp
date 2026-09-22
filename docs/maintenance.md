@@ -65,7 +65,7 @@ Use a forced rebuild after changing:
 - an index format or compatibility-sensitive implementation version;
 - configuration when the server reports that the existing index is incompatible.
 
-A forced rebuild recreates derived index data. It does not modify source Markdown files. During the destructive reset window, `kb_status`, `kb_list_files`, and `kb_outline` remain available; index-dependent `kb_read`/`kb_search` return a controlled rebuild-in-progress error instead of waiting for the rebuild.
+A forced rebuild recreates derived index data. It does not modify source Markdown files. During the destructive reset window, `kb_status`, `kb_read`, `kb_list_files`, and `kb_outline` remain available because they do not require the search index. `kb_search` returns a controlled rebuild-in-progress error instead of waiting for the rebuild.
 
 ## Delete a local index
 

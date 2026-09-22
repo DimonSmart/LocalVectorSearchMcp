@@ -34,11 +34,16 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
             Assert.Equal("created.md", startedPath);
             Assert.False(harness.Synchronizer.IsReleased);
             Assert.True(File.Exists(Path.Combine(temp.Path, "created.md")));
-            Assert.Equal(
-                "# Created\n\nBody.\n",
-                await File.ReadAllTextAsync(
-                    Path.Combine(temp.Path, "created.md"),
-                    cancellationToken));
+
+            var read = await harness.Reader.ReadSliceAsync(
+                "created.md",
+                new SemanticAnchor(new SemanticPointer("document")),
+                20,
+                12_000,
+                cancellationToken);
+
+            Assert.Equal(response.SourceHash, read.SourceHash);
+            Assert.Equal("# Created\n\nBody.\n", read.Markdown);
             AssertPending(response);
         }
         finally
@@ -78,9 +83,20 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
 
             Assert.Equal("chapter.md", startedPath);
             Assert.False(harness.Synchronizer.IsReleased);
-            Assert.Equal(
-                "# Chapter\n\nChanged.\n",
-                await File.ReadAllTextAsync(path, cancellationToken));
+
+            var read = await harness.Reader.ReadSliceAsync(
+                "chapter.md",
+                new SemanticAnchor(new SemanticPointer("document")),
+                20,
+                12_000,
+                cancellationToken);
+            var outline = await harness.Navigation.GetOutlineAsync(
+                "chapter.md",
+                cancellationToken);
+
+            Assert.Equal(response.SourceHash, read.SourceHash);
+            Assert.Equal(response.SourceHash, outline.SourceHash);
+            Assert.Equal("# Chapter\n\nChanged.\n", read.Markdown);
             AssertPending(response);
         }
         finally
@@ -172,8 +188,10 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var synchronizer = new FailFirstSynchronizer();
+        var state = new InMemoryIndexSynchronizationState();
         var scheduler = new WorkspaceIndexSynchronizationScheduler(
             synchronizer,
+            state,
             NullLogger<WorkspaceIndexSynchronizationScheduler>.Instance);
         await scheduler.StartAsync(cancellationToken);
 
@@ -187,9 +205,74 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
 
             Assert.Equal("second.md", processed);
             Assert.Equal(2, synchronizer.CallCount);
+            Assert.Contains("first.md", state.GetStatus().Paths);
         }
         finally
         {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public void SynchronizationState_StaleCompletionDoesNotClearNewerGeneration()
+    {
+        var state = new InMemoryIndexSynchronizationState();
+        var generationA = state.MarkDirty("chapter.md", "A pending");
+        var generationB = state.MarkDirty("chapter.md", "B pending");
+
+        state.MarkSynchronized("chapter.md", generationA);
+
+        Assert.Equal(1, state.GetStatus().PendingFiles);
+        Assert.Contains("chapter.md", state.GetStatus().Paths);
+
+        state.MarkSynchronized("chapter.md", generationB);
+
+        Assert.Equal(0, state.GetStatus().PendingFiles);
+    }
+
+    [Fact]
+    public async Task Scheduler_ChangesDuringReconciliationCauseOneRerunForLatestGeneration()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var synchronizer = new TwoStageSynchronizer();
+        var state = new InMemoryIndexSynchronizationState();
+        var scheduler = new WorkspaceIndexSynchronizationScheduler(
+            synchronizer,
+            state,
+            NullLogger<WorkspaceIndexSynchronizationScheduler>.Instance);
+        await scheduler.StartAsync(cancellationToken);
+
+        try
+        {
+            scheduler.Schedule("chapter.md");
+            await synchronizer.FirstStarted.Task.WaitAsync(cancellationToken);
+
+            scheduler.Schedule("chapter.md");
+            scheduler.Schedule("chapter.md");
+
+            synchronizer.ReleaseFirst();
+            await synchronizer.SecondStarted.Task.WaitAsync(cancellationToken);
+
+            Assert.Equal(2, synchronizer.CallCount);
+            Assert.Equal(1, state.GetStatus().PendingFiles);
+
+            synchronizer.ReleaseSecond();
+            await synchronizer.SecondCompleted.Task.WaitAsync(cancellationToken);
+
+            for (var attempt = 0;
+                 attempt < 50 && state.GetStatus().PendingFiles != 0;
+                 attempt++)
+            {
+                await Task.Delay(20, cancellationToken);
+            }
+
+            Assert.Equal(0, state.GetStatus().PendingFiles);
+            Assert.Equal(2, synchronizer.CallCount);
+        }
+        finally
+        {
+            synchronizer.ReleaseFirst();
+            synchronizer.ReleaseSecond();
             await scheduler.StopAsync(CancellationToken.None);
         }
     }
@@ -204,21 +287,37 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
                 AllowWrites = true
             }
         };
+        var guard = new KnowledgeBasePathGuard(config);
+        var loader = new MarkdownDocumentLoader();
+        var parser = new MarkdownElementParser();
+        var state = new InMemoryIndexSynchronizationState();
         var synchronizer = new BlockingSynchronizer();
         var scheduler = new WorkspaceIndexSynchronizationScheduler(
             synchronizer,
+            state,
             NullLogger<WorkspaceIndexSynchronizationScheduler>.Instance);
         var service = new WorkspaceMutationService(
             config,
-            new KnowledgeBasePathGuard(config),
-            new MarkdownDocumentLoader(),
-            new MarkdownElementParser(),
-            scheduler,
-            new InMemoryIndexSynchronizationState());
+            guard,
+            loader,
+            parser,
+            scheduler);
+        var reader = new SourceMarkdownSliceReader(
+            config,
+            guard,
+            loader,
+            parser);
+        var navigation = new WorkspaceNavigationService(
+            config,
+            guard,
+            loader,
+            parser);
 
         return new MutationHarness(
             config,
             service,
+            reader,
+            navigation,
             scheduler,
             synchronizer);
     }
@@ -237,6 +336,8 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
     private sealed record MutationHarness(
         LocalVectorSearchMcpConfig Config,
         WorkspaceMutationService Service,
+        SourceMarkdownSliceReader Reader,
+        WorkspaceNavigationService Navigation,
         WorkspaceIndexSynchronizationScheduler Scheduler,
         BlockingSynchronizer Synchronizer);
 
@@ -278,11 +379,60 @@ public sealed class WorkspaceMutationAsyncIntegrationTests
             var call = Interlocked.Increment(ref callCount);
             if (call == 1)
             {
-                throw new InvalidOperationException("expected reconciliation failure");
+                throw new InvalidOperationException(
+                    "expected reconciliation failure");
             }
 
             SecondProcessed.TrySetResult(relativePath);
             return Task.FromResult(true);
         }
+    }
+
+    private sealed class TwoStageSynchronizer : IWorkspaceIndexSynchronizer
+    {
+        private readonly TaskCompletionSource firstRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource secondRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int callCount;
+
+        public int CallCount => Volatile.Read(ref callCount);
+
+        public TaskCompletionSource FirstStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource SecondStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource SecondCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<bool> ReconcileAsync(
+            string relativePath,
+            CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref callCount);
+            if (call == 1)
+            {
+                FirstStarted.TrySetResult();
+                await firstRelease.Task.WaitAsync(cancellationToken);
+                return true;
+            }
+
+            if (call == 2)
+            {
+                SecondStarted.TrySetResult();
+                await secondRelease.Task.WaitAsync(cancellationToken);
+                SecondCompleted.TrySetResult();
+                return true;
+            }
+
+            throw new InvalidOperationException(
+                "Unexpected extra reconciliation.");
+        }
+
+        public void ReleaseFirst() => firstRelease.TrySetResult();
+
+        public void ReleaseSecond() => secondRelease.TrySetResult();
     }
 }

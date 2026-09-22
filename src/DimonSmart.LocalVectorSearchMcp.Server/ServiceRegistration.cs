@@ -55,9 +55,9 @@ public static class ServiceRegistration
             sp => sp.GetRequiredService<SqliteSearchIndexReader>());
         services.AddSingleton<ISearchIndexStateReader>(
             sp => sp.GetRequiredService<SqliteSearchIndexReader>());
-        services.AddSingleton<SqliteMarkdownSliceReader>();
-        services.AddSingleton<IIndexedMarkdownSliceReader>(
-            sp => sp.GetRequiredService<SqliteMarkdownSliceReader>());
+        services.AddSingleton<SourceMarkdownSliceReader>();
+        services.AddSingleton<IMarkdownSliceReader>(
+            sp => sp.GetRequiredService<SourceMarkdownSliceReader>());
         services.AddSingleton<SqliteIndexStatusReader>();
         services.AddSingleton<IIndexStatusReader>(
             sp => sp.GetRequiredService<SqliteIndexStatusReader>());

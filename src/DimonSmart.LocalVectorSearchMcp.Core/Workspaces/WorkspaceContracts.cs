@@ -138,7 +138,9 @@ public sealed record IndexSynchronizationStatus(
 
 public interface IIndexSynchronizationState
 {
-    void MarkDirty(string relativePath, string error);
+    long MarkDirty(string relativePath, string error);
+    void MarkFailed(string relativePath, long generation, string error);
+    void MarkSynchronized(string relativePath, long generation);
     void MarkSynchronized(string relativePath);
     IndexSynchronizationStatus GetStatus();
 }

@@ -1,4 +1,5 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
 using ModelContextProtocol.Protocol;
@@ -8,7 +9,7 @@ namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 public sealed class ReindexAvailabilityTests
 {
     [Fact]
-    public async Task DestructiveRebuild_ReadAndSearchReturnControlledErrorImmediately()
+    public async Task DestructiveRebuild_SourceReadRemainsAvailableWhileSearchReturnsControlledError()
     {
         var coordinator = new FixedReindexCoordinator(
             new ReindexStatus(
@@ -24,7 +25,7 @@ public sealed class ReindexAvailabilityTests
             null!,
             null!,
             null!,
-            null!,
+            new FixedSemanticPointerReader(),
             null!,
             null!);
 
@@ -35,7 +36,10 @@ public sealed class ReindexAvailabilityTests
             new SearchToolRequest("query"),
             CancellationToken.None);
 
-        AssertRebuildError(read);
+        Assert.False(read.IsError is true);
+        var readText = Assert.IsType<TextContentBlock>(
+            Assert.Single(read.Content)).Text;
+        Assert.Contains("current source", readText, StringComparison.Ordinal);
         AssertRebuildError(search);
     }
 
@@ -91,6 +95,24 @@ public sealed class ReindexAvailabilityTests
             "indexing.isRunning = false",
             text,
             StringComparison.Ordinal);
+    }
+
+    private sealed class FixedSemanticPointerReader : ISemanticPointerReader
+    {
+        public Task<MarkdownSlice> ReadAsync(
+            string path,
+            SemanticAnchor anchor,
+            int maxElements,
+            int maxBytes,
+            CancellationToken cancellationToken)
+            => Task.FromResult(
+                new MarkdownSlice(
+                    path,
+                    "document",
+                    [],
+                    "current source",
+                    null,
+                    "source-hash"));
     }
 
     private sealed class FixedReindexCoordinator(ReindexStatus status)
