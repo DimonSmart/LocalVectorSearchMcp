@@ -12,13 +12,20 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
 {
     private readonly IndexOperationGate gate = operationGate ?? new IndexOperationGate();
 
-    public Task<ReindexResponse> ReindexAsync(ReindexRequest request, CancellationToken cancellationToken)
-        => gate.RunAsync(() => ReindexCoreAsync(request, cancellationToken), cancellationToken);
+    public Task<ReindexResponse> ReindexAsync(
+        ReindexRequest request,
+        CancellationToken cancellationToken,
+        IProgress<ReindexProgress>? progress = null)
+        => gate.RunAsync(
+            () => ReindexCoreAsync(request, cancellationToken, progress),
+            cancellationToken);
 
     private async Task<ReindexResponse> ReindexCoreAsync(
         ReindexRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<ReindexProgress>? progress)
     {
+        var destructiveRebuild = false;
         await indexInitializer.InitializeAsync(cancellationToken);
         if (await manifestService.HasManifestAsync(cancellationToken))
         {
@@ -33,6 +40,12 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
                         "\nRun kb_reindex with force=true or CLI --reindex --force to rebuild the index.");
                 }
 
+                destructiveRebuild = true;
+                progress?.Report(new ReindexProgress(
+                    0,
+                    null,
+                    null,
+                    IsDestructiveRebuild: true));
                 await manifestService.ResetIndexAsync(cancellationToken);
                 await manifestService.WriteCurrentManifestAsync(cancellationToken);
             }
@@ -42,21 +55,46 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             await manifestService.WriteCurrentManifestAsync(cancellationToken);
         }
 
-        var scanned = 0;
         var indexed = 0;
         var skipped = 0;
-        var deleted = 0;
         var chunksIndexed = 0;
-        var documents = await loader.LoadAsync(config.KnowledgeBase, cancellationToken);
-        scanned = documents.Count;
+        var documents = await loader.LoadAsync(
+            config.KnowledgeBase,
+            cancellationToken);
+        var scanned = documents.Count;
+        var processed = 0;
+        progress?.Report(new ReindexProgress(
+            processed,
+            scanned,
+            null,
+            destructiveRebuild));
+
         var existing = await documentIndexStore.GetDocumentHashesAsync(cancellationToken);
-        deleted = await documentIndexStore.DeleteMissingDocumentsAsync(documents.Select(d => d.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase), cancellationToken);
+        var deleted = await documentIndexStore.DeleteMissingDocumentsAsync(
+            documents
+                .Select(d => d.RelativePath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase),
+            cancellationToken);
 
         foreach (var document in documents)
         {
-            if (request.Scope == ReindexScope.Changed && existing.TryGetValue(document.RelativePath, out var hash) && hash == document.SourceHash)
+            progress?.Report(new ReindexProgress(
+                processed,
+                scanned,
+                document.RelativePath,
+                destructiveRebuild));
+
+            if (request.Scope == ReindexScope.Changed
+                && existing.TryGetValue(document.RelativePath, out var hash)
+                && hash == document.SourceHash)
             {
                 skipped++;
+                processed++;
+                progress?.Report(new ReindexProgress(
+                    processed,
+                    scanned,
+                    document.RelativePath,
+                    destructiveRebuild));
                 continue;
             }
 
@@ -74,7 +112,9 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             }
             catch (EmbeddingProviderException exception)
             {
-                synchronizationState?.MarkDirty(document.RelativePath, exception.Message);
+                synchronizationState?.MarkDirty(
+                    document.RelativePath,
+                    exception.Message);
                 return new ReindexResponse(
                     scanned,
                     indexed,
@@ -85,11 +125,28 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
                     "Reindex stopped; successfully indexed content remains available for lexical search.");
             }
 
-            await documentIndexStore.SaveDocumentIndexAsync(document, elements, chunks, vectors, cancellationToken);
+            await documentIndexStore.SaveDocumentIndexAsync(
+                document,
+                elements,
+                chunks,
+                vectors,
+                cancellationToken);
             synchronizationState?.MarkSynchronized(document.RelativePath);
             indexed++;
             chunksIndexed += chunks.Count;
+            processed++;
+            progress?.Report(new ReindexProgress(
+                processed,
+                scanned,
+                document.RelativePath,
+                destructiveRebuild));
         }
+
+        progress?.Report(new ReindexProgress(
+            processed,
+            scanned,
+            null,
+            destructiveRebuild));
 
         if (synchronizationState is not null)
         {
@@ -99,6 +156,12 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             }
         }
 
-        return new ReindexResponse(scanned, indexed, skipped, deleted, chunksIndexed, null);
+        return new ReindexResponse(
+            scanned,
+            indexed,
+            skipped,
+            deleted,
+            chunksIndexed,
+            null);
     }
 }

@@ -14,7 +14,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
 
 [McpServerToolType]
 public sealed class KnowledgeMcpTools(
-    IKnowledgeBaseIndexer indexer,
+    IReindexCoordinator reindexCoordinator,
     IIndexInitializer indexInitializer,
     IIndexStatusReader statusReader,
     IKnowledgeSearchService searchService,
@@ -23,13 +23,16 @@ public sealed class KnowledgeMcpTools(
     IWorkspaceNavigationService navigation)
 {
     [McpServerTool(Name = "kb_reindex")]
-    [Description("Indexes or reindexes the current project's configured Markdown root.")]
-    public Task<ReindexResponse> ReindexAsync(
+    [Description("Starts reindexing of the configured Markdown root in the background. Only one reindex can run at a time. Use kb_status to monitor progress and obtain the final result.")]
+    public Task<ReindexStartResponse> ReindexAsync(
         ReindexToolRequest request,
         CancellationToken cancellationToken)
-        => indexer.ReindexAsync(
-            new ReindexRequest(request.Scope, request.Force),
-            cancellationToken);
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(
+            reindexCoordinator.TryStart(
+                new ReindexRequest(request.Scope, request.Force)));
+    }
 
     [McpServerTool(Name = "kb_status")]
     [Description("Returns local vector search index status.")]
@@ -50,6 +53,11 @@ public sealed class KnowledgeMcpTools(
             : Math.Clamp(request.TopK.Value, 1, 50);
         try
         {
+            if (IsDestructiveRebuildRunning())
+            {
+                return IndexRebuildInProgressError();
+            }
+
             await indexInitializer.InitializeAsync(cancellationToken);
             var response = await searchService.SearchAsync(
                 new SearchRequest(request.Query, request.Mode, topK, request.IncludeGlobs, request.ExcludeGlobs),
@@ -97,6 +105,11 @@ public sealed class KnowledgeMcpTools(
     {
         try
         {
+            if (IsDestructiveRebuildRunning())
+            {
+                return IndexRebuildInProgressError();
+            }
+
             var anchor = SemanticAnchorParser.Parse(request.Pointer ?? "document");
             var response = await reader.ReadAsync(
                 request.Path,
@@ -231,6 +244,24 @@ public sealed class KnowledgeMcpTools(
             or SemanticAnchorConflictException
             or SemanticPointerFormatException
             or KnowledgeBaseAccessException;
+
+    private bool IsDestructiveRebuildRunning()
+        => reindexCoordinator?.GetStatus().Current?.IsDestructiveRebuild == true;
+
+    private static CallToolResult IndexRebuildInProgressError()
+        => new()
+        {
+            Content =
+            [
+                new TextContentBlock
+                {
+                    Text =
+                        "Index rebuild is currently in progress. " +
+                        "Retry after kb_status reports indexing.isRunning = false."
+                }
+            ],
+            IsError = true
+        };
 
     [McpServerTool(Name = "kb_list_files")]
     [Description("Lists Markdown and asset files under the configured workspace root.")]

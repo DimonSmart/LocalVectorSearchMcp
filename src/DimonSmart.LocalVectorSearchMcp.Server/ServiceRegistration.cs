@@ -68,6 +68,11 @@ public static class ServiceRegistration
         services.AddSingleton<IFullTextSearchService>(
             sp => sp.GetRequiredService<SqliteFullTextSearchService>());
         services.AddSingleton<IKnowledgeBaseIndexer, KnowledgeBaseIndexer>();
+        services.AddSingleton<ReindexCoordinator>();
+        services.AddSingleton<IReindexCoordinator>(
+            sp => sp.GetRequiredService<ReindexCoordinator>());
+        services.AddSingleton<IReindexStateReader>(
+            sp => sp.GetRequiredService<ReindexCoordinator>());
         services.AddSingleton<IWorkspaceIndexSynchronizer, WorkspaceIndexSynchronizer>();
         services.AddSingleton<WorkspaceIndexSynchronizationScheduler>();
         services.AddSingleton<IWorkspaceIndexSynchronizationScheduler>(
@@ -79,6 +84,7 @@ public static class ServiceRegistration
         services.AddTransient<IWorkspaceImageService, WorkspaceImageService>();
         services.AddHostedService<MarkdownWorkspaceWatcher>();
         services.AddHostedService(sp => sp.GetRequiredService<WorkspaceIndexSynchronizationScheduler>());
+        services.AddHostedService(sp => sp.GetRequiredService<ReindexCoordinator>());
 
         services
             .AddHttpClient<IEmbeddingProvider, OpenAiCompatibleEmbeddingProvider>(
