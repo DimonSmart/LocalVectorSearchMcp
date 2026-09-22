@@ -706,6 +706,148 @@ public sealed class StdioTransportIntegrationTests
     }
 
     [Fact]
+    public async Task StdioMissingDocuments_ReturnDocumentNotFoundAndServerRecovers()
+    {
+        var cancellationToken =
+            TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(
+            temp.Path,
+            cancellationToken,
+            allowWrites: true);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport(
+            "local-vector-search-document-not-found",
+            configPath,
+            temp.Path,
+            stderr);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: cancellationToken);
+
+        var calls = new[]
+        {
+            (
+                Name: "kb_read",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            path = "missing.md"
+                        }
+                    }),
+            (
+                Name: "kb_outline",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            path = "missing.md"
+                        }
+                    }),
+            (
+                Name: "kb_patch",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            path = "missing.md",
+                            operations = new object[]
+                            {
+                                new
+                                {
+                                    kind = "insert_after",
+                                    pointer = "document",
+                                    markdown = "Text."
+                                }
+                            }
+                        }
+                    }),
+            (
+                Name: "kb_move",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            sourcePath = "missing.md",
+                            targetPath = "target.md",
+                            expectedSourceHash = "unused"
+                        }
+                    }),
+            (
+                Name: "kb_delete",
+                Arguments: (IReadOnlyDictionary<string, object?>)
+                    new Dictionary<string, object?>
+                    {
+                        ["request"] = new
+                        {
+                            path = "missing.md",
+                            expectedSourceHash = "unused"
+                        }
+                    })
+        };
+
+        foreach (var call in calls)
+        {
+            var result = await client.CallToolAsync(
+                call.Name,
+                call.Arguments,
+                cancellationToken: cancellationToken);
+
+            Assert.True(result.IsError is true);
+            var text = ResultText(result);
+            Assert.Equal(
+                "Document 'missing.md' was not found.",
+                text);
+            Assert.DoesNotContain(
+                "Pointer 'document' was not found",
+                text,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "An error occurred invoking",
+                text,
+                StringComparison.Ordinal);
+
+            var status = await client.CallToolAsync(
+                "kb_status",
+                new Dictionary<string, object?>(),
+                cancellationToken: cancellationToken);
+            Assert.False(
+                status.IsError is true,
+                ResultText(status));
+
+            var read = await client.CallToolAsync(
+                "kb_read",
+                new Dictionary<string, object?>
+                {
+                    ["request"] = new
+                    {
+                        path = "smoke.md"
+                    }
+                },
+                cancellationToken: cancellationToken);
+            Assert.False(
+                read.IsError is true,
+                ResultText(read));
+            Assert.Contains(
+                "Smoke test",
+                ResultText(read),
+                StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain(
+            stderr,
+            line => line.Contains(
+                "threw an unhandled exception",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task StdioServerExitsOnInputCloseWithoutUnsolicitedStdout()
     {
         var cancellationToken =

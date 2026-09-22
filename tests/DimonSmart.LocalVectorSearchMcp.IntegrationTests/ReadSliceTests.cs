@@ -207,12 +207,23 @@ public sealed class ReadSliceTests
     }
 
     [Fact]
-    public async Task ReadSliceAsync_ThrowsNotFoundWhenPathDoesNotExist()
+    public async Task ReadSliceAsync_ThrowsDocumentNotFoundWhenPathDoesNotExist()
     {
         using var context = await CreateContextAsync("# Title\n\nText.");
 
-        await Assert.ThrowsAsync<SemanticPointerNotFoundException>(
-            () => context.Reader.ReadSliceAsync("missing.md", new SemanticPointer("1.p1"), 20, 12_000, context.CancellationToken));
+        var exception = await Assert.ThrowsAsync<DocumentNotFoundException>(
+            () => context.Reader.ReadSliceAsync(
+                "missing.md",
+                new SemanticPointer("1.p1"),
+                20,
+                12_000,
+                context.CancellationToken));
+
+        Assert.Equal("Document 'missing.md' was not found.", exception.Message);
+        Assert.DoesNotContain(
+            "Pointer 'document' was not found",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
