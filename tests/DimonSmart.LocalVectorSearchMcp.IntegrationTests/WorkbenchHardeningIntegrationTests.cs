@@ -203,15 +203,15 @@ public sealed class WorkbenchHardeningIntegrationTests
             repository.Initializer,
             repository.Manifest,
             repository.DocumentStore,
-            state,
             operationGate);
         var mutations = new WorkspaceMutationService(
             config,
             guard,
             loader,
             parser,
-            new ImmediateIndexSynchronizationScheduler(synchronizer),
-            state);
+            new ImmediateIndexSynchronizationScheduler(
+                synchronizer,
+                state));
         var navigation = new WorkspaceNavigationService(
             config,
             guard,
