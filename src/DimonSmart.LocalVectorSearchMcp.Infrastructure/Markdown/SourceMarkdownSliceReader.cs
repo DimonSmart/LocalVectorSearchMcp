@@ -2,6 +2,7 @@ using System.Text;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
+using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
@@ -52,25 +53,11 @@ public sealed class SourceMarkdownSliceReader(
         maxBytes = Math.Clamp(maxBytes, 1, 100_000);
 
         var normalized = pathGuard.ValidateRelativePath(path);
-        var absolutePath = pathGuard.ResolveMarkdownPath(normalized);
-        if (!File.Exists(absolutePath))
-        {
-            throw NotFound(normalized, anchor);
-        }
-
-        MarkdownSourceDocument document;
-        try
-        {
-            document = await loader.LoadFileAsync(
-                config.KnowledgeBase,
-                normalized,
-                cancellationToken);
-        }
-        catch (Exception exception) when (
-            exception is FileNotFoundException or DirectoryNotFoundException)
-        {
-            throw NotFound(normalized, anchor);
-        }
+        _ = pathGuard.ResolveMarkdownPath(normalized);
+        var document = await loader.LoadExistingAsync(
+            config.KnowledgeBase,
+            normalized,
+            cancellationToken);
 
         var parsedElements = parser.Parse(document)
             .Where(element =>
@@ -107,7 +94,7 @@ public sealed class SourceMarkdownSliceReader(
                     StringComparison.Ordinal));
             if (startIndex < 0)
             {
-                throw NotFound(normalized, anchor);
+                throw PointerNotFound(normalized, anchor);
             }
 
             pageElements = parsedElements
@@ -120,7 +107,7 @@ public sealed class SourceMarkdownSliceReader(
         {
             if (!isDocumentRoot)
             {
-                throw NotFound(normalized, anchor);
+                throw PointerNotFound(normalized, anchor);
             }
 
             return new MarkdownSlice(
@@ -240,7 +227,7 @@ public sealed class SourceMarkdownSliceReader(
             element.Text,
             element.HeadingPath);
 
-    private static SemanticPointerNotFoundException NotFound(
+    private static SemanticPointerNotFoundException PointerNotFound(
         string path,
         SemanticAnchor anchor)
         => new(
