@@ -229,7 +229,7 @@ public sealed class ReadSliceTests
         Assert.All(
             slice.Elements,
             element => Assert.Matches(
-                @"^[^~]+~[0-9a-f]{16}$",
+                @"^[^~]+~[0-9a-f]{16}~[0-9a-f]{16}$",
                 element.Pointer));
         Assert.NotNull(slice.NextPointer);
         Assert.Matches(@"^1\.p2~[0-9a-f]{16}$", slice.NextPointer!);
