@@ -118,7 +118,7 @@ Return the Markdown image reference.
 | Storage | Project-local SQLite |
 | Indexed content | Markdown |
 | Editable content | Markdown, guarded by exact element and subtree hashes |
-| Image assets | PNG, JPEG, WebP, GIF under `images/` |
+| Image assets | PNG, JPEG, WebP, GIF; save/list/load/delete use `images/`, safe moves may use any in-root path |
 | Navigation | File listing, image listing, and heading outlines |
 | Transport | MCP over stdio |
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
@@ -315,6 +315,6 @@ An unrelated edit elsewhere in the file does not invalidate a `Self` mutation wh
 
 ## Current scope
 
-The current version supports indexed local Markdown plus ordinary image assets under `images/`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
+The current version supports indexed local Markdown plus ordinary image assets. Save/list/load/delete use `images/`; `kb_move_image` may relocate a supported image to another safe path inside `knowledgeBase.root`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
 
 PDF/DOCX/OCR, arbitrary binary upload, image embeddings/search, image resizing/transcoding/thumbnails, automatic Markdown image insertion, a media database, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
