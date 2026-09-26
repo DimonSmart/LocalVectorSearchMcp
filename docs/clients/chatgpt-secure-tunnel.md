@@ -72,7 +72,7 @@ After the tunnel runtime reports ready:
 
 1. Add or select the Secure MCP Tunnel in ChatGPT.
 2. Refresh tool discovery.
-3. Confirm that all fourteen LocalVectorSearchMcp tools are visible.
+3. Confirm that all fifteen LocalVectorSearchMcp tools are visible.
 4. Call `kb_status`.
 5. Call `kb_search` and `kb_read` against the configured workspace.
 
@@ -93,6 +93,7 @@ kb_save_image
 kb_list_images
 kb_load_image
 kb_delete_image
+kb_move_image
 ```
 
 ## Image transfer and storage
@@ -204,7 +205,7 @@ After setup:
 1. Start the configured LocalVectorSearchMcp stdio command locally and verify it starts cleanly.
 2. Run tunnel doctor and start the tunnel runtime.
 3. Connect ChatGPT and refresh tool discovery.
-4. Confirm exactly fourteen tools.
+4. Confirm exactly fifteen tools.
 5. Call `kb_status`, `kb_search`, and `kb_read`.
 6. Call `kb_list_images`.
 7. Call `kb_load_image` for an existing PNG and confirm ChatGPT receives an image.

@@ -184,7 +184,7 @@ knowledgeBase:
   watchFiles: true
 ```
 
-`allowWrites` enables `kb_patch`, `kb_create`, `kb_move`, and `kb_delete`. Mutation paths must be relative `.md` paths under the configured root; existing destinations and paths through symbolic links, junctions, or reparse points are rejected.
+`allowWrites` enables `kb_patch`, `kb_create`, `kb_move`, `kb_delete`, `kb_save_image`, `kb_delete_image`, and `kb_move_image`. Mutation paths must be relative `.md` paths under the configured root; existing destinations and paths through symbolic links, junctions, or reparse points are rejected. Existing save/list/load/delete image paths remain under `images/`; `kb_move_image` accepts supported image source/target paths anywhere inside the configured root but rejects every outside-root resolution and never overwrites a target.
 
 `watchFiles` observes external Markdown create, edit, rename, and delete events and reconciles affected index entries after a short debounce. It does not require `allowWrites`, because the watcher reads changes made by other applications rather than creating them.
 

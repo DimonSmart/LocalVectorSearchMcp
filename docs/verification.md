@@ -41,7 +41,7 @@ The server should be listed as enabled and connected.
 
 ## 4. Verify tool discovery
 
-Ask the client to list the MCP tools. Exactly fourteen tools should be exposed:
+Ask the client to list the MCP tools. Exactly fifteen tools should be exposed:
 
 ```text
 kb_status
@@ -58,6 +58,7 @@ kb_save_image
 kb_list_images
 kb_load_image
 kb_delete_image
+kb_move_image
 ```
 
 For `kb_save_image`, inspect discovery metadata and confirm:
@@ -162,6 +163,8 @@ A mismatched extension/signature, file over 25 MiB, traversal path, outside-`ima
 ## 10. Verify image delete
 
 With writes disabled, `kb_delete_image` must return a controlled error and leave the file untouched.
+
+Also verify `kb_move_image` in a writable disposable workspace: move an image between two different subdirectories under `knowledgeBase.root`, confirm the old path disappears and the new path has the same SHA-256, confirm supported inline Markdown image references are rewritten relative to each document, and verify an outside-root target, reparse-point path, mismatched format, stale `expectedSha256`, and existing target are all rejected without partial changes. Repeat with `updateReferences=false` and confirm Markdown plus reconciliation remain untouched.
 
 With writes enabled, delete a nested image path and confirm:
 
