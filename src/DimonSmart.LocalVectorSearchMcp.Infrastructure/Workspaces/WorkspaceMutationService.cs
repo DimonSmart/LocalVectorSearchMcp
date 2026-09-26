@@ -157,6 +157,12 @@ public sealed class WorkspaceMutationService(
                         "replace_section requires a heading pointer.");
                 }
 
+                if (operation.Kind == PatchOperationKind.DeleteSection)
+                {
+                    throw new WorkspaceMutationException(
+                        "delete_section requires a heading pointer.");
+                }
+
                 if (operation.Kind == PatchOperationKind.ReplaceElement)
                 {
                     throw new WorkspaceMutationException(
@@ -181,6 +187,10 @@ public sealed class WorkspaceMutationService(
 
                 case PatchOperationKind.ReplaceSection:
                     ValidateSectionReplacement(document, target, operation.Markdown);
+                    break;
+
+                case PatchOperationKind.DeleteSection:
+                    ValidateSectionDeletion(target, operation.Markdown);
                     break;
             }
         }
@@ -253,6 +263,23 @@ public sealed class WorkspaceMutationService(
         }
     }
 
+    private static void ValidateSectionDeletion(
+        MarkdownElement target,
+        string? markdown)
+    {
+        if (target.Kind != MarkdownElementKind.Heading)
+        {
+            throw new WorkspaceMutationException(
+                "delete_section requires a heading pointer.");
+        }
+
+        if (markdown is not null)
+        {
+            throw new WorkspaceMutationException(
+                "delete_section does not accept markdown content.");
+        }
+    }
+
     private IReadOnlyList<MarkdownElement> ParseReplacement(
         MarkdownSourceDocument document,
         string markdown)
@@ -290,7 +317,8 @@ public sealed class WorkspaceMutationService(
     private static WorkspaceMutationException InvalidSectionReplacement()
         => new(
             "replace_section replacement must contain exactly one root section. " +
-            "Additional headings must be nested below the replacement heading.");
+            "Additional headings must be nested below the replacement heading. " +
+            "To remove the section, use delete_section.");
 
     public Task<MutationResponse> CreateAsync(
         string path,
