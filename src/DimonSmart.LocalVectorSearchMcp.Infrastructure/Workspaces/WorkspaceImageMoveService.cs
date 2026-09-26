@@ -813,7 +813,7 @@ public sealed class WorkspaceImageMoveService : IWorkspaceImageMoveService
             return body;
         }
 
-        return Encoding.UTF8.Preamble
+        return Encoding.UTF8.GetPreamble()
             .Concat(body)
             .ToArray();
     }
