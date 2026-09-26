@@ -83,7 +83,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
             "\u0060![Code](../images/a.png)\u0060\r\n" +
             "Old path ../images/a.png\r\n" +
             "![Remote](https://example.test/images/a.png)\r\n";
-        var bytes = Encoding.UTF8.Preamble
+        var bytes = Encoding.UTF8.GetPreamble()
             .Concat(Encoding.UTF8.GetBytes(markdown))
             .ToArray();
         await File.WriteAllBytesAsync(
