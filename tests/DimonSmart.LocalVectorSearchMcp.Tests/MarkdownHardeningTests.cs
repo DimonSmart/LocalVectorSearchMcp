@@ -125,6 +125,7 @@ public sealed class MarkdownHardeningTests
     [Theory]
     [InlineData(PatchOperationKind.Replace)]
     [InlineData(PatchOperationKind.Delete)]
+    [InlineData(PatchOperationKind.DeleteSection)]
     public void SourcePatcher_RejectsDestructiveDocumentOperations(PatchOperationKind kind)
     {
         var document = new MarkdownSourceDocument("a.md", "a.md", "Text.\n", "hash", DateTimeOffset.UtcNow);
