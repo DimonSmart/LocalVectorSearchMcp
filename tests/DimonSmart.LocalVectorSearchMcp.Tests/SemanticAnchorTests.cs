@@ -222,6 +222,7 @@ public sealed class SemanticAnchorTests
             SemanticAnchor.FromElement(paragraph).ToString());
 
         Assert.Equal(MutationScope.Subtree, PatchOperationKind.ReplaceSection.GetMutationScope());
+        Assert.Equal(MutationScope.Subtree, PatchOperationKind.DeleteSection.GetMutationScope());
         Assert.Equal(MutationScope.Self, PatchOperationKind.ReplaceElement.GetMutationScope());
         Assert.Equal(MutationScope.Self, PatchOperationKind.Replace.GetMutationScope());
         Assert.Equal(MutationScope.Self, PatchOperationKind.InsertBefore.GetMutationScope());
