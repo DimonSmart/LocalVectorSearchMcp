@@ -59,7 +59,23 @@ public static class MarkdownSourcePatcher
                         element,
                         markdown,
                         operation.Pointer,
-                        eol),
+                        eol,
+                        "replace_section",
+                        preserveBoundarySeparator: true),
+                PatchOperationKind.DeleteSection
+                    when operation.Markdown is null
+                    => CreateSectionEdit(
+                        source,
+                        elements,
+                        element,
+                        "",
+                        operation.Pointer,
+                        eol,
+                        "delete_section",
+                        preserveBoundarySeparator: false),
+                PatchOperationKind.DeleteSection
+                    => throw new WorkspaceMutationException(
+                        "delete_section does not accept markdown content."),
                 PatchOperationKind.InsertBefore when operation.Markdown is not null
                     => new SourceEdit(
                         element.SourceStart,
@@ -112,21 +128,23 @@ public static class MarkdownSourcePatcher
         MarkdownElement target,
         string markdown,
         string pointer,
-        string eol)
+        string eol,
+        string operationName,
+        bool preserveBoundarySeparator)
     {
         if (target.Kind != MarkdownElementKind.Heading)
         {
             throw new WorkspaceMutationException(
-                "replace_section requires a heading pointer.");
+                $"{operationName} requires a heading pointer.");
         }
 
         var range = MarkdownOwnedSourceRange.GetOwnedSourceRange(
             source.Length,
             elements,
             target);
-        var replacement = range.End == source.Length
-            ? markdown
-            : EnsureTrailingBlockSeparator(markdown, eol);
+        var replacement = preserveBoundarySeparator && range.End != source.Length
+            ? EnsureTrailingBlockSeparator(markdown, eol)
+            : markdown;
 
         return new SourceEdit(
             range.Start,
@@ -143,6 +161,7 @@ public static class MarkdownSourcePatcher
         if (operation.Kind is PatchOperationKind.Replace
             or PatchOperationKind.ReplaceElement
             or PatchOperationKind.ReplaceSection
+            or PatchOperationKind.DeleteSection
             or PatchOperationKind.Delete)
         {
             throw new WorkspaceMutationException(
@@ -218,6 +237,7 @@ public static class MarkdownSourcePatcher
             PatchOperationKind.Replace => "replace",
             PatchOperationKind.ReplaceElement => "replace_element",
             PatchOperationKind.ReplaceSection => "replace_section",
+            PatchOperationKind.DeleteSection => "delete_section",
             PatchOperationKind.InsertBefore => "insert_before",
             PatchOperationKind.InsertAfter => "insert_after",
             PatchOperationKind.Delete => "delete",
