@@ -24,7 +24,7 @@ public sealed class MarkdownImageReferenceUpdater(
         var syntax = Markdig.Markdown.Parse(markdown);
         var replacements = new List<Replacement>();
 
-        foreach (var link in syntax.Descendants().OfType<LinkInline>())
+        foreach (var link in syntax.Descendants<LinkInline>())
         {
             if (!link.IsImage)
             {
