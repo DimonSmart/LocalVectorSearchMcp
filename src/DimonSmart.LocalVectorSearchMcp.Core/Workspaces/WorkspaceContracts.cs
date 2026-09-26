@@ -15,6 +15,9 @@ public enum PatchOperationKind
     [JsonStringEnumMemberName("replace_section")]
     ReplaceSection,
 
+    [JsonStringEnumMemberName("delete_section")]
+    DeleteSection,
+
     [JsonStringEnumMemberName("insert_before")]
     InsertBefore,
 
@@ -34,9 +37,10 @@ public enum MutationScope
 public static class PatchOperationKindExtensions
 {
     public static MutationScope GetMutationScope(this PatchOperationKind kind)
-        => kind == PatchOperationKind.ReplaceSection
-            ? MutationScope.Subtree
-            : MutationScope.Self;
+        => kind is PatchOperationKind.ReplaceSection
+            or PatchOperationKind.DeleteSection
+                ? MutationScope.Subtree
+                : MutationScope.Self;
 }
 
 public sealed record PatchOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null);
