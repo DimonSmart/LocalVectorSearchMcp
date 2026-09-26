@@ -187,6 +187,7 @@ public sealed class StdioTransportIntegrationTests
                 "replace",
                 "replace_element",
                 "replace_section",
+                "delete_section",
                 "insert_before",
                 "insert_after",
                 "delete"
@@ -200,8 +201,10 @@ public sealed class StdioTransportIntegrationTests
         var patchDescription = patchTool.ProtocolTool.Description ?? "";
         Assert.Contains("replace_element", patchDescription, StringComparison.Ordinal);
         Assert.Contains("replace_section", patchDescription, StringComparison.Ordinal);
+        Assert.Contains("delete_section", patchDescription, StringComparison.Ordinal);
         Assert.Contains("deprecated alias", patchDescription, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("entire chapter or section", patchDescription, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("section body is preserved", patchDescription, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("complete owned section subtree", patchDescription, StringComparison.OrdinalIgnoreCase);
 
         var malformedSave = await client.CallToolAsync(
             "kb_save_image",
