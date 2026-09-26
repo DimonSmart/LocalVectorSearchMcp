@@ -131,7 +131,7 @@ The MCP server exposes fourteen tools. MCP reindexing is asynchronous: `kb_reind
 - `kb_reindex` — start a background build or rebuild; monitor `kb_status.indexing` for progress and the final result.
 - `kb_search` — run optionally path-scoped lexical, semantic, or hybrid search against the derived index; each result identifies its indexed revision with `indexedSourceHash`.
 - `kb_read` — read the current Markdown source from a semantic pointer and receive the exact source revision `sourceHash`.
-- `kb_patch` — atomically replace, insert before/after, or delete semantic elements.
+- `kb_patch` — atomically replace/delete individual semantic elements or complete heading sections, and insert before/after elements.
 - `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
 - `kb_list_files` — list Markdown files and non-indexed assets.
 - `kb_outline` — return a deterministic heading tree.
@@ -224,7 +224,9 @@ knowledgeBase:
   watchFiles: true
 ```
 
-Markdown files remain the source of truth for indexed knowledge. `kb_read` and `kb_outline` parse the current source directly; `kb_search` uses the derived SQLite index and may temporarily return an older indexed revision. A Markdown mutation commits the source file first and then schedules synchronization of the derived SQLite index. The mutation call does not wait for reconciliation to finish; `indexSynchronized: false` means the source commit succeeded but derived-index synchronization has not yet been confirmed. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers use `logical~selfHash~subtreeHash`, where both values are 16-character lowercase XxHash64 hashes over exact UTF-8 source. `selfHash` covers the element itself; heading `subtreeHash` covers the complete section source range owned by `replace_section`, while leaf hashes are equal. `kb_patch` relocates only by kind plus `selfHash`; `replace_section` additionally validates `subtreeHash`. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
+Markdown files remain the source of truth for indexed knowledge. `kb_read` and `kb_outline` parse the current source directly; `kb_search` uses the derived SQLite index and may temporarily return an older indexed revision. A Markdown mutation commits the source file first and then schedules synchronization of the derived SQLite index. The mutation call does not wait for reconciliation to finish; `indexSynchronized: false` means the source commit succeeded but derived-index synchronization has not yet been confirmed. Internal semantic pointers remain logical structural addresses. Public concrete-element pointers use `logical~selfHash~subtreeHash`, where both values are 16-character lowercase XxHash64 hashes over exact UTF-8 source. `selfHash` covers the element itself; heading `subtreeHash` covers the complete section source range owned by `replace_section` and `delete_section`, while leaf hashes are equal. `kb_patch` relocates only by kind plus `selfHash`; `replace_section` and `delete_section` additionally validate `subtreeHash`. `sourceHash` is still returned by `kb_read` for whole-file operations such as `kb_move` and `kb_delete`.
+
+For structural edits, `replace_element` replaces exactly one Markdown element and `delete` removes exactly one element; deleting a heading with `delete` preserves its section body. `replace_section` replaces a heading together with its complete owned section subtree, while `delete_section` removes that whole subtree. Both section operations require a canonical v2 heading pointer and validate `subtreeHash`.
 
 Image save/delete are independent asset mutations and do not synchronize the Markdown index.
 
