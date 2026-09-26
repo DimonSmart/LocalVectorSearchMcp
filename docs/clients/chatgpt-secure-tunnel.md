@@ -150,6 +150,8 @@ Both list and load work when `knowledgeBase.allowWrites=false`.
 
 `kb_delete_image` deletes exactly one supported image file beneath `images/` and requires writes to be enabled. Nested paths created by external tools are supported. Parent directories are not removed automatically.
 
+`kb_move_image` requires writes to be enabled and can move a supported image between any safe source and target paths inside `knowledgeBase.root`. Paths outside that root are never allowed. By default it also updates supported inline Markdown image references; set `updateReferences=false` for a binary-only move.
+
 Images remain ordinary assets. They are visible in `kb_list_files` but are not indexed, embedded, or added to FTS/vector search.
 
 ## Read-only deployment
@@ -161,7 +163,7 @@ knowledgeBase:
   allowWrites: false
 ```
 
-Search/read/list operations, including `kb_list_images` and `kb_load_image`, remain available. Markdown mutations plus image save/delete are rejected by the application write guard.
+Search/read/list operations, including `kb_list_images` and `kb_load_image`, remain available. Markdown mutations plus image save/delete/move are rejected by the application write guard.
 
 ## Writable deployment
 
