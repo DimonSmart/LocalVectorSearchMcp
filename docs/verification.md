@@ -113,11 +113,13 @@ Verify:
 1. `kb_create` commits Markdown immediately and returns `indexSynchronized=false` while index reconciliation may still be pending; after reconciliation completes, the new content becomes searchable.
 2. Concrete pointers returned by read/search/outline use canonical `logical~selfHash~subtreeHash` anchors; each hash is 16 lowercase hex characters and leaf hashes are equal.
 3. A heading body edit leaves its `selfHash` unchanged but changes its `subtreeHash`; raw comments or other non-indexed source inside the section also change `subtreeHash`.
-4. `replace_element` with an older still-valid heading `selfHash` survives descendant edits, while `replace_section` with the old v2 anchor is rejected. Legacy `logical~selfHash` remains valid for Self operations but is rejected for `replace_section` with a reread message.
+4. `replace_element` with an older still-valid heading `selfHash` survives descendant edits, while `replace_section` and `delete_section` with the old v2 anchor are rejected. Legacy `logical~selfHash` remains valid for Self operations but is rejected for both section operations with a reread message.
 5. Structural relocation uses only exact element kind plus `selfHash`; direct logical-pointer match wins over duplicates and ambiguous relocation is rejected.
 6. After a mutation, an immediate `kb_read` returns the committed source and matching `sourceHash` even while reconciliation is blocked or failing; `kb_search` may still return the previous revision and each result exposes its `indexedSourceHash`.
 7. `kb_move` and `kb_delete` retain their latest-`sourceHash` whole-file contract.
-8. `kb_list_files` returns non-Markdown files as `asset`.
+8. Verify the four structural operations explicitly: `replace_element` replaces one element, `delete` removes one element and preserves a heading's section body, `replace_section` replaces the complete owned heading section, and `delete_section` removes that complete owned section.
+9. For `delete_section`, verify nested headings and raw Markdown are removed, EOF deletion works, stale/legacy/ambiguous pointers are rejected, an overlapping inner operation rejects the whole patch, a boundary sibling edit succeeds, and CRLF plus UTF-8 BOM are preserved.
+10. `kb_list_files` returns non-Markdown files as `asset`.
 
 ## 8. Verify image save
 
