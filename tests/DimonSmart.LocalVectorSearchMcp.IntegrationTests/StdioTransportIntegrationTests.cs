@@ -6,6 +6,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -709,7 +710,7 @@ public sealed class StdioTransportIntegrationTests
     }
 
     [Fact]
-    public async Task StdioMissingDocuments_ReturnDocumentNotFoundAndServerRecovers()
+    public async Task StdioMissingDocuments_ReturnResourceNotFoundAndServerRecovers()
     {
         var cancellationToken =
             TestContext.Current.CancellationToken;
@@ -797,23 +798,22 @@ public sealed class StdioTransportIntegrationTests
 
         foreach (var call in calls)
         {
-            var result = await client.CallToolAsync(
-                call.Name,
-                call.Arguments,
-                cancellationToken: cancellationToken);
+            var exception = await Assert.ThrowsAsync<McpProtocolException>(
+                async () => await client.CallToolAsync(
+                    call.Name,
+                    call.Arguments,
+                    cancellationToken: cancellationToken));
 
-            Assert.True(result.IsError is true);
-            var text = ResultText(result);
             Assert.Equal(
+                McpErrorCode.ResourceNotFound,
+                exception.ErrorCode);
+            Assert.EndsWith(
                 "Document 'missing.md' was not found.",
-                text);
-            Assert.DoesNotContain(
-                "Pointer 'document' was not found",
-                text,
+                exception.Message,
                 StringComparison.Ordinal);
             Assert.DoesNotContain(
-                "An error occurred invoking",
-                text,
+                "Pointer 'document' was not found",
+                exception.Message,
                 StringComparison.Ordinal);
 
             var status = await client.CallToolAsync(
@@ -823,6 +823,14 @@ public sealed class StdioTransportIntegrationTests
             Assert.False(
                 status.IsError is true,
                 ResultText(status));
+            var statusResponse = JsonSerializer.Deserialize<StatusResponse>(
+                ResultText(status),
+                JsonOptions.Default);
+            Assert.NotNull(statusResponse);
+            Assert.Equal(
+                0,
+                statusResponse.Synchronization?.PendingFiles ?? 0);
+            Assert.Null(statusResponse.Synchronization?.LastError);
 
             var read = await client.CallToolAsync(
                 "kb_read",
@@ -843,11 +851,24 @@ public sealed class StdioTransportIntegrationTests
                 StringComparison.Ordinal);
         }
 
-        Assert.DoesNotContain(
-            stderr,
-            line => line.Contains(
-                "threw an unhandled exception",
-                StringComparison.Ordinal));
+        var invalidPointer = await client.CallToolAsync(
+            "kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "smoke.md",
+                    pointer = "1.p999"
+                }
+            },
+            cancellationToken: cancellationToken);
+
+        Assert.True(invalidPointer.IsError is true);
+        Assert.Contains(
+            "Pointer '1.p999' was not found",
+            ResultText(invalidPointer),
+            StringComparison.Ordinal);
+
     }
 
     [Fact]

@@ -154,12 +154,16 @@ public sealed class DocumentNotFoundException : Exception
     public DocumentNotFoundException(string path)
         : base($"Document '{path}' was not found.")
     {
+        Path = path;
     }
 
     public DocumentNotFoundException(string path, Exception innerException)
         : base($"Document '{path}' was not found.", innerException)
     {
+        Path = path;
     }
+
+    public string Path { get; }
 }
 
 public sealed class DocumentConflictException(string message) : Exception(message);
