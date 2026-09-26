@@ -38,6 +38,25 @@ public sealed record ImageDeleteResponse(
     string Path,
     bool Deleted);
 
+public sealed record MoveImageRequest(
+    string SourcePath,
+    string TargetPath,
+    string? ExpectedSha256 = null,
+    bool UpdateReferences = true);
+
+public sealed record ImageMoveResponse(
+    string PreviousPath,
+    string Path,
+    string Sha256,
+    int ReferencesUpdated,
+    IReadOnlyList<string> DocumentsUpdated,
+    bool IndexSynchronized,
+    string? IndexError);
+
+public sealed record MarkdownImageReferenceUpdate(
+    string Markdown,
+    int ReferencesUpdated);
+
 public sealed record RemoteFileDownloadResult(
     long Bytes,
     string Sha256,
@@ -50,6 +69,22 @@ public interface IRemoteFileDownloader
         string downloadUrl,
         string destinationPath,
         long maxBytes,
+        CancellationToken cancellationToken);
+}
+
+public interface IMarkdownImageReferenceUpdater
+{
+    MarkdownImageReferenceUpdate Update(
+        string markdown,
+        string documentPath,
+        string sourcePath,
+        string targetPath);
+}
+
+public interface IWorkspaceImageMoveService
+{
+    Task<ImageMoveResponse> MoveAsync(
+        MoveImageRequest request,
         CancellationToken cancellationToken);
 }
 

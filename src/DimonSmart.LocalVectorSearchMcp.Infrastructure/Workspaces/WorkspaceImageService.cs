@@ -210,6 +210,15 @@ public sealed class WorkspaceImageService(
     public Task<ImageDeleteResponse> DeleteAsync(
         string path,
         CancellationToken cancellationToken)
+        => WorkspaceMutationGate.RunAsync(
+            () => DeleteCoreAsync(
+                path,
+                cancellationToken),
+            cancellationToken);
+
+    private Task<ImageDeleteResponse> DeleteCoreAsync(
+        string path,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureWritesEnabled();

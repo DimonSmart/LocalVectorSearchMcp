@@ -16,7 +16,6 @@ public sealed class WorkspaceMutationService(
     IWorkspaceIndexSynchronizationScheduler synchronizationScheduler) : IWorkspaceMutationService
 {
     private const int MaxPatchAttempts = 3;
-    private readonly SemaphoreSlim mutationGate = new(1, 1);
 
     public Task<MutationResponse> PatchAsync(
         PatchRequest request,
@@ -534,18 +533,10 @@ public sealed class WorkspaceMutationService(
         EnsureExpectedHash(expectedSourceHash, currentHash);
     }
 
-    private async Task<MutationResponse> RunMutationAsync(
+    private static Task<MutationResponse> RunMutationAsync(
         Func<Task<MutationResponse>> mutation,
         CancellationToken cancellationToken)
-    {
-        await mutationGate.WaitAsync(cancellationToken);
-        try
-        {
-            return await mutation();
-        }
-        finally
-        {
-            mutationGate.Release();
-        }
-    }
+        => WorkspaceMutationGate.RunAsync(
+            mutation,
+            cancellationToken);
 }

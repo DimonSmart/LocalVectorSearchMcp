@@ -22,6 +22,7 @@ public sealed class StdioTransportIntegrationTests
         "kb_list_images",
         "kb_load_image",
         "kb_move",
+        "kb_move_image",
         "kb_outline",
         "kb_patch",
         "kb_read",
@@ -147,6 +148,24 @@ public sealed class StdioTransportIntegrationTests
             HasRequiredSchemaProperty(
                 deleteTool.JsonSchema,
                 "path"));
+
+        var moveImageTool = Assert.Single(
+            tools,
+            tool => tool.Name == "kb_move_image");
+        Assert.True(
+            HasRequiredSchemaProperty(
+                moveImageTool.JsonSchema,
+                "request"));
+        Assert.True(
+            TryFindSchemaProperty(
+                moveImageTool.JsonSchema,
+                "sourcePath",
+                out _));
+        Assert.True(
+            TryFindSchemaProperty(
+                moveImageTool.JsonSchema,
+                "targetPath",
+                out _));
 
         var readTool = Assert.Single(
             tools,
