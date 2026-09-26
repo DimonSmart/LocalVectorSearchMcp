@@ -9,7 +9,8 @@ namespace DimonSmart.LocalVectorSearchMcp.Server.Tools;
 
 [McpServerToolType]
 public sealed class WorkspaceImageMcpTools(
-    IWorkspaceImageService images)
+    IWorkspaceImageService images,
+    IWorkspaceImageMoveService imageMoves)
 {
     [McpServerTool(
         Name = "kb_save_image",
@@ -161,6 +162,36 @@ public sealed class WorkspaceImageMcpTools(
         catch (Exception exception) when (
             exception is WorkspaceImageException
                 or KnowledgeBaseAccessException)
+        {
+            return Error(exception.Message);
+        }
+    }
+
+    [McpServerTool(
+        Name = "kb_move_image",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(ImageMoveResponse))]
+    [Description(
+        "Moves a supported image only within the configured knowledgeBase.root. " +
+        "Paths outside the configured root are never allowed. " +
+        "By default updates supported inline Markdown image references and never overwrites an existing target.")]
+    public async Task<CallToolResult> MoveImageAsync(
+        [Description(
+            "Image move request containing workspace-relative sourcePath and targetPath, optional expectedSha256, and updateReferences (default true).")]
+        MoveImageRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await imageMoves.MoveAsync(
+                request,
+                cancellationToken);
+            return Structured(response);
+        }
+        catch (Exception exception) when (
+            exception is WorkspaceImageException
+                or KnowledgeBaseAccessException
+                or DocumentConflictException)
         {
             return Error(exception.Message);
         }

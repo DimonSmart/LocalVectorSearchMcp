@@ -85,6 +85,15 @@ public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
         return ResolveWorkspacePath(normalized);
     }
 
+    public string ValidateWorkspaceImagePath(string path)
+        => ValidateRelativePath(path);
+
+    public string ResolveWorkspaceImagePath(string path)
+    {
+        var normalized = ValidateWorkspaceImagePath(path);
+        return ResolveWorkspacePath(normalized);
+    }
+
     private static void EnsureNoReparsePoints(string root, string absolute)
     {
         var relative = Path.GetRelativePath(root, absolute);

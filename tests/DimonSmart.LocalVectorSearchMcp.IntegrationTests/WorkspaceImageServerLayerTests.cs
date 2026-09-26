@@ -30,6 +30,7 @@ public sealed class WorkspaceImageServerLayerTests
                 "kb_delete_image",
                 "kb_list_images",
                 "kb_load_image",
+                "kb_move_image",
                 "kb_save_image"
             ],
             tools
@@ -51,7 +52,9 @@ public sealed class WorkspaceImageServerLayerTests
     public async Task MalformedOpenAiFileParameterReturnsControlledErrorBeforeService()
     {
         var service = new RecordingImageService();
-        var tools = new WorkspaceImageMcpTools(service);
+        var tools = new WorkspaceImageMcpTools(
+            service,
+            new RecordingImageMoveService());
         var malformed = new OpenAiFileParameter();
 
         var result = await tools.SaveImageAsync(
@@ -62,6 +65,15 @@ public sealed class WorkspaceImageServerLayerTests
         Assert.Equal(0, service.SaveCalls);
         Assert.IsType<TextContentBlock>(
             Assert.Single(result.Content));
+    }
+
+    private sealed class RecordingImageMoveService :
+        IWorkspaceImageMoveService
+    {
+        public Task<ImageMoveResponse> MoveAsync(
+            MoveImageRequest request,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class RecordingImageService :

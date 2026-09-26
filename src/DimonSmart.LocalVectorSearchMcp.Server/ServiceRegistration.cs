@@ -34,6 +34,7 @@ public static class ServiceRegistration
             sp => sp.GetRequiredService<MarkdownChunker>());
         services.AddSingleton<IMarkdownDocumentLoader, MarkdownDocumentLoader>();
         services.AddSingleton<IMarkdownElementParser, MarkdownElementParser>();
+        services.AddSingleton<IMarkdownImageReferenceUpdater, MarkdownImageReferenceUpdater>();
         services.AddSingleton<KnowledgeBasePathGuard>();
         services.AddSingleton<IndexOperationGate>();
         services.AddSingleton<InMemoryIndexSynchronizationState>();
@@ -82,6 +83,7 @@ public static class ServiceRegistration
         services.AddSingleton<IWorkspaceMutationService, WorkspaceMutationService>();
         services.AddSingleton<IWorkspaceNavigationService, WorkspaceNavigationService>();
         services.AddTransient<IWorkspaceImageService, WorkspaceImageService>();
+        services.AddTransient<IWorkspaceImageMoveService, WorkspaceImageMoveService>();
         services.AddHostedService<MarkdownWorkspaceWatcher>();
         services.AddHostedService(sp => sp.GetRequiredService<WorkspaceIndexSynchronizationScheduler>());
         services.AddHostedService(sp => sp.GetRequiredService<ReindexCoordinator>());
