@@ -21,13 +21,20 @@ public sealed class MarkdownImageReferenceUpdater(
         var sourceAbsolute = pathGuard.ResolveWorkspaceImagePath(sourcePath);
         var targetAbsolute = pathGuard.ResolveWorkspaceImagePath(targetPath);
         var documentDirectory = Path.GetDirectoryName(documentAbsolute)!;
-        var syntax = Markdown.Parse(markdown);
+        var syntax = Markdig.Markdown.Parse(markdown);
         var replacements = new List<Replacement>();
 
         foreach (var link in syntax.Descendants().OfType<LinkInline>())
         {
-            if (!link.IsImage
-                || !TryGetDestination(markdown, link, out var destination))
+            if (!link.IsImage)
+            {
+                continue;
+            }
+
+            if (!TryGetDestination(
+                    markdown,
+                    link,
+                    out var destination))
             {
                 continue;
             }
