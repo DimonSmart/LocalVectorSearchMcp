@@ -39,13 +39,67 @@ public sealed class WorkspaceImageServerLayerTests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray());
 
-        Assert.All(
+        var loadTool = Assert.Single(
             tools,
+            item => item.Attribute!.Name == "kb_load_image");
+        Assert.False(loadTool.Attribute!.UseStructuredContent);
+        Assert.Null(loadTool.Attribute.OutputSchemaType);
+
+        Assert.All(
+            tools.Where(item =>
+                item.Attribute!.Name != "kb_load_image"),
             item =>
             {
                 Assert.True(item.Attribute!.UseStructuredContent);
                 Assert.NotNull(item.Attribute.OutputSchemaType);
             });
+    }
+
+    [Fact]
+    public async Task LoadImageReturnsImageContentBeforeTextMetadata()
+    {
+        byte[] data =
+        [
+            0x89, 0x50, 0x4e, 0x47,
+            0x0d, 0x0a, 0x1a, 0x0a
+        ];
+        var service = new RecordingImageService
+        {
+            ImageToLoad = new LoadedImage(
+                new ImageLoadResponse(
+                    "images/red-circle.png",
+                    "image/png",
+                    data.LongLength,
+                    "abc123"),
+                data)
+        };
+        var tools = new WorkspaceImageMcpTools(
+            service,
+            new RecordingImageMoveService());
+
+        var result = await tools.LoadImageAsync(
+            "images/red-circle.png",
+            CancellationToken.None);
+
+        Assert.False(result.IsError is true);
+        Assert.Null(result.StructuredContent);
+        Assert.Equal(2, result.Content.Count);
+
+        var image = Assert.IsType<ImageContentBlock>(
+            result.Content[0]);
+        Assert.Equal("image/png", image.MimeType);
+        Assert.Equal(data, image.DecodedData.ToArray());
+
+        var metadata = Assert.IsType<TextContentBlock>(
+            result.Content[1]);
+        Assert.Contains(
+            "\"path\":\"images/red-circle.png\"",
+            metadata.Text,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"sha256\":\"abc123\"",
+            metadata.Text,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,6 +135,8 @@ public sealed class WorkspaceImageServerLayerTests
     {
         public int SaveCalls { get; private set; }
 
+        public LoadedImage? ImageToLoad { get; init; }
+
         public Task<ImageSaveResponse> SaveAsync(
             SaveImageRequest request,
             CancellationToken cancellationToken)
@@ -98,7 +154,9 @@ public sealed class WorkspaceImageServerLayerTests
         public Task<LoadedImage> LoadAsync(
             string path,
             CancellationToken cancellationToken)
-            => throw new NotSupportedException();
+            => Task.FromResult(
+                ImageToLoad
+                ?? throw new NotSupportedException());
 
         public Task<ImageDeleteResponse> DeleteAsync(
             string path,
