@@ -282,7 +282,16 @@ public sealed class StdioTransportIntegrationTests
                 0x0d, 0x0a, 0x1a, 0x0a
             },
             imageBytes[..8]);
-        Assert.NotNull(imageResult.StructuredContent);
+        var imageMetadata = Assert.Single(
+            imageResult.Content.OfType<TextContentBlock>());
+        var metadata =
+            JsonSerializer.Deserialize<ImageLoadResponse>(
+                imageMetadata.Text,
+                JsonOptions.Default);
+        Assert.NotNull(metadata);
+        Assert.Equal("images/stdio.png", metadata.Path);
+        Assert.Equal("image/png", metadata.MimeType);
+        Assert.Null(imageResult.StructuredContent);
     }
 
     [Fact]

@@ -94,12 +94,9 @@ public sealed class WorkspaceImageMcpTools(
         }
     }
 
-    [McpServerTool(
-        Name = "kb_load_image",
-        UseStructuredContent = true,
-        OutputSchemaType = typeof(ImageLoadResponse))]
+    [McpServerTool(Name = "kb_load_image")]
     [Description(
-        "Loads an existing supported image under workspace images/ and returns a real MCP image content block plus structured metadata.")]
+        "Loads an existing supported image under workspace images/ and returns the real MCP image content first, followed by JSON metadata.")]
     public async Task<CallToolResult> LoadImageAsync(
         [Description(
             "Project-relative image path under images/, for example images/chapter-01.png.")]
@@ -125,11 +122,7 @@ public sealed class WorkspaceImageMcpTools(
                     {
                         Text = metadataJson
                     }
-                ],
-                StructuredContent =
-                    JsonSerializer.SerializeToElement(
-                        loaded.Metadata,
-                        JsonOptions.Default)
+                ]
             };
         }
         catch (Exception exception) when (

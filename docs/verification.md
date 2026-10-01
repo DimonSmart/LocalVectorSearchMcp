@@ -156,7 +156,9 @@ Call:
 kb_load_image path=images/chapter-01.png
 ```
 
-Confirm the result contains a real MCP `ImageContentBlock`, not only JSON/base64 text. Structured metadata should contain `path`, `mimeType`, `bytes`, and `sha256`.
+Confirm the first result content block is a real MCP `ImageContentBlock`, not only JSON/base64 text. The following text content block should contain JSON metadata with `path`, `mimeType`, `bytes`, and `sha256`. `kb_load_image` deliberately does not return `structuredContent`; this keeps the image on the model-visible content path in ChatGPT connector wrappers.
+
+For an end-to-end ChatGPT vision smoke test, copy `docs/test-assets/red-circle.png` to `<knowledgeBase.root>/images/red-circle.png`, restart/refresh the MCP connection, call `kb_load_image path=images/red-circle.png`, and ask what is visible without giving the file name or alt text as a hint. The expected visual answer is a red circle on a white background. If the raw stdio test below sees `ImageContentBlock` but ChatGPT still exposes only metadata, the loss is after the MCP server/stdio boundary.
 
 A mismatched extension/signature, file over 25 MiB, traversal path, outside-`images/` path, or symlink/junction/reparse escape must be rejected.
 
