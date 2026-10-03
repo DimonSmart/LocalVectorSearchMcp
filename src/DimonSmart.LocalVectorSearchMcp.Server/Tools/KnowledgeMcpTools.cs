@@ -7,6 +7,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -231,10 +232,18 @@ public sealed class KnowledgeMcpTools(
             or KnowledgeBaseAccessException;
 
     private static CallToolResult ControlledToolError(Exception exception)
-        => new()
+        => exception switch
         {
-            Content = [new TextContentBlock { Text = exception.Message }],
-            IsError = true
+            DocumentNotFoundException documentNotFound =>
+                throw new McpProtocolException(
+                    documentNotFound.Message,
+                    documentNotFound,
+                    McpErrorCode.ResourceNotFound),
+            _ => new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = exception.Message }],
+                IsError = true
+            }
         };
 
     private bool IsDestructiveRebuildRunning()

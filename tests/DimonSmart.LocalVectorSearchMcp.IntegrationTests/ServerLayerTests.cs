@@ -6,6 +6,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Server;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -165,7 +166,7 @@ public sealed class ServerLayerTests
     }
 
     [Fact]
-    public async Task KnowledgeMcpTools_OutlineReturnsControlledDocumentNotFoundError()
+    public async Task KnowledgeMcpTools_OutlineMapsDocumentNotFoundToResourceNotFoundProtocolError()
     {
         var tools = new KnowledgeMcpTools(
             null!,
@@ -177,18 +178,16 @@ public sealed class ServerLayerTests
             new ThrowingNavigationService(
                 new DocumentNotFoundException("missing.md")));
 
-        var result = await tools.OutlineAsync(
-            new OutlineToolRequest("missing.md"),
-            CancellationToken.None);
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(
+            () => tools.OutlineAsync(
+                new OutlineToolRequest("missing.md"),
+                CancellationToken.None));
 
-        Assert.True(result.IsError is true);
-        Assert.Null(result.StructuredContent);
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("Document 'missing.md' was not found.", text);
-        Assert.DoesNotContain(
-            "An error occurred invoking",
-            text,
-            StringComparison.Ordinal);
+        Assert.Equal(McpErrorCode.ResourceNotFound, exception.ErrorCode);
+        Assert.Equal("Document 'missing.md' was not found.", exception.Message);
+        var domainException =
+            Assert.IsType<DocumentNotFoundException>(exception.InnerException);
+        Assert.Equal("missing.md", domainException.Path);
     }
 
     [Fact]
