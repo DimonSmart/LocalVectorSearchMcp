@@ -42,6 +42,19 @@ dotnet tool install --global DimonSmart.LocalVectorSearchMcp
 
 Make sure the .NET global-tools directory is on `PATH`.
 
+## Use the server without Ollama
+
+Start a lexical-only index with:
+
+```bash
+local-vector-search-mcp --embedding-provider none --search-mode lexical --reindex
+```
+
+In an MCP registration, pass `--embedding-provider none --search-mode lexical`.
+No embedding HTTP requests or sqlite-vec table are required. If the existing
+index was created with embeddings enabled, reindex it with `--force` to
+rebuild the derived database in lexical-only mode.
+
 ## The embedding endpoint is unavailable
 
 For the default Ollama configuration:
@@ -73,7 +86,12 @@ Inspect the detected project root and knowledge-base root.
 
 Claude Code supplies `CLAUDE_PROJECT_DIR`. Codex and direct CLI execution use the server process working directory unless `--root` or YAML overrides the knowledge-base root.
 
-Start the client from the intended project root, or configure an explicit root:
+Use `--project-root /absolute/project/path` to make relative `--root`
+and storage paths independent of the MCP process working directory.
+The project directory must exist. `--root` is the knowledge-base directory,
+not the project root.
+
+You can also start the client from the intended project root, or configure an explicit root:
 
 ```text
 --root docs
@@ -86,7 +104,7 @@ Confirm that:
 - the configured root exists;
 - Markdown files match the include patterns;
 - exclude patterns do not remove all files;
-- the embedding endpoint is reachable;
+- the embedding endpoint is reachable if embeddings are enabled;
 - reindex completed successfully.
 
 Run:
@@ -114,7 +132,9 @@ Also verify that the relevant file was indexed and that the requested `topK` is 
 
 ## The index is incompatible after configuration changes
 
-Changing embedding or chunking settings may require a forced rebuild:
+Changing index mode (lexical-only versus vector-enabled), embedding or
+chunking settings may require a forced rebuild. Inspect the `compatibility`
+field in `kb_status`, then run:
 
 ```bash
 local-vector-search-mcp --reindex --force
@@ -175,6 +195,13 @@ Then run:
 ```bash
 local-vector-search-mcp --reindex
 ```
+
+## The local tool manifest cannot be found
+
+Run `dotnet tool restore` and `dotnet tool run` from the directory
+containing (or below) the applicable `.config/dotnet-tools.json`. The
+server's `--project-root` parameter does not influence .NET CLI manifest
+discovery. Alternatively use `dnx` with a pinned package version.
 
 ## Logs corrupt MCP communication
 
