@@ -12,4 +12,7 @@ public sealed record StatusResponse(
     int? EmbeddingDimensions,
     ProjectIndexStatus Project,
     IndexSynchronizationStatus? Synchronization = null,
-    ReindexStatus? Indexing = null);
+    ReindexStatus? Indexing = null,
+    string IndexMode = "vector-enabled",
+    string EmbeddingProvider = "openai-compatible",
+    IndexCompatibilityResult? Compatibility = null);

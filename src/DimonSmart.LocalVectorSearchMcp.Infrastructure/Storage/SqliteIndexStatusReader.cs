@@ -12,7 +12,8 @@ public sealed class SqliteIndexStatusReader(
     SqliteConnectionFactory factory,
     LocalVectorSearchMcpConfig config,
     IIndexSynchronizationState? synchronizationState = null,
-    IReindexStateReader? reindexStateReader = null) : IIndexStatusReader
+    IReindexStateReader? reindexStateReader = null,
+    IIndexManifestService? manifestService = null) : IIndexStatusReader
 {
     private int EffectiveEmbeddingDimensions => config.Embedding.Dimensions ?? 1024;
 
@@ -32,10 +33,15 @@ public sealed class SqliteIndexStatusReader(
             SqliteSchema.Version,
             MarkdownChunker.Version,
             EmbeddingTextBuilder.Version,
-            config.Embedding.Model,
-            EffectiveEmbeddingDimensions,
+            config.Embedding.Enabled ? config.Embedding.Model : "none",
+            config.Embedding.Enabled ? EffectiveEmbeddingDimensions : null,
             project,
             synchronizationState?.GetStatus() ?? new IndexSynchronizationStatus(0, [], null),
-            reindexStateReader?.GetStatus());
+            reindexStateReader?.GetStatus(),
+            config.Embedding.Enabled ? "vector-enabled" : "lexical",
+            config.Embedding.Provider,
+            manifestService is not null && await manifestService.HasManifestAsync(cancellationToken)
+                ? await manifestService.CheckCompatibilityAsync(cancellationToken)
+                : null);
     }
 }

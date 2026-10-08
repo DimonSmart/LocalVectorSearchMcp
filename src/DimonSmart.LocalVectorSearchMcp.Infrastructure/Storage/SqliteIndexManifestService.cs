@@ -38,6 +38,18 @@ public sealed class SqliteIndexManifestService(
     public async Task ResetIndexAsync(CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
+        if (!config.Embedding.Enabled)
+        {
+            // Recreate the derived database without loading sqlite-vec. DROP TABLE on a
+            // legacy vec0 virtual table requires the native module to be present.
+            SqliteConnection.ClearAllPools();
+            File.Delete(config.Storage.Path);
+            File.Delete(config.Storage.Path + "-wal");
+            File.Delete(config.Storage.Path + "-shm");
+            await schemaInitializer.InitializeAsync(cancellationToken);
+            return;
+        }
+
         SqliteVectorExtensionLoader.Load(db);
         await using var transaction = (SqliteTransaction)await db.BeginTransactionAsync(cancellationToken);
         await db.ExecuteAsync("""
@@ -64,18 +76,28 @@ public sealed class SqliteIndexManifestService(
         }
     }
 
-    private IReadOnlyDictionary<string, string> CurrentManifest() => new Dictionary<string, string>
+    private IReadOnlyDictionary<string, string> CurrentManifest()
     {
+        var entries = new Dictionary<string, string>
+        {
         ["schema_version"] = SqliteSchema.Version,
+        ["index_mode"] = config.Embedding.Enabled ? "vector-enabled" : "lexical",
         ["chunker_version"] = MarkdownChunker.Version,
-        ["embedding_text_builder_version"] = EmbeddingTextBuilder.Version,
-        ["embedding_model"] = config.Embedding.Model,
-        ["embedding_dimensions"] = EffectiveEmbeddingDimensions.ToString(CultureInfo.InvariantCulture),
         ["chunking_max_chunk_bytes"] = config.Chunking.MaxChunkBytes.ToString(CultureInfo.InvariantCulture),
         ["chunking_max_elements"] = config.Chunking.MaxElements.ToString(CultureInfo.InvariantCulture),
         ["chunking_include_heading_context"] = config.Chunking.IncludeHeadingContext.ToString().ToLowerInvariant(),
         ["chunking_include_front_matter"] = config.Chunking.IncludeFrontMatter.ToString().ToLowerInvariant()
-    };
+        };
+
+        if (config.Embedding.Enabled)
+        {
+            entries["embedding_text_builder_version"] = EmbeddingTextBuilder.Version;
+            entries["embedding_model"] = config.Embedding.Model;
+            entries["embedding_dimensions"] = EffectiveEmbeddingDimensions.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return entries;
+    }
 
     private static async Task<IReadOnlyDictionary<string, string>> ReadManifestAsync(
         SqliteConnection db,
