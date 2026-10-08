@@ -72,4 +72,36 @@ public sealed class ConfigValidatorTests
         Storage = new StorageConfig { Path = Path.Combine(root, "index.db") },
         KnowledgeBase = new KnowledgeBaseConfig { Root = root }
     };
+
+    [Fact]
+    public void Lexical_only_ignores_embedding_specific_settings()
+    {
+        using var temp = new TemporaryDirectory();
+        var config = CreateConfig(temp.Path) with
+        {
+            Embedding = new EmbeddingConfig
+            {
+                Provider = "none",
+                Endpoint = "not-an-url",
+                ApiKey = "",
+                Model = "",
+                Dimensions = -123
+            }
+        };
+
+        ConfigValidator.Validate(config);
+    }
+
+    [Fact]
+    public void Invalid_embedding_provider_is_rejected()
+    {
+        using var temp = new TemporaryDirectory();
+        var config = CreateConfig(temp.Path) with
+        {
+            Embedding = new EmbeddingConfig { Provider = "unknown" }
+        };
+        var exception = Assert.Throws<ConfigurationException>(() => ConfigValidator.Validate(config));
+        Assert.Contains("embedding.provider", exception.Message);
+    }
+
 }
