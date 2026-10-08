@@ -15,6 +15,30 @@ claude mcp add local-vector-search \
 
 Claude Code supplies `CLAUDE_PROJECT_DIR`; LocalVectorSearchMcp uses it as the project root when it is present.
 
+## Offline lexical-only, without a globally installed tool
+
+With a .NET 10 SDK, use the one-shot NuGet runner, pinned to a published
+version (replace `0.2.0` with the version you actually install):
+
+```bash
+claude mcp add local-vector-search \
+  --scope local --transport stdio -- \
+  dnx DimonSmart.LocalVectorSearchMcp@0.2.0 --yes -- \
+  --project-root /absolute/path/to/project \
+  --root .idd/intent \
+  --embedding-provider none \
+  --search-mode lexical \
+  --watch-files
+```
+
+No Ollama endpoint or embeddings are needed. `--project-root` overrides
+`CLAUDE_PROJECT_DIR` and the server working directory. Make sure
+`.idd/intent` exists before launching. The configured knowledge-base remains
+read-only unless YAML explicitly enables writes.
+
+A self-contained executable from [GitHub Releases](https://github.com/DimonSmart/LocalVectorSearchMcp/releases)
+can be substituted for `dnx`, without requiring a .NET SDK or runtime.
+
 ## Registration with server options
 
 ```bash
