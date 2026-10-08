@@ -1,4 +1,5 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Tests.Helpers;
 
@@ -184,6 +185,9 @@ public sealed class ConfigLoaderTests
 
     [Theory]
     [InlineData("--root")]
+    [InlineData("--search-mode")]
+    [InlineData("--embedding-provider")]
+    [InlineData("--project-root")]
     [InlineData("--storage-path")]
     [InlineData("--embedding-endpoint")]
     [InlineData("--embedding-model")]
@@ -234,4 +238,79 @@ public sealed class ConfigLoaderTests
 
         Assert.Equal(project.Path, config.KnowledgeBase.Root);
     }
+
+    [Fact]
+    public void Explicit_project_root_overrides_claude_and_current_directory()
+    {
+        using var cwd = new TemporaryDirectory();
+        using var claude = new TemporaryDirectory();
+        using var project = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(project.Path, ".idd", "intent"));
+
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--project-root", project.Path, "--root", ".idd/intent", "--embedding-provider", "none", "--search-mode", "lexical"],
+            cwd.Path,
+            claude.Path);
+
+        Assert.Equal(Path.Combine(project.Path, ".idd", "intent"), config.KnowledgeBase.Root);
+        Assert.Equal(Path.Combine(project.Path, ".local-vector-search-mcp", "index.db"), config.Storage.Path);
+        Assert.Equal("none", config.Embedding.Provider);
+        Assert.Equal(SearchMode.Lexical, config.Search.DefaultMode);
+    }
+
+    [Fact]
+    public void Relative_project_root_is_rejected()
+    {
+        using var cwd = new TemporaryDirectory();
+        var exception = Assert.Throws<ConfigurationException>(() =>
+            LocalVectorSearchConfigLoader.Load(["--project-root", "./relative"], cwd.Path, cwd.Path));
+        Assert.Contains("--project-root must be an absolute", exception.Message);
+    }
+
+    [Fact]
+    public void Missing_project_root_is_rejected()
+    {
+        using var cwd = new TemporaryDirectory();
+        var exception = Assert.Throws<ConfigurationException>(() =>
+            LocalVectorSearchConfigLoader.Load(["--project-root", Path.Combine(cwd.Path, "missing")], cwd.Path, cwd.Path));
+        Assert.Contains("--project-root directory does not exist", exception.Message);
+    }
+
+    [Fact]
+    public void Explicit_project_root_resolves_relative_config_path()
+    {
+        using var cwd = new TemporaryDirectory();
+        using var project = new TemporaryDirectory();
+        File.WriteAllText(Path.Combine(project.Path, "settings.yml"), "embedding:\\n  provider: none\\nsearch:\\n  defaultMode: lexical\\n");
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--project-root", project.Path, "--config", "settings.yml"],
+            cwd.Path,
+            cwd.Path);
+        Assert.Equal("none", config.Embedding.Provider);
+        Assert.Equal(project.Path, config.KnowledgeBase.Root);
+    }
+
+    [Fact]
+    public void CLI_embedding_search_and_watcher_override_yaml()
+    {
+        using var project = new TemporaryDirectory();
+        var yaml = Path.Combine(project.Path, "settings.yml");
+        File.WriteAllText(yaml, "embedding:\\n  provider: openai-compatible\\nsearch:\\n  defaultMode: hybrid\\nknowledgeBase:\\n  watchFiles: true\\n");
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--config", yaml, "--embedding-provider", "none", "--search-mode", "lexical", "--no-watch-files"],
+            project.Path,
+            project.Path);
+        Assert.Equal("none", config.Embedding.Provider);
+        Assert.Equal(SearchMode.Lexical, config.Search.DefaultMode);
+        Assert.False(config.KnowledgeBase.WatchFiles);
+    }
+
+    [Fact]
+    public void Invalid_search_mode_is_rejected()
+    {
+        using var project = new TemporaryDirectory();
+        Assert.Throws<ConfigurationException>(() => LocalVectorSearchConfigLoader.Load(
+            ["--search-mode", "incorrect"], project.Path, project.Path));
+    }
+
 }
