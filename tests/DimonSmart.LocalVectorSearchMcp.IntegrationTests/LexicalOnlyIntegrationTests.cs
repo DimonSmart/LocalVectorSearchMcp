@@ -161,7 +161,7 @@ public sealed class LexicalOnlyIntegrationTests
 
         async Task<(LocalVectorSearchMcpConfig Config, SqliteTestServices Services)> Start(string project)
         {
-            var loaded = Infrastructure.Configuration.LocalVectorSearchConfigLoader.Load(
+            var loaded = DimonSmart.LocalVectorSearchMcp.Infrastructure.Configuration.LocalVectorSearchConfigLoader.Load(
                 ["--project-root", project, "--root", ".idd/intent",
                     "--embedding-provider", "none", "--search-mode", "lexical"], otherCwd.Path, "");
             var services = SqliteTestServices.Create(loaded);
