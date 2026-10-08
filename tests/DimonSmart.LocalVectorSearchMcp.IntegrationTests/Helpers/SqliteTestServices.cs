@@ -21,7 +21,7 @@ internal sealed class SqliteTestServices
         {
             Initializer = initializer,
             Manifest = new SqliteIndexManifestService(factory, config, initializer),
-            DocumentStore = new SqliteDocumentIndexStore(factory, config, new SqliteDocumentDeletionService()),
+            DocumentStore = new SqliteDocumentIndexStore(factory, config, new SqliteDocumentDeletionService(config)),
             SearchIndexReader = new SqliteSearchIndexReader(factory),
             StatusReader = new SqliteIndexStatusReader(factory, config),
             VectorSearch = new SqliteVectorIndexService(factory),
