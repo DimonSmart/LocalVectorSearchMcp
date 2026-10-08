@@ -228,7 +228,7 @@ jobs:
           dotnet tool run local-vector-search-mcp -- \
             --project-root "$workdir" --root docs \
             --embedding-provider none --search-mode lexical --reindex
-          dnx --add-source "$RUNNER_TEMP/packages" "DimonSmart.LocalVectorSearchMcp@$VERSION" --yes -- \
+          dnx "DimonSmart.LocalVectorSearchMcp@$VERSION" --add-source "$RUNNER_TEMP/packages" --yes -- \
             --project-root "$workdir" --root docs \
             --embedding-provider none --search-mode lexical --status
 
