@@ -80,13 +80,13 @@ public sealed class SqliteIndexManifestService(
     {
         var entries = new Dictionary<string, string>
         {
-        ["schema_version"] = SqliteSchema.Version,
-        ["index_mode"] = config.Embedding.Enabled ? "vector-enabled" : "lexical",
-        ["chunker_version"] = MarkdownChunker.Version,
-        ["chunking_max_chunk_bytes"] = config.Chunking.MaxChunkBytes.ToString(CultureInfo.InvariantCulture),
-        ["chunking_max_elements"] = config.Chunking.MaxElements.ToString(CultureInfo.InvariantCulture),
-        ["chunking_include_heading_context"] = config.Chunking.IncludeHeadingContext.ToString().ToLowerInvariant(),
-        ["chunking_include_front_matter"] = config.Chunking.IncludeFrontMatter.ToString().ToLowerInvariant()
+            ["schema_version"] = SqliteSchema.Version,
+            ["index_mode"] = config.Embedding.Enabled ? "vector-enabled" : "lexical",
+            ["chunker_version"] = MarkdownChunker.Version,
+            ["chunking_max_chunk_bytes"] = config.Chunking.MaxChunkBytes.ToString(CultureInfo.InvariantCulture),
+            ["chunking_max_elements"] = config.Chunking.MaxElements.ToString(CultureInfo.InvariantCulture),
+            ["chunking_include_heading_context"] = config.Chunking.IncludeHeadingContext.ToString().ToLowerInvariant(),
+            ["chunking_include_front_matter"] = config.Chunking.IncludeFrontMatter.ToString().ToLowerInvariant()
         };
 
         if (config.Embedding.Enabled)
