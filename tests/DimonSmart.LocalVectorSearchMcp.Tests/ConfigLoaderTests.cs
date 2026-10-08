@@ -281,7 +281,7 @@ public sealed class ConfigLoaderTests
     {
         using var cwd = new TemporaryDirectory();
         using var project = new TemporaryDirectory();
-        File.WriteAllText(Path.Combine(project.Path, "settings.yml"), "embedding:\\n  provider: none\\nsearch:\\n  defaultMode: lexical\\n");
+        File.WriteAllText(Path.Combine(project.Path, "settings.yml"), "embedding:\n  provider: none\nsearch:\n  defaultMode: lexical\n");
         var config = LocalVectorSearchConfigLoader.Load(
             ["--project-root", project.Path, "--config", "settings.yml"],
             cwd.Path,
@@ -295,7 +295,7 @@ public sealed class ConfigLoaderTests
     {
         using var project = new TemporaryDirectory();
         var yaml = Path.Combine(project.Path, "settings.yml");
-        File.WriteAllText(yaml, "embedding:\\n  provider: openai-compatible\\nsearch:\\n  defaultMode: hybrid\\nknowledgeBase:\\n  watchFiles: true\\n");
+        File.WriteAllText(yaml, "embedding:\n  provider: openai-compatible\nsearch:\n  defaultMode: hybrid\nknowledgeBase:\n  watchFiles: true\n");
         var config = LocalVectorSearchConfigLoader.Load(
             ["--config", yaml, "--embedding-provider", "none", "--search-mode", "lexical", "--no-watch-files"],
             project.Path,
