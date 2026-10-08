@@ -15,6 +15,32 @@ Codex stores CLI-added MCP configuration in `~/.codex/config.toml` by default. S
 
 LocalVectorSearchMcp uses the current working directory as the project root when `CLAUDE_PROJECT_DIR` is not present.
 
+## Offline lexical-only using dnx
+
+With the .NET 10 SDK, run the published NuGet package without installing
+a global tool. Replace `0.2.0` with the available published version:
+
+```bash
+codex mcp add local-vector-search -- \
+  dnx DimonSmart.LocalVectorSearchMcp@0.2.0 --yes -- \
+  --project-root /absolute/path/to/project \
+  --root .idd/intent \
+  --embedding-provider none \
+  --search-mode lexical \
+  --watch-files
+```
+
+Explicit `--project-root` avoids depending on Codex's working directory.
+The source `.idd/intent` directory must already exist. No Ollama, vector
+runtime initialization or cloud embedding endpoint is needed.
+
+A project-local `.NET tool` can also be installed with
+`dotnet tool install DimonSmart.LocalVectorSearchMcp`; however,
+`dotnet tool run` discovers its manifest relative to the **process working
+directory**. `--project-root` does not change that rule.
+If manifest lookup is unreliable for your client, use `dnx` or a
+self-contained binary from [GitHub Releases](https://github.com/DimonSmart/LocalVectorSearchMcp/releases).
+
 ## Registration with server options
 
 ```bash
