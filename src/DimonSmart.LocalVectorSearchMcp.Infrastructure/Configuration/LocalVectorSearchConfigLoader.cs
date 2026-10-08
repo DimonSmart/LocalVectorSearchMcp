@@ -1,5 +1,6 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Yaml;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -16,12 +17,12 @@ public static class LocalVectorSearchConfigLoader
     {
         var options = CommandLineConfigOptionsParser.Parse(args);
         var baseCurrentDirectory = Path.GetFullPath(currentDirectory ?? Directory.GetCurrentDirectory());
-        var projectRoot = ResolveProjectRoot(baseCurrentDirectory, claudeProjectDirectory ?? Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"));
+        var projectRoot = ResolveProjectRoot(baseCurrentDirectory, claudeProjectDirectory ?? Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"), options.ProjectRoot);
 
         var config = new LocalVectorSearchMcpConfig();
         if (!string.IsNullOrWhiteSpace(options.ConfigPath))
         {
-            config = LoadYaml(ResolveConfigPath(options.ConfigPath, baseCurrentDirectory));
+            config = LoadYaml(ResolveConfigPath(options.ConfigPath, options.ProjectRoot is null ? baseCurrentDirectory : projectRoot));
         }
 
         config = ApplyCliOverrides(config, options);
@@ -75,27 +76,60 @@ public static class LocalVectorSearchConfigLoader
     private static string ResolveConfigPath(string path, string currentDirectory)
         => Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(currentDirectory, path));
 
-    private static string ResolveProjectRoot(string currentDirectory, string? claudeProjectDirectory)
-        => Path.GetFullPath(string.IsNullOrWhiteSpace(claudeProjectDirectory) ? currentDirectory : claudeProjectDirectory);
+    private static string ResolveProjectRoot(string currentDirectory, string? claudeProjectDirectory, string? explicitRoot)
+    {
+        if (explicitRoot is not null)
+        {
+            if (!Path.IsPathFullyQualified(explicitRoot))
+            {
+                throw new ConfigurationException("--project-root must be an absolute directory path.");
+            }
+
+            var resolved = Path.GetFullPath(explicitRoot);
+            if (!Directory.Exists(resolved))
+            {
+                throw new ConfigurationException($"--project-root directory does not exist: {resolved}");
+            }
+
+            return resolved;
+        }
+
+        return Path.GetFullPath(string.IsNullOrWhiteSpace(claudeProjectDirectory) ? currentDirectory : claudeProjectDirectory);
+    }
 
     private static LocalVectorSearchMcpConfig ApplyCliOverrides(LocalVectorSearchMcpConfig config, CommandLineConfigOptions options)
         => config with
         {
+            Search = config.Search with
+            {
+                DefaultMode = ParseSearchMode(options.SearchMode, config.Search.DefaultMode)
+            },
             Storage = config.Storage with
             {
                 Path = options.StoragePath ?? config.Storage.Path
             },
             Embedding = config.Embedding with
             {
+                Provider = options.EmbeddingProvider ?? config.Embedding.Provider,
                 Endpoint = options.EmbeddingEndpoint ?? config.Embedding.Endpoint,
                 Model = options.EmbeddingModel ?? config.Embedding.Model
             },
             KnowledgeBase = config.KnowledgeBase with
             {
                 Root = options.Root ?? config.KnowledgeBase.Root,
+                WatchFiles = options.WatchFiles ?? config.KnowledgeBase.WatchFiles,
                 Include = options.Include.Count > 0 ? options.Include : config.KnowledgeBase.Include,
                 Exclude = options.Exclude.Count > 0 ? options.Exclude : config.KnowledgeBase.Exclude
             }
+        };
+
+    private static SearchMode ParseSearchMode(string? mode, SearchMode defaultMode)
+        => mode is null ? defaultMode : mode switch
+        {
+            "lexical" => SearchMode.Lexical,
+            "semantic" => SearchMode.Semantic,
+            "hybrid" => SearchMode.Hybrid,
+            _ => throw new ConfigurationException("--search-mode must be lexical, semantic or hybrid.")
         };
 
     private static LocalVectorSearchMcpConfig ResolvePaths(LocalVectorSearchMcpConfig config, string projectRoot)

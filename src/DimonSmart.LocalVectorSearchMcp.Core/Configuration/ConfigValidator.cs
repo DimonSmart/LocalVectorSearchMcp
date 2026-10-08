@@ -12,10 +12,10 @@ public static class ConfigValidator
         if (!Directory.Exists(config.KnowledgeBase.Root)) throw new ConfigurationException("knowledgeBase.root does not exist.");
         if (config.KnowledgeBase.Include.Count == 0) throw new ConfigurationException("knowledgeBase.include must contain at least one pattern.");
         if (config.KnowledgeBase.Include.Concat(config.KnowledgeBase.Exclude).Any(string.IsNullOrWhiteSpace)) throw new ConfigurationException("knowledgeBase include and exclude patterns must not be blank.");
-        if (config.Embedding.Provider != "openai-compatible") throw new ConfigurationException("embedding.provider must be openai-compatible.");
-        if (string.IsNullOrWhiteSpace(config.Embedding.ApiKey)) throw new ConfigurationException("embedding.apiKey is required.");
-        if (string.IsNullOrWhiteSpace(config.Embedding.Model)) throw new ConfigurationException("embedding.model is required.");
-        if (config.Embedding.Dimensions is <= 0) throw new ConfigurationException("embedding.dimensions must be greater than 0 when specified.");
+        if (config.Embedding.Provider is not ("openai-compatible" or "none")) throw new ConfigurationException("embedding.provider must be openai-compatible or none.");
+        if (config.Embedding.Enabled && string.IsNullOrWhiteSpace(config.Embedding.ApiKey)) throw new ConfigurationException("embedding.apiKey is required.");
+        if (config.Embedding.Enabled && string.IsNullOrWhiteSpace(config.Embedding.Model)) throw new ConfigurationException("embedding.model is required.");
+        if (config.Embedding.Enabled && config.Embedding.Dimensions is <= 0) throw new ConfigurationException("embedding.dimensions must be greater than 0 when specified.");
         if (config.Embedding.BatchSize < 1) throw new ConfigurationException("embedding.batchSize must be greater than 0.");
         if (config.Embedding.TimeoutSeconds < 1) throw new ConfigurationException("embedding.timeoutSeconds must be greater than 0.");
         if (config.Chunking.MaxChunkBytes < 1) throw new ConfigurationException("chunking.maxChunkBytes must be greater than 0.");
@@ -24,8 +24,11 @@ public static class ConfigValidator
         if (config.Search.LexicalCandidatePoolSize < 1) throw new ConfigurationException("search.lexicalCandidatePoolSize must be greater than 0.");
         if (config.Search.MaxResults < 1) throw new ConfigurationException("search.maxResults must be greater than 0.");
         if (config.Search.RrfK < 1) throw new ConfigurationException("search.rrfK must be greater than 0.");
-        if (!Uri.TryCreate(config.Embedding.Endpoint, UriKind.Absolute, out var endpoint)) throw new ConfigurationException("embedding.endpoint must be an absolute URI.");
-        if (!config.Embedding.AllowRemoteEndpoint && !IsLoopbackHost(endpoint)) throw new ConfigurationException("embedding.endpoint must be loopback unless allowRemoteEndpoint is true.");
+        if (config.Embedding.Enabled)
+        {
+            if (!Uri.TryCreate(config.Embedding.Endpoint, UriKind.Absolute, out var endpoint)) throw new ConfigurationException("embedding.endpoint must be an absolute URI.");
+            if (!config.Embedding.AllowRemoteEndpoint && !IsLoopbackHost(endpoint)) throw new ConfigurationException("embedding.endpoint must be loopback unless allowRemoteEndpoint is true.");
+        }
 
     }
 

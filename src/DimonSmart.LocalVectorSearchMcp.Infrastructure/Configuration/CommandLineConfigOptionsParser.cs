@@ -14,6 +14,10 @@ internal static class CommandLineConfigOptionsParser
     public static CommandLineConfigOptions Parse(string[] args)
     {
         string? configPath = null;
+        string? projectRoot = null;
+        string? embeddingProvider = null;
+        string? searchMode = null;
+        bool? watchFiles = null;
         string? root = null;
         string? storagePath = null;
         string? embeddingEndpoint = null;
@@ -28,6 +32,21 @@ internal static class CommandLineConfigOptionsParser
             {
                 case "--config":
                     configPath = ReadValue(args, ref i, arg);
+                    break;
+                case "--project-root":
+                    projectRoot = ReadValue(args, ref i, arg);
+                    break;
+                case "--embedding-provider":
+                    embeddingProvider = ReadValue(args, ref i, arg);
+                    break;
+                case "--search-mode":
+                    searchMode = ReadValue(args, ref i, arg);
+                    break;
+                case "--watch-files":
+                    watchFiles = true;
+                    break;
+                case "--no-watch-files":
+                    watchFiles = false;
                     break;
                 case "--root":
                     root = ReadValue(args, ref i, arg);
@@ -65,6 +84,10 @@ internal static class CommandLineConfigOptionsParser
         return new CommandLineConfigOptions
         {
             ConfigPath = configPath,
+            ProjectRoot = projectRoot,
+            EmbeddingProvider = embeddingProvider,
+            SearchMode = searchMode,
+            WatchFiles = watchFiles,
             Root = root,
             StoragePath = storagePath,
             EmbeddingEndpoint = embeddingEndpoint,
