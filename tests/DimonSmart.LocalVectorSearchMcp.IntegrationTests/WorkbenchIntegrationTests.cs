@@ -23,7 +23,7 @@ namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 public sealed class WorkbenchIntegrationTests
 {
     [Fact]
-    public async Task Schema2Manifest_RequiresForcedRebuildToSchema4()
+    public async Task Schema2Manifest_RequiresForcedRebuildToSchema5()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TemporaryDirectory();
@@ -52,7 +52,7 @@ public sealed class WorkbenchIntegrationTests
         await using var currentDb = new SqliteConnectionFactory(services.Config).Open();
         var current = currentDb.CreateCommand();
         current.CommandText = "select value from index_manifest where key = 'schema_version'";
-        Assert.Equal("4", Convert.ToString(await current.ExecuteScalarAsync(cancellationToken)));
+        Assert.Equal("5", Convert.ToString(await current.ExecuteScalarAsync(cancellationToken)));
     }
 
     [Fact]
