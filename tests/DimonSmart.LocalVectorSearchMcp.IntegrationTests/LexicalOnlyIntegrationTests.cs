@@ -41,7 +41,7 @@ public sealed class LexicalOnlyIntegrationTests
         Assert.Equal(1, second.SkippedFiles);
         Assert.Single(lexical.Results);
         Assert.Null(lexical.Warning);
-        Assert.Equal(SearchMode.Lexical, Assert.Single(hybrid.Results).Mode);
+        Assert.Equal(SearchMode.Lexical, Assert.Single(hybrid.Results).SearchMode);
         Assert.Contains("lexical", hybrid.Warning);
         Assert.Contains("disabled", semanticError.Message);
         Assert.Equal(0, provider.Calls);
