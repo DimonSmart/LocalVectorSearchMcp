@@ -37,7 +37,6 @@ public sealed class SqliteIndexManifestService(
 
     public async Task ResetIndexAsync(CancellationToken cancellationToken)
     {
-        await using var db = factory.Open();
         if (!config.Embedding.Enabled)
         {
             // Recreate the derived database without loading sqlite-vec. DROP TABLE on a
@@ -50,6 +49,7 @@ public sealed class SqliteIndexManifestService(
             return;
         }
 
+        await using var db = factory.Open();
         SqliteVectorExtensionLoader.Load(db);
         await using var transaction = (SqliteTransaction)await db.BeginTransactionAsync(cancellationToken);
         await db.ExecuteAsync("""
