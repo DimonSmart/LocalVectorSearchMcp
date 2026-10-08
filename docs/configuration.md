@@ -24,8 +24,12 @@ CLI values override YAML values.
 
 ```text
 --config <path>
+--project-root <absolute-existing-directory>
 --root <path>
 --storage-path <path>
+--embedding-provider <openai-compatible|none>
+--search-mode <lexical|semantic|hybrid>
+--watch-files | --no-watch-files
 --embedding-endpoint <url>
 --embedding-model <model>
 --include <glob>
@@ -61,6 +65,40 @@ codex mcp add local-vector-search \
     --embedding-endpoint http://localhost:11434/v1 \
     --embedding-model bge-m3:latest
 ```
+
+## Offline lexical-only configuration
+
+Use these options to search Markdown without Ollama, embeddings, sqlite-vec runtime
+initialization, or network access:
+
+```bash
+local-vector-search-mcp \
+  --project-root /absolute/path/to/my-project \
+  --root .idd/intent \
+  --embedding-provider none \
+  --search-mode lexical \
+  --watch-files \
+  --reindex
+```
+
+Or configure it in YAML:
+
+```yaml
+embedding:
+  provider: none
+
+search:
+  defaultMode: lexical
+
+knowledgeBase:
+  root: .idd/intent
+  allowWrites: false
+  watchFiles: true
+```
+
+Embedding endpoint, API key, model and vector dimensions are not required in this mode.
+If the explicitly selected source directory is missing, startup fails rather than
+creating it. The SQLite index lives under the project root by default, not in the source directory.
 
 ## Include and exclude patterns
 
@@ -155,8 +193,9 @@ codex mcp add local-vector-search \
 
 The project root is detected as follows:
 
-1. Non-empty `CLAUDE_PROJECT_DIR`.
-2. Otherwise, the server process working directory.
+1. Explicit absolute `--project-root`, which must point to an existing directory.
+2. Non-empty `CLAUDE_PROJECT_DIR`.
+3. Otherwise, the server process working directory.
 
 The knowledge-base root is selected in this order:
 
@@ -170,9 +209,18 @@ The storage path is selected in this order:
 2. YAML `storage.path`.
 3. `<project-root>/.local-vector-search-mcp/index.db`.
 
-Relative paths are resolved against the detected project root.
+Relative `knowledgeBase.root` and `storage.path` are resolved against the selected
+project root. A relative `--config` path stays relative to the **process working
+directory** unless `--project-root` is explicitly passed, in which case it is
+resolved against that explicit root.
 
-All file access is restricted to the configured project root. Traversal and absolute paths outside that root are rejected.
+The knowledge-base root is not the same as the project root: file access through
+MCP tools is guarded to the configured knowledge-base directory. Traversal and
+symlink/junction/reparse-point escapes from that directory are rejected.
+
+A project-local .NET tool manifest is discovered by the .NET CLI using its
+working directory. Supplying `--project-root` to the MCP executable does **not**
+change .NET tool manifest discovery.
 
 ## Writes and external file watching
 
@@ -219,7 +267,11 @@ Before enabling a remote endpoint, consider whether project documentation is all
 - `semantic` — sqlite-vec nearest-neighbor retrieval.
 - `hybrid` — Reciprocal Rank Fusion over lexical and semantic ranks.
 
-The default is `hybrid`.
+The default is `hybrid` for backward compatibility.
+When `embedding.provider: none`, request `lexical` for FTS5 without a warning.
+A `hybrid` request falls back to FTS5 with an explicit warning and reports
+the effective result mode as `lexical`. An explicit `semantic` request fails
+with a controlled error because embeddings are disabled.
 
 If the embedding endpoint is temporarily unavailable, `hybrid` automatically falls back to lexical FTS5 results and returns a warning that semantic search is unavailable. Explicit `semantic` mode does not silently fall back; it returns a controlled tool error. `kb_reindex` starts the background operation; if embeddings cannot be produced, the operation stops cleanly and its warning is exposed in `kb_status.indexing.last.result`, while already indexed content remains available for lexical search.
 
@@ -228,6 +280,7 @@ If the embedding endpoint is temporarily unavailable, `hybrid` automatically fal
 Changing any of the following makes the existing index incompatible:
 
 - schema version;
+- index mode (`lexical` versus `vector-enabled`);
 - embedding model;
 - embedding dimensions;
 - chunker version;
