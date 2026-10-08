@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.dimonsmart/local-vector-search-mcp",
+  "title": "Local Vector Search MCP",
+  "description": "Local Markdown search, navigation and editing via MCP, with optional vector embeddings.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/DimonSmart/LocalVectorSearchMcp",
+    "source": "github",
+    "id": "1293736951"
+  },
+  "packages": [
+    {
+      "registryType": "nuget",
+      "registryBaseUrl": "https://api.nuget.org/v3/index.json",
+      "identifier": "DimonSmart.LocalVectorSearchMcp",
+      "version": "0.1.0",
+      "runtimeHint": "dnx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
