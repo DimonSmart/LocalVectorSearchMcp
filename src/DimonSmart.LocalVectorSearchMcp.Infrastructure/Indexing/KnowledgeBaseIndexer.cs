@@ -103,11 +103,14 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             var vectors = new List<EmbeddingVector>();
             try
             {
-                foreach (var batch in chunks.Chunk(config.Embedding.BatchSize))
+                if (config.Embedding.Enabled)
                 {
-                    vectors.AddRange(await embeddingProvider.EmbedBatchAsync(
-                        batch.Select(c => c.EmbeddingText).ToList(),
-                        cancellationToken));
+                    foreach (var batch in chunks.Chunk(config.Embedding.BatchSize))
+                    {
+                        vectors.AddRange(await embeddingProvider.EmbedBatchAsync(
+                            batch.Select(c => c.EmbeddingText).ToList(),
+                            cancellationToken));
+                    }
                 }
             }
             catch (EmbeddingProviderException exception)

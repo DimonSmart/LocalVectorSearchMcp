@@ -88,11 +88,18 @@ public static class ServiceRegistration
         services.AddHostedService(sp => sp.GetRequiredService<WorkspaceIndexSynchronizationScheduler>());
         services.AddHostedService(sp => sp.GetRequiredService<ReindexCoordinator>());
 
-        services
-            .AddHttpClient<IEmbeddingProvider, OpenAiCompatibleEmbeddingProvider>(
-                client => client.Timeout =
-                    TimeSpan.FromSeconds(config.Embedding.TimeoutSeconds))
-            .RemoveAllLoggers();
+        if (config.Embedding.Enabled)
+        {
+            services
+                .AddHttpClient<IEmbeddingProvider, OpenAiCompatibleEmbeddingProvider>(
+                    client => client.Timeout =
+                        TimeSpan.FromSeconds(config.Embedding.TimeoutSeconds))
+                .RemoveAllLoggers();
+        }
+        else
+        {
+            services.AddSingleton<IEmbeddingProvider, DisabledEmbeddingProvider>();
+        }
         services
             .AddHttpClient<IRemoteFileDownloader, SecureFileDownloader>(
                 client => client.Timeout = TimeSpan.FromSeconds(30))
