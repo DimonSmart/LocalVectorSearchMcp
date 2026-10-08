@@ -43,7 +43,18 @@ public sealed class KnowledgeSearchService(
         var lexical = new List<LexicalSearchResult>();
         var effectiveMode = mode;
         string? warning = null;
-        if (mode is SearchMode.Semantic or SearchMode.Hybrid)
+        if (!config.Embedding.Enabled && mode == SearchMode.Semantic)
+        {
+            throw new EmbeddingProviderException("Semantic search is disabled (embedding.provider: none).");
+        }
+
+        if (!config.Embedding.Enabled && mode == SearchMode.Hybrid)
+        {
+            effectiveMode = SearchMode.Lexical;
+            warning = "Semantic search is disabled (embedding.provider: none). Executed lexical search only.";
+        }
+
+        if (config.Embedding.Enabled && mode is (SearchMode.Semantic or SearchMode.Hybrid))
         {
             try
             {

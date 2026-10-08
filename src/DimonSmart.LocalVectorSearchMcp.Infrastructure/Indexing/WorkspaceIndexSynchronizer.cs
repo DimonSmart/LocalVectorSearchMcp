@@ -53,11 +53,14 @@ public sealed class WorkspaceIndexSynchronizer(
             var elements = parser.Parse(document);
             var chunks = chunker.BuildChunks(document, elements);
             var vectors = new List<EmbeddingVector>();
-            foreach (var batch in chunks.Chunk(config.Embedding.BatchSize))
+            if (config.Embedding.Enabled)
             {
-                vectors.AddRange(await embeddingProvider.EmbedBatchAsync(
-                    batch.Select(chunk => chunk.EmbeddingText).ToList(),
-                    cancellationToken));
+                foreach (var batch in chunks.Chunk(config.Embedding.BatchSize))
+                {
+                    vectors.AddRange(await embeddingProvider.EmbedBatchAsync(
+                        batch.Select(chunk => chunk.EmbeddingText).ToList(),
+                        cancellationToken));
+                }
             }
 
             await store.SaveDocumentIndexAsync(
