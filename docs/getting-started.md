@@ -4,8 +4,8 @@ This guide installs LocalVectorSearchMcp, connects it to Claude Code or Codex, b
 
 ## Prerequisites
 
-- .NET 10 SDK or runtime capable of running .NET global tools.
-- [Ollama](https://ollama.com/) or another OpenAI-compatible embedding endpoint.
+- .NET 10 SDK for installation, .NET 10 runtime to execute an already installed tool, or a self-contained binary.
+- [Ollama](https://ollama.com/) or another OpenAI-compatible embedding endpoint only for semantic/hybrid search.
 - Claude Code, Codex, or both.
 - A project containing Markdown documentation.
 
@@ -33,7 +33,20 @@ local-vector-search-mcp --status
 
 Running `--status` outside the intended project is harmless, but the reported paths will be based on that current directory.
 
-## 2. Prepare Ollama
+## 2. Choose lexical-only or hybrid search
+
+For an entirely local FTS5-only index (no Ollama or HTTP calls):
+
+```bash
+local-vector-search-mcp --embedding-provider none --search-mode lexical --reindex
+```
+
+Use the same `--embedding-provider none --search-mode lexical` arguments when
+registering the MCP process in step 3.
+
+For hybrid or semantic retrieval, prepare Ollama instead:
+
+
 
 ```bash
 ollama pull bge-m3:latest
@@ -42,7 +55,7 @@ ollama serve
 
 Skip `ollama serve` when Ollama is already running as a service or desktop application.
 
-The embedding endpoint must be reachable when the first index is built.
+The embedding endpoint must be reachable when a vector-enabled index is built. It is not needed in lexical-only mode.
 
 ## 3. Connect an MCP client
 
@@ -96,7 +109,7 @@ The generated database is stored at:
 
 Add `.local-vector-search-mcp/` to `.gitignore`; the index is local runtime data and should not be committed.
 
-## 5. Verify exact and semantic search
+## 5. Verify exact search (and optional semantic search)
 
 First ask for a term that appears literally in your Markdown:
 
@@ -112,7 +125,7 @@ Find the documentation that explains how lexical and vector
 result rankings are combined.
 ```
 
-The first request validates exact retrieval. The second validates semantic or hybrid retrieval.
+The first request validates exact retrieval. The second applies only when semantic/hybrid embeddings are enabled.
 
 See [Verification](verification.md) for a complete smoke-test checklist.
 
@@ -138,7 +151,7 @@ codex mcp add local-vector-search \
     --root docs
 ```
 
-See [Configuration](configuration.md) for embedding, include/exclude, storage, chunking, and search options.
+See [Configuration](configuration.md) for embedding, include/exclude, storage, chunking, and search options, and [IDD integration](integrations/intent-driven-development.md) for an explicit project-root, .NET local tool, and `dnx`.
 
 ## Next steps
 
