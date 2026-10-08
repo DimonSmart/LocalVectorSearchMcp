@@ -109,6 +109,76 @@ public sealed class LexicalOnlyIntegrationTests
         Assert.NotEmpty(await services.FullTextSearch.SearchAsync("mode-switch-marker", 10, ct));
     }
 
+
+    [Fact]
+    public async Task Switching_from_vector_index_to_lexical_requires_force()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "notes.md");
+        await File.WriteAllTextAsync(path, "# Intent\noriginal-mode-marker\n", ct);
+
+        var lexical = LexicalConfig(temp.Path);
+        var vectorConfig = lexical with { Embedding = new EmbeddingConfig { Dimensions = 3 } };
+        var vectorServices = SqliteTestServices.Create(vectorConfig);
+        var vectorIndexer = CreateIndexer(vectorConfig, vectorServices,
+            new Fakes.FakeEmbeddingProvider(3));
+        await vectorIndexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), ct);
+
+        var lexicalServices = SqliteTestServices.Create(lexical);
+        var lexicalIndexer = CreateIndexer(lexical, lexicalServices, new FailIfCalledEmbeddingProvider());
+        await Assert.ThrowsAsync<IndexCompatibilityException>(
+            () => lexicalIndexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), ct));
+        Assert.True(File.Exists(path));
+
+        var rebuilt = await lexicalIndexer.ReindexAsync(new ReindexRequest(ReindexScope.Changed, true), ct);
+        Assert.Equal(1, rebuilt.IndexedFiles);
+        Assert.Contains("original-mode-marker", await File.ReadAllTextAsync(path, ct));
+        Assert.NotEmpty(await lexicalServices.FullTextSearch.SearchAsync("original-mode-marker", 10, ct));
+
+        await using var db = new SqliteConnectionFactory(lexical).Open();
+        var command = db.CreateCommand();
+        command.CommandText = "select count(*) from sqlite_master where name = 'chunk_vectors'";
+        Assert.Equal(0L, (long)(await command.ExecuteScalarAsync(ct))!);
+    }
+
+    [Fact]
+    public async Task Explicit_project_roots_keep_index_data_separate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var rootA = new TemporaryDirectory();
+        using var rootB = new TemporaryDirectory();
+        using var otherCwd = new TemporaryDirectory();
+        foreach (var root in new[] { rootA.Path, rootB.Path })
+        {
+            Directory.CreateDirectory(Path.Combine(root, ".idd", "intent"));
+        }
+
+        await File.WriteAllTextAsync(Path.Combine(rootA.Path, ".idd", "intent", "shared.md"),
+            "# A\nproject-alpha-token\n", ct);
+        await File.WriteAllTextAsync(Path.Combine(rootB.Path, ".idd", "intent", "shared.md"),
+            "# B\nproject-beta-token\n", ct);
+
+        async Task<(LocalVectorSearchMcpConfig Config, SqliteTestServices Services)> Start(string project)
+        {
+            var loaded = Infrastructure.Configuration.LocalVectorSearchConfigLoader.Load(
+                ["--project-root", project, "--root", ".idd/intent",
+                    "--embedding-provider", "none", "--search-mode", "lexical"], otherCwd.Path, "");
+            var services = SqliteTestServices.Create(loaded);
+            await CreateIndexer(loaded, services, new FailIfCalledEmbeddingProvider())
+                .ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), ct);
+            return (loaded, services);
+        }
+
+        var first = await Start(rootA.Path);
+        var second = await Start(rootB.Path);
+        Assert.NotEqual(first.Config.Storage.Path, second.Config.Storage.Path);
+        Assert.NotEmpty(await first.Services.FullTextSearch.SearchAsync("project-alpha-token", 10, ct));
+        Assert.Empty(await first.Services.FullTextSearch.SearchAsync("project-beta-token", 10, ct));
+        Assert.NotEmpty(await second.Services.FullTextSearch.SearchAsync("project-beta-token", 10, ct));
+        Assert.Empty(await second.Services.FullTextSearch.SearchAsync("project-alpha-token", 10, ct));
+    }
+
     private static LocalVectorSearchMcpConfig LexicalConfig(string root) => new()
     {
         Storage = new StorageConfig { Path = Path.Combine(root, "index.db") },
