@@ -214,6 +214,24 @@ jobs:
           unzip -p "$PACKAGE_PATH" README.md |
             grep -F '<!-- mcp-name: io.github.dimonsmart/local-vector-search-mcp -->'
 
+      - name: Verify project-local tool and dnx
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          cd "$workdir"
+          mkdir -p docs
+          printf '# Smoke test\nLocal tool smoke marker.\n' > docs/smoke.md
+          dotnet new tool-manifest
+          dotnet tool install DimonSmart.LocalVectorSearchMcp --version "$VERSION" --add-source "$RUNNER_TEMP/packages"
+          dotnet tool restore --add-source "$RUNNER_TEMP/packages"
+          dotnet tool run local-vector-search-mcp -- \
+            --project-root "$workdir" --root docs \
+            --embedding-provider none --search-mode lexical --reindex
+          dnx --add-source "$RUNNER_TEMP/packages" "DimonSmart.LocalVectorSearchMcp@$VERSION" --yes -- \
+            --project-root "$workdir" --root docs \
+            --embedding-provider none --search-mode lexical --status
+
       - name: NuGet login
         uses: NuGet/login@v1
         id: nuget_login
