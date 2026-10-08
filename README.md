@@ -1,5 +1,7 @@
 # LocalVectorSearchMcp
 
+<!-- mcp-name: io.github.dimonsmart/local-vector-search-mcp -->
+
 **Give Codex, Claude Code, and ChatGPT a local, editable, project-aware Markdown workbench.**
 
 LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database. Agents can search, read focused semantic slices, edit by semantic pointer, manage Markdown files, navigate the workspace, and manage ordinary image assets.
@@ -27,7 +29,7 @@ Workspace Markdown (source of truth)
        ↓
 Markdown elements and search chunks
        ↓
-SQLite FTS5 + sqlite-vec
+SQLite FTS5 (+ sqlite-vec when embeddings are enabled)
        ↓
 Scoped retrieval + semantic editing
        ↓
@@ -42,7 +44,38 @@ not indexed
 
 Claude Code and Codex can launch the stdio server directly. ChatGPT can use the same MCP surface through OpenAI Secure MCP Tunnel, where the external `tunnel-client` bridges ChatGPT to the local stdio process.
 
-## Quick start
+## Quick start: offline lexical search
+
+Install the .NET tool (requires .NET 10):
+
+```bash
+dotnet tool install --global DimonSmart.LocalVectorSearchMcp
+```
+
+From the project you want to index, run the following. This needs no Ollama server,
+no remote embedding endpoint and no API key:
+
+```bash
+local-vector-search-mcp --project-root "$PWD" \
+  --embedding-provider none --search-mode lexical --reindex
+```
+
+Register a project-specific MCP server using the same arguments:
+
+```bash
+codex mcp add local-vector-search -- \
+  local-vector-search-mcp --project-root "$PWD" \
+  --embedding-provider none --search-mode lexical --watch-files
+```
+
+The SQLite FTS5 index is stored in `.local-vector-search-mcp/index.db` under
+the project root. Markdown remains the source of truth. The server is read-only
+for Markdown and images unless `knowledgeBase.allowWrites: true` is explicitly set in YAML.
+
+See the [IDD integration example](docs/integrations/intent-driven-development.md)
+for `.idd/intent`, explicit paths, `dnx`, and Claude Code.
+
+## Optional hybrid/semantic quick start
 
 ### 1. Install the tool and embedding model
 
@@ -122,7 +155,7 @@ Return the Markdown image reference.
 | Navigation | File listing, image listing, and heading outlines |
 | Transport | MCP over stdio |
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
-| Default embeddings | Local Ollama-compatible endpoint |
+| Default embeddings | Local Ollama-compatible endpoint; use `embedding.provider: none` for offline FTS5-only mode |
 
 The MCP server exposes fifteen tools. MCP reindexing is asynchronous: `kb_reindex` starts or joins the single active reindex and returns immediately, while `kb_status.indexing` reports progress and the last outcome. The CLI `--reindex` command remains synchronous and exits only after indexing finishes.
 
@@ -207,6 +240,8 @@ The default embedding endpoint is local Ollama. Remote embedding endpoints are r
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
+- [Offline IDD integration](docs/integrations/intent-driven-development.md)
+- [MCP Registry discovery](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.dimonsmart%2Flocal-vector-search-mcp) (entry available after the first registry release)
 - [Claude Code setup](docs/clients/claude-code.md)
 - [Codex setup](docs/clients/codex.md)
 - [ChatGPT via Secure MCP Tunnel](docs/clients/chatgpt-secure-tunnel.md)
