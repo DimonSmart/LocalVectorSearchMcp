@@ -3,6 +3,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 public sealed record EmbeddingConfig
 {
     public string Provider { get; init; } = "openai-compatible";
+    public bool Enabled => Provider == "openai-compatible";
     public string Endpoint { get; init; } = "http://localhost:11434/v1";
     public string ApiKey { get; init; } = "ollama";
     public string Model { get; init; } = "bge-m3:latest";
