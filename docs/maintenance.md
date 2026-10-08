@@ -32,7 +32,7 @@ local-vector-search-mcp \
   --status
 ```
 
-The same status is available to agents through `kb_status`.
+The same status is available to agents through `kb_status`. Inspect `indexMode` (`lexical` or `vector-enabled`), `embeddingProvider`, `compatibility`, document/chunk counts, synchronization, and the last reindex operation.
 
 ## Incremental reindex
 
@@ -60,12 +60,29 @@ local-vector-search-mcp --reindex --force
 
 Use a forced rebuild after changing:
 
+- embedding provider/index mode (`none` versus `openai-compatible`);
 - embedding model or dimensions;
 - chunking settings;
 - an index format or compatibility-sensitive implementation version;
 - configuration when the server reports that the existing index is incompatible.
 
 A forced rebuild recreates derived index data. It does not modify source Markdown files. During the destructive reset window, `kb_status`, `kb_read`, `kb_list_files`, and `kb_outline` remain available because they do not require the search index. `kb_search` returns a controlled rebuild-in-progress error instead of waiting for the rebuild.
+
+## Restore and run a project-local tool
+
+From the directory containing the project's tool manifest:
+
+```bash
+dotnet new tool-manifest # only if .config/dotnet-tools.json does not exist
+dotnet tool install DimonSmart.LocalVectorSearchMcp
+dotnet tool restore
+dotnet tool run local-vector-search-mcp -- --embedding-provider none --search-mode lexical --status
+```
+
+The `dotnet tool` commands require the .NET SDK. Tool manifest lookup is
+controlled by the CLI working directory, not by `--project-root`.
+For one-shot execution with the .NET 10 SDK, use
+`dnx DimonSmart.LocalVectorSearchMcp@<published-version> --yes -- --status`.
 
 ## Delete a local index
 
