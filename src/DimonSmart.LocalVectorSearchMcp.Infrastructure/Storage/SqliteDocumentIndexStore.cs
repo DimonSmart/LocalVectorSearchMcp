@@ -31,9 +31,14 @@ public sealed class SqliteDocumentIndexStore(
         IReadOnlyList<EmbeddingVector> vectors,
         CancellationToken cancellationToken)
     {
-        if (chunks.Count != vectors.Count)
+        if (config.Embedding.Enabled && chunks.Count != vectors.Count)
         {
             throw new EmbeddingProviderException("Embedding count does not match chunk count.");
+        }
+
+        if (!config.Embedding.Enabled && vectors.Count != 0)
+        {
+            throw new EmbeddingProviderException("Lexical-only index does not accept embedding vectors.");
         }
 
         var invalidVector = vectors.FirstOrDefault(vector => vector.Values.Length != EffectiveEmbeddingDimensions);
@@ -44,7 +49,7 @@ public sealed class SqliteDocumentIndexStore(
         }
 
         await using var db = factory.Open();
-        SqliteVectorExtensionLoader.Load(db);
+        if (config.Embedding.Enabled) SqliteVectorExtensionLoader.Load(db);
         await using var transaction = (SqliteTransaction)await db.BeginTransactionAsync(cancellationToken);
         var oldId = await db.ScalarLongAsync(
             "select id from documents where path = $path",
@@ -91,7 +96,7 @@ public sealed class SqliteDocumentIndexStore(
         for (var index = 0; index < chunks.Count; index++)
         {
             var chunk = chunks[index];
-            var vector = vectors[index];
+            var vector = config.Embedding.Enabled ? vectors[index] : null;
             var insertChunk = db.CreateCommand();
             insertChunk.Transaction = transaction;
             insertChunk.CommandText = "insert into chunks(document_id,path,pointer,text,heading_path,embedding_text_hash,embedding_model,embedding_dimensions) values($doc,$path,$ptr,$text,$heading,$hash,$model,$dim); select last_insert_rowid();";
@@ -100,9 +105,9 @@ public sealed class SqliteDocumentIndexStore(
             insertChunk.AddParameter("$ptr", chunk.StartPointer.Value);
             insertChunk.AddParameter("$text", chunk.Text);
             insertChunk.AddParameter("$heading", chunk.HeadingPath);
-            insertChunk.AddParameter("$hash", chunk.EmbeddingTextHash);
-            insertChunk.AddParameter("$model", config.Embedding.Model);
-            insertChunk.AddParameter("$dim", vector.Values.Length);
+            insertChunk.AddParameter("$hash", config.Embedding.Enabled ? chunk.EmbeddingTextHash : null);
+            insertChunk.AddParameter("$model", config.Embedding.Enabled ? config.Embedding.Model : null);
+            insertChunk.AddParameter("$dim", vector?.Values.Length);
             var chunkId = (long)(await insertChunk.ExecuteScalarAsync(cancellationToken))!;
 
             var fts = db.CreateCommand();
@@ -113,12 +118,15 @@ public sealed class SqliteDocumentIndexStore(
             fts.AddParameter("$heading", chunk.HeadingPath ?? "");
             await fts.ExecuteNonQueryAsync(cancellationToken);
 
-            var vectorCommand = db.CreateCommand();
-            vectorCommand.Transaction = transaction;
-            vectorCommand.CommandText = "insert into chunk_vectors(rowid, embedding) values($id, $embedding)";
-            vectorCommand.AddParameter("$id", chunkId);
-            vectorCommand.AddParameter("$embedding", SqliteVectorSerializer.ToJson(vector.Values));
-            await vectorCommand.ExecuteNonQueryAsync(cancellationToken);
+            if (vector is not null)
+            {
+                var vectorCommand = db.CreateCommand();
+                vectorCommand.Transaction = transaction;
+                vectorCommand.CommandText = "insert into chunk_vectors(rowid, embedding) values($id, $embedding)";
+                vectorCommand.AddParameter("$id", chunkId);
+                vectorCommand.AddParameter("$embedding", SqliteVectorSerializer.ToJson(vector.Values));
+                await vectorCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -129,7 +137,7 @@ public sealed class SqliteDocumentIndexStore(
         CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
-        SqliteVectorExtensionLoader.Load(db);
+        if (config.Embedding.Enabled) SqliteVectorExtensionLoader.Load(db);
         var documents = new List<(long Id, string Path)>();
         var command = db.CreateCommand();
         command.CommandText = "select id, path from documents";
@@ -158,7 +166,7 @@ public sealed class SqliteDocumentIndexStore(
         CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
-        SqliteVectorExtensionLoader.Load(db);
+        if (config.Embedding.Enabled) SqliteVectorExtensionLoader.Load(db);
         var documentId = await db.ScalarLongAsync(
             "select id from documents where path = $path",
             [("$path", relativePath)],

@@ -1,9 +1,11 @@
 using Microsoft.Data.Sqlite;
+using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Storage;
 
-public sealed class SqliteDocumentDeletionService
+public sealed class SqliteDocumentDeletionService(LocalVectorSearchMcpConfig? config = null)
 {
+    private readonly bool vectorsEnabled = config?.Embedding.Enabled ?? true;
     public async Task DeleteDocumentByIdAsync(
         SqliteConnection db,
         long documentId,
@@ -27,11 +29,14 @@ public sealed class SqliteDocumentDeletionService
                 cancellationToken,
                 [("$id", chunkId)],
                 transaction);
-            await db.ExecuteAsync(
-                "delete from chunk_vectors where rowid = $id",
-                cancellationToken,
-                [("$id", chunkId)],
-                transaction);
+            if (vectorsEnabled)
+            {
+                await db.ExecuteAsync(
+                    "delete from chunk_vectors where rowid = $id",
+                    cancellationToken,
+                    [("$id", chunkId)],
+                    transaction);
+            }
         }
 
         await db.ExecuteAsync(

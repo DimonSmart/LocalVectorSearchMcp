@@ -12,7 +12,7 @@ public sealed class SqliteSchemaInitializer(SqliteConnectionFactory factory, Loc
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         await using var db = factory.Open();
-        SqliteVectorExtensionLoader.Load(db);
+        if (config.Embedding.Enabled) SqliteVectorExtensionLoader.Load(db);
         await db.ExecuteAsync("pragma journal_mode = wal;", cancellationToken);
         await CreateSchemaAsync(db, cancellationToken);
         await EnsureCurrentElementsSchemaAsync(db, cancellationToken);
@@ -95,9 +95,9 @@ public sealed class SqliteSchemaInitializer(SqliteConnectionFactory factory, Loc
               pointer text not null,
               text text not null,
               heading_path text null,
-              embedding_text_hash text not null,
-              embedding_model text not null,
-              embedding_dimensions integer not null
+              embedding_text_hash text null,
+              embedding_model text null,
+              embedding_dimensions integer null
             );
             create virtual table if not exists chunks_fts using fts5(text, heading_path);
             create table if not exists index_manifest (
@@ -105,6 +105,8 @@ public sealed class SqliteSchemaInitializer(SqliteConnectionFactory factory, Loc
               value text not null
             );
             """, cancellationToken, transaction: transaction);
+
+        if (!config.Embedding.Enabled) return;
 
         try
         {
