@@ -17,8 +17,8 @@ public sealed class WorkspaceImageMoveIntegrationTests
     {
         using var temp = new TemporaryDirectory();
         Directory.CreateDirectory(Path.Combine(temp.Path, "images"));
-        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png);
-        await File.WriteAllTextAsync(Path.Combine(temp.Path, "document.md"), "![A](images/a.png)");
+        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png, TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "document.md"), "![A](images/a.png)", TestContext.Current.CancellationToken);
         var service = CreateService(temp.Path);
         var response = await service.MoveAsync(new MoveImageRequest("images/a.png", "assets/diagrams/a.png"), TestContext.Current.CancellationToken);
         Assert.Equal("images/a.png", response.PreviousPath);
@@ -26,7 +26,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
         Assert.Equal(Convert.ToHexString(SHA256.HashData(Png)).ToLowerInvariant(), response.Sha256);
         Assert.False(File.Exists(Path.Combine(temp.Path, "images", "a.png")));
         Assert.True(File.Exists(Path.Combine(temp.Path, "assets", "diagrams", "a.png")));
-        Assert.Equal("![A](images/a.png)", await File.ReadAllTextAsync(Path.Combine(temp.Path, "document.md")));
+        Assert.Equal("![A](images/a.png)", await File.ReadAllTextAsync(Path.Combine(temp.Path, "document.md")), TestContext.Current.CancellationToken);
     }
 
     [Theory]
@@ -36,7 +36,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
     {
         using var temp = new TemporaryDirectory();
         Directory.CreateDirectory(Path.Combine(temp.Path, "images"));
-        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png);
+        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png, TestContext.Current.CancellationToken);
         var service = CreateService(temp.Path);
         if (updateReferences)
         {
@@ -60,7 +60,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
     {
         using var temp = new TemporaryDirectory();
         Directory.CreateDirectory(Path.Combine(temp.Path, "images"));
-        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png);
+        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png, TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<WorkspaceImageException>(() => CreateService(temp.Path).MoveAsync(
             new MoveImageRequest("images/a.png", "assets/a.png", ExpectedSha256: hash),
             TestContext.Current.CancellationToken));
@@ -71,11 +71,11 @@ public sealed class WorkspaceImageMoveIntegrationTests
     {
         using var temp = new TemporaryDirectory();
         Directory.CreateDirectory(Path.Combine(temp.Path, "images"));
-        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png);
-        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "b.png"), [1, 2, 3]);
+        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png, TestContext.Current.CancellationToken);
+        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "b.png"), [1, 2, 3], TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<WorkspaceImageException>(() => CreateService(temp.Path).MoveAsync(
             new MoveImageRequest("images/a.png", "images/b.png"), TestContext.Current.CancellationToken));
-        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(temp.Path, "images", "b.png")));
+        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(temp.Path, "images", "b.png")), TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
     {
         using var temp = new TemporaryDirectory();
         Directory.CreateDirectory(Path.Combine(temp.Path, "images"));
-        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png);
+        await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "a.png"), Png, TestContext.Current.CancellationToken);
         try { Directory.CreateSymbolicLink(Path.Combine(temp.Path, "linked"), Path.Combine(temp.Path, "images")); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlatformNotSupportedException) { return; }
         await Assert.ThrowsAsync<KnowledgeBaseAccessException>(() => CreateService(temp.Path).MoveAsync(
