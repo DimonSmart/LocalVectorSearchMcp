@@ -12,6 +12,9 @@ public enum PatchOperationKind
     [JsonStringEnumMemberName("replace_element")]
     ReplaceElement,
 
+    [JsonStringEnumMemberName("replace_fragment")]
+    ReplaceFragment,
+
     [JsonStringEnumMemberName("replace_section")]
     ReplaceSection,
 
@@ -43,7 +46,7 @@ public static class PatchOperationKindExtensions
                 : MutationScope.Self;
 }
 
-public sealed record PatchOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null);
+public sealed record PatchOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null, string? OldMarkdown = null);
 
 public sealed record PatchRequest(
     string Path,
