@@ -28,9 +28,12 @@ internal static class ToolErrors
                 "INDEX_NOT_READY", "The search index is not ready."),
             UnauthorizedAccessException => (
                 "PERMISSION_DENIED", "Access was denied."),
-            SemanticPointerFormatException or SemanticPointerNotFoundException
-                or ArgumentException => (
-                    "INVALID_ARGUMENT", "An argument or semantic pointer is invalid."),
+            SemanticPointerFormatException => (
+                "INVALID_ARGUMENT", exception.Message),
+            SemanticPointerNotFoundException => (
+                "INVALID_ARGUMENT", exception.Message),
+            ArgumentException => (
+                "INVALID_ARGUMENT", "Invalid argument."),
             WorkspaceMutationException mutation => (
                 "INVALID_ARGUMENT", mutation.Message),
             _ => ("INTERNAL_ERROR", "The operation failed unexpectedly.")

@@ -443,7 +443,8 @@ public sealed class WorkspaceImageIntegrationTests
                 request with { FileName = "diagram.png" },
                 TestContext.Current.CancellationToken));
         Assert.Equal(PngBytes, await File.ReadAllBytesAsync(
-            Path.Combine(temp.Path, "chapters", "assets", "diagram.png")));
+            Path.Combine(temp.Path, "chapters", "assets", "diagram.png"),
+            TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -454,15 +455,19 @@ public sealed class WorkspaceImageIntegrationTests
             temp.Path, true, new FakeDownloader(PngBytes), out _, out _);
         var markdown = Path.Combine(temp.Path, "note.md");
         await File.WriteAllTextAsync(
-            markdown, "![X](cover.png)\n<img src=\"cover.png\">\n");
+            markdown, "![X](cover.png)\n<img src=\"cover.png\">\n",
+            TestContext.Current.CancellationToken);
         await File.WriteAllBytesAsync(
-            Path.Combine(temp.Path, "cover.png"), PngBytes);
+            Path.Combine(temp.Path, "cover.png"), PngBytes,
+            TestContext.Current.CancellationToken);
         Directory.CreateDirectory(Path.Combine(temp.Path, ".git"));
         await File.WriteAllBytesAsync(
-            Path.Combine(temp.Path, ".git", "ignored.png"), PngBytes);
+            Path.Combine(temp.Path, ".git", "ignored.png"), PngBytes,
+            TestContext.Current.CancellationToken);
         Directory.CreateDirectory(Path.Combine(temp.Path, ".idd"));
         await File.WriteAllBytesAsync(
-            Path.Combine(temp.Path, ".idd", "asset.gif"), PngBytes);
+            Path.Combine(temp.Path, ".idd", "asset.gif"), PngBytes,
+            TestContext.Current.CancellationToken);
 
         var listing = await service.ListAsync(
             null, 50, TestContext.Current.CancellationToken);
@@ -473,11 +478,13 @@ public sealed class WorkspaceImageIntegrationTests
             "cover.png", TestContext.Current.CancellationToken);
         Assert.Equal(PngBytes, loaded.Data);
 
-        var original = await File.ReadAllBytesAsync(markdown);
+        var original = await File.ReadAllBytesAsync(
+            markdown, TestContext.Current.CancellationToken);
         var deleted = await service.DeleteAsync(
             "cover.png", TestContext.Current.CancellationToken);
         Assert.True(deleted.Deleted);
-        Assert.Equal(original, await File.ReadAllBytesAsync(markdown));
+        Assert.Equal(original, await File.ReadAllBytesAsync(
+            markdown, TestContext.Current.CancellationToken));
         Assert.False(File.Exists(Path.Combine(temp.Path, "cover.png")));
     }
 

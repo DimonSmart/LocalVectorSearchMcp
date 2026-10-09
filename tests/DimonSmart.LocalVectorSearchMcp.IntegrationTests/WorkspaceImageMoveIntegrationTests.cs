@@ -26,7 +26,8 @@ public sealed class WorkspaceImageMoveIntegrationTests
         var source = Write(temp.Path, sourcePath, Png);
         var markdownPath = Path.Combine(temp.Path, "chapter.md");
         const string markdown = "![Image](images/a.png)\n";
-        await File.WriteAllTextAsync(markdownPath, markdown);
+        await File.WriteAllTextAsync(
+            markdownPath, markdown, TestContext.Current.CancellationToken);
         var service = CreateService(temp.Path);
 
         var moved = await service.MoveAsync(
@@ -39,8 +40,10 @@ public sealed class WorkspaceImageMoveIntegrationTests
         Assert.False(File.Exists(source));
         Assert.Equal(Png, await File.ReadAllBytesAsync(
             Path.Combine(temp.Path, targetPath.Replace(
-                '/', Path.DirectorySeparatorChar))));
-        Assert.Equal(markdown, await File.ReadAllTextAsync(markdownPath));
+                '/', Path.DirectorySeparatorChar)),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(markdown, await File.ReadAllTextAsync(
+            markdownPath, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -111,7 +114,8 @@ public sealed class WorkspaceImageMoveIntegrationTests
                 TestContext.Current.CancellationToken));
         Assert.Equal("ALREADY_EXISTS", error.Code);
         Assert.Equal(Jpeg, await File.ReadAllBytesAsync(
-            Path.Combine(temp.Path, "assets", "a.png")));
+            Path.Combine(temp.Path, "assets", "a.png"),
+            TestContext.Current.CancellationToken));
     }
 
     [Theory]
