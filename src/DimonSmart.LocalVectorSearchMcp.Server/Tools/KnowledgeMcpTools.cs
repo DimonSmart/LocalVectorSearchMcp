@@ -228,7 +228,7 @@ public sealed class KnowledgeMcpTools(
         }
         catch (Exception exception) when (IsControlledToolException(exception))
         {
-            return ControlledToolError(exception);
+            return ToolErrors.FromException(exception);
         }
     }
 
@@ -331,7 +331,7 @@ public sealed class KnowledgeMcpTools(
         }
         catch (Exception exception) when (IsControlledToolException(exception))
         {
-            return ControlledToolError(exception);
+            return ToolErrors.FromException(exception);
         }
     }
 }
