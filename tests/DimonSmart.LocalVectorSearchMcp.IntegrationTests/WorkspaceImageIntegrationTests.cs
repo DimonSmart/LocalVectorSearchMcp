@@ -358,10 +358,11 @@ public sealed class WorkspaceImageIntegrationTests
 
         foreach (var path in new[]
                  {
-                     "foo.png",
-                     "docs/foo.png",
+                     "/absolute/foo.png",
+                     @"C:\foo.png",
                      "../images/foo.png",
-                     "images/../foo.png"
+                     "images/../foo.png",
+                     "images/link.png/.."
                  })
         {
             await Assert.ThrowsAsync<KnowledgeBaseAccessException>(
@@ -418,6 +419,58 @@ public sealed class WorkspaceImageIntegrationTests
             {
             }
         }
+    }
+
+    [Fact]
+    public async Task RootWideImageListingAndLoadingWorksWithoutImagesDirectory()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(temp.Path, "assets"));
+        await File.WriteAllBytesAsync(
+            Path.Combine(temp.Path, "assets", "cover.png"), PngBytes, cancellationToken);
+        var service = CreateService(temp.Path, false, new FakeDownloader(PngBytes), out _, out _);
+
+        var listed = await service.ListAsync(null, null, cancellationToken);
+        Assert.Equal("assets/cover.png", Assert.Single(listed.Images).Path);
+        var loaded = await service.LoadAsync("assets/cover.png", cancellationToken);
+        Assert.Equal(PngBytes, loaded.Data);
+        Assert.Equal("assets/cover.png", loaded.Metadata.Path);
+    }
+
+    [Fact]
+    public async Task SaveIntoCustomDirectoryProducesDocumentRelativeDestination()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var downloader = new FakeDownloader(PngBytes);
+        var service = CreateService(temp.Path, true, downloader, out _, out _);
+        var result = await service.SaveAsync(
+            new SaveImageRequest("https://example.test/image", "image/png",
+                "original.png", "drawing #1%.png", "A [B]",
+                "assets/diagrams", "chapters/intro.md"), cancellationToken);
+
+        Assert.Equal("assets/diagrams/drawing #1%.png", result.Path);
+        Assert.Equal(@"![A \[B\]](<../assets/diagrams/drawing %231%25.png>)",
+            result.Markdown);
+        Assert.True(File.Exists(
+            Path.Combine(temp.Path, "assets", "diagrams", "drawing #1%.png")));
+        Assert.False(File.Exists(Path.Combine(temp.Path, "chapters", "intro.md")));
+        Assert.Equal(1, downloader.CallCount);
+    }
+
+    [Fact]
+    public async Task InvalidSaveDocumentPathFailsBeforeDownload()
+    {
+        using var temp = new TemporaryDirectory();
+        var downloader = new FakeDownloader(PngBytes);
+        var service = CreateService(temp.Path, true, downloader, out _, out _);
+        await Assert.ThrowsAsync<KnowledgeBaseAccessException>(() =>
+            service.SaveAsync(new SaveImageRequest(
+                "https://example.test/image", "image/png", "original.png",
+                "cover.png", null, "assets", "../chapter.md"),
+                TestContext.Current.CancellationToken));
+        Assert.Equal(0, downloader.CallCount);
     }
 
     private static SaveImageRequest SaveRequest(
