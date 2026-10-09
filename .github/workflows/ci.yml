@@ -45,10 +45,7 @@ jobs:
         run: dotnet restore DimonSmart.LocalVectorSearchMcp.sln
 
       - name: Check formatting
-        run: |
-          dotnet format DimonSmart.LocalVectorSearchMcp.sln --no-restore
-          git diff --unified=0 -- src tests
-          git status --short
+        run: dotnet format DimonSmart.LocalVectorSearchMcp.sln --verify-no-changes --no-restore
 
       - name: Build
         run: dotnet build DimonSmart.LocalVectorSearchMcp.sln --configuration Release --no-restore

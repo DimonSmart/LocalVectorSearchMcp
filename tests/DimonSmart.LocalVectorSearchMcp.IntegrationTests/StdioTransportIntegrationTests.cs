@@ -263,6 +263,42 @@ public sealed class StdioTransportIntegrationTests
                 statusResponse.SchemaVersion));
         Assert.NotNull(statusResponse.Project);
 
+        var readKindResult = await client.CallToolAsync(
+            "kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "smoke.md" }
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(readKindResult.IsError is true);
+        using (var resultJson = JsonDocument.Parse(ResultText(readKindResult)))
+        {
+            Assert.Equal(
+                "heading",
+                resultJson.RootElement.GetProperty("elements")[0]
+                    .GetProperty("kind").GetString());
+        }
+
+        var badTopK = await client.CallToolAsync(
+            "kb_search",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    query = "Smoke",
+                    mode = "lexical",
+                    topK = 0
+                }
+            },
+            cancellationToken: cancellationToken);
+        Assert.True(badTopK.IsError is true);
+        using (var errorJson = JsonDocument.Parse(ResultText(badTopK)))
+        {
+            Assert.Equal(
+                "INVALID_ARGUMENT",
+                errorJson.RootElement.GetProperty("code").GetString());
+        }
+
         var imageResult = await client.CallToolAsync(
             "kb_load_image",
             new Dictionary<string, object?>
