@@ -94,4 +94,8 @@ public interface IWorkspaceImageService
         CancellationToken cancellationToken);
 }
 
-public sealed class WorkspaceImageException(string message) : Exception(message);
+public sealed class WorkspaceImageException(
+    string message, string code = "INVALID_ARGUMENT") : Exception(message)
+{
+    public string Code { get; } = code;
+}

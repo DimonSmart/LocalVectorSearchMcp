@@ -118,7 +118,6 @@ public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
     {
         var normalized = ValidateImagePath(path);
         var absolute = ResolveImagePath(normalized);
-        var root = Path.GetFullPath(config.KnowledgeBase.Root);
         var parent = Path.GetDirectoryName(absolute)!;
         var missing = new Stack<string>();
         var current = parent;
