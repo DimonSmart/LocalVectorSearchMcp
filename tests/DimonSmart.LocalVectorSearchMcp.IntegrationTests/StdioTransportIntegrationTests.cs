@@ -120,6 +120,10 @@ public sealed class StdioTransportIntegrationTests
             HasOptionalSchemaProperty(
                 saveTool.JsonSchema,
                 "altText"));
+        Assert.True(
+            HasOptionalSchemaProperty(
+                saveTool.JsonSchema,
+                "targetPath"));
 
         var listTool = Assert.Single(
             tools,
@@ -259,6 +263,42 @@ public sealed class StdioTransportIntegrationTests
                 statusResponse.SchemaVersion));
         Assert.NotNull(statusResponse.Project);
 
+        var readKindResult = await client.CallToolAsync(
+            "kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "smoke.md" }
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(readKindResult.IsError is true);
+        using (var resultJson = JsonDocument.Parse(ResultText(readKindResult)))
+        {
+            Assert.Equal(
+                "heading",
+                resultJson.RootElement.GetProperty("elements")[0]
+                    .GetProperty("kind").GetString());
+        }
+
+        var badTopK = await client.CallToolAsync(
+            "kb_search",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    query = "Smoke",
+                    mode = "lexical",
+                    topK = 0
+                }
+            },
+            cancellationToken: cancellationToken);
+        Assert.True(badTopK.IsError is true);
+        using (var errorJson = JsonDocument.Parse(ResultText(badTopK)))
+        {
+            Assert.Equal(
+                "INVALID_ARGUMENT",
+                errorJson.RootElement.GetProperty("code").GetString());
+        }
+
         var imageResult = await client.CallToolAsync(
             "kb_load_image",
             new Dictionary<string, object?>
@@ -343,7 +383,7 @@ public sealed class StdioTransportIntegrationTests
                 .Select(content => content.Text));
         Assert.True(
             text.Contains(
-                "Run kb_reindex first.",
+                "INDEX_NOT_READY",
                 StringComparison.Ordinal));
         Assert.DoesNotContain(
             stderr,
@@ -507,10 +547,12 @@ public sealed class StdioTransportIntegrationTests
             cancellationToken: cancellationToken);
 
         Assert.True(move.IsError is true);
-        Assert.Contains(
-            "Document has changed since it was read",
-            ResultText(move),
-            StringComparison.Ordinal);
+        using (var error = JsonDocument.Parse(ResultText(move)))
+        {
+            Assert.Equal(
+                "CONFLICT",
+                error.RootElement.GetProperty("code").GetString());
+        }
         Assert.True(File.Exists(
             Path.Combine(temp.Path, "move-source.md")));
         Assert.False(File.Exists(
@@ -538,10 +580,12 @@ public sealed class StdioTransportIntegrationTests
             cancellationToken: cancellationToken);
 
         Assert.True(delete.IsError is true);
-        Assert.Contains(
-            "Document has changed since it was read",
-            ResultText(delete),
-            StringComparison.Ordinal);
+        using (var error = JsonDocument.Parse(ResultText(delete)))
+        {
+            Assert.Equal(
+                "CONFLICT",
+                error.RootElement.GetProperty("code").GetString());
+        }
         Assert.True(File.Exists(
             Path.Combine(temp.Path, "delete-source.md")));
     }
@@ -832,9 +876,10 @@ public sealed class StdioTransportIntegrationTests
 
             Assert.True(result.IsError is true);
             var text = ResultText(result);
+            using var error = JsonDocument.Parse(text);
             Assert.Equal(
-                "Document 'missing.md' was not found.",
-                text);
+                "NOT_FOUND",
+                error.RootElement.GetProperty("code").GetString());
             Assert.DoesNotContain(
                 "Pointer 'document' was not found",
                 text,

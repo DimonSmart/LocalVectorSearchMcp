@@ -18,7 +18,7 @@ public sealed class WorkspaceImageMcpTools(
         OutputSchemaType = typeof(ImageSaveResponse))]
     [McpMeta("openai/fileParams", JsonValue = """["file"]""")]
     [Description(
-        "Saves a PNG, JPEG, WebP, or GIF supplied through the OpenAI file parameter into the workspace images/ directory. " +
+        "Saves a PNG, JPEG, WebP, or GIF supplied through the OpenAI file parameter inside knowledgeBase.root (by default images/). " +
         "Requires knowledgeBase.allowWrites=true and never overwrites an existing image.")]
     public async Task<CallToolResult> SaveImageAsync(
         [Description(
@@ -30,7 +30,9 @@ public sealed class WorkspaceImageMcpTools(
         string? fileName = null,
         [Description(
             "Optional alt text used to build the returned Markdown image reference.")]
-        string? altText = null)
+        string? altText = null,
+        [Description("Optional exact root-relative destination including the image file name. Cannot be combined with fileName.")]
+        string? targetPath = null)
     {
         if (string.IsNullOrWhiteSpace(file.DownloadUrl))
         {
@@ -52,7 +54,8 @@ public sealed class WorkspaceImageMcpTools(
                     file.MimeType,
                     file.FileName,
                     fileName,
-                    altText),
+                    altText,
+                    targetPath),
                 cancellationToken);
             return Structured(response);
         }
@@ -60,7 +63,7 @@ public sealed class WorkspaceImageMcpTools(
             exception is WorkspaceImageException
                 or KnowledgeBaseAccessException)
         {
-            return Error(exception.Message);
+            return ToolErrors.FromException(exception);
         }
     }
 
@@ -69,7 +72,7 @@ public sealed class WorkspaceImageMcpTools(
         UseStructuredContent = true,
         OutputSchemaType = typeof(ImageListResponse))]
     [Description(
-        "Lists PNG, JPEG, WebP, and GIF assets recursively under workspace images/ using opaque cursor pagination.")]
+        "Lists supported images recursively under knowledgeBase.root, excluding Git and index files; cursor pagination defaults to 50.")]
     public async Task<CallToolResult> ListImagesAsync(
         CancellationToken cancellationToken,
         [Description("Opaque cursor returned by the previous page.")]
@@ -90,16 +93,16 @@ public sealed class WorkspaceImageMcpTools(
             exception is WorkspaceImageException
                 or KnowledgeBaseAccessException)
         {
-            return Error(exception.Message);
+            return ToolErrors.FromException(exception);
         }
     }
 
     [McpServerTool(Name = "kb_load_image")]
     [Description(
-        "Loads an existing supported image under workspace images/ and returns the real MCP image content first, followed by JSON metadata.")]
+        "Loads an existing supported image anywhere under knowledgeBase.root; returns an MCP image block followed by JSON metadata.")]
     public async Task<CallToolResult> LoadImageAsync(
         [Description(
-            "Project-relative image path under images/, for example images/chapter-01.png.")]
+            "Root-relative image path, for example chapters/diagram.png.")]
         string path,
         CancellationToken cancellationToken)
     {
@@ -129,7 +132,7 @@ public sealed class WorkspaceImageMcpTools(
             exception is WorkspaceImageException
                 or KnowledgeBaseAccessException)
         {
-            return Error(exception.Message);
+            return ToolErrors.FromException(exception);
         }
     }
 
@@ -138,10 +141,10 @@ public sealed class WorkspaceImageMcpTools(
         UseStructuredContent = true,
         OutputSchemaType = typeof(ImageDeleteResponse))]
     [Description(
-        "Deletes one supported image file under workspace images/. Requires knowledgeBase.allowWrites=true and never removes parent directories.")]
+        "Deletes one supported binary image under knowledgeBase.root without checking or changing Markdown references, index or parent directories. Requires allowWrites=true.")]
     public async Task<CallToolResult> DeleteImageAsync(
         [Description(
-            "Project-relative image path under images/.")]
+            "Root-relative image file path.")]
         string path,
         CancellationToken cancellationToken)
     {
@@ -156,7 +159,7 @@ public sealed class WorkspaceImageMcpTools(
             exception is WorkspaceImageException
                 or KnowledgeBaseAccessException)
         {
-            return Error(exception.Message);
+            return ToolErrors.FromException(exception);
         }
     }
 
@@ -167,10 +170,10 @@ public sealed class WorkspaceImageMcpTools(
     [Description(
         "Moves a supported image only within the configured knowledgeBase.root. " +
         "Paths outside the configured root are never allowed. " +
-        "By default updates supported inline Markdown image references and never overwrites an existing target.")]
+        "Never updates Markdown references or the index, and never overwrites an existing target. Repair links separately with kb_patch.")]
     public async Task<CallToolResult> MoveImageAsync(
         [Description(
-            "Image move request containing workspace-relative sourcePath and targetPath, optional expectedSha256, and updateReferences (default true).")]
+            "Binary image move with root-relative sourcePath/targetPath, optional expectedSha256, deprecated updateReferences (omit or false only).")]
         MoveImageRequest request,
         CancellationToken cancellationToken)
     {
@@ -186,7 +189,7 @@ public sealed class WorkspaceImageMcpTools(
                 or KnowledgeBaseAccessException
                 or DocumentConflictException)
         {
-            return Error(exception.Message);
+            return ToolErrors.FromException(exception);
         }
     }
 
@@ -211,15 +214,5 @@ public sealed class WorkspaceImageMcpTools(
     }
 
     private static CallToolResult Error(string message)
-        => new()
-        {
-            Content =
-            [
-                new TextContentBlock
-                {
-                    Text = message
-                }
-            ],
-            IsError = true
-        };
+        => ToolErrors.Create("INVALID_ARGUMENT", message);
 }
