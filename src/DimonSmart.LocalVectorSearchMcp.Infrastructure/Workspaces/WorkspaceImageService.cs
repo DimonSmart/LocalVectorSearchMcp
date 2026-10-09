@@ -351,7 +351,9 @@ public sealed class WorkspaceImageService(
                         info.Length, new DateTimeOffset(info.LastWriteTimeUtc));
                 }
                 catch (Exception error) when (
-                    error is IOException or UnauthorizedAccessException or KnowledgeBaseAccessException) { }
+                    error is IOException or UnauthorizedAccessException or KnowledgeBaseAccessException)
+                {
+                }
                 if (item is not null) yield return item;
             }
         }

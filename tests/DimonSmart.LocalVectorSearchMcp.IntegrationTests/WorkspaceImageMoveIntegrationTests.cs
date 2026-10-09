@@ -75,7 +75,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
         await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "b.png"), [1, 2, 3]);
         await Assert.ThrowsAsync<WorkspaceImageException>(() => CreateService(temp.Path).MoveAsync(
             new MoveImageRequest("images/a.png", "images/b.png"), TestContext.Current.CancellationToken));
-        Assert.Equal(new byte[] {1, 2, 3}, await File.ReadAllBytesAsync(Path.Combine(temp.Path, "images", "b.png")));
+        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(temp.Path, "images", "b.png")));
     }
 
     [Fact]
@@ -92,9 +92,11 @@ public sealed class WorkspaceImageMoveIntegrationTests
 
     private static WorkspaceImageMoveService CreateService(string root, bool allowWrites = true)
     {
-        var config = new LocalVectorSearchMcpConfig {
+        var config = new LocalVectorSearchMcpConfig
+        {
             Storage = new StorageConfig { Path = Path.Combine(root, "index.db") },
-            KnowledgeBase = new KnowledgeBaseConfig { Root = root, AllowWrites = allowWrites } };
+            KnowledgeBase = new KnowledgeBaseConfig { Root = root, AllowWrites = allowWrites }
+        };
         return new WorkspaceImageMoveService(config, new KnowledgeBasePathGuard(config));
     }
 }
