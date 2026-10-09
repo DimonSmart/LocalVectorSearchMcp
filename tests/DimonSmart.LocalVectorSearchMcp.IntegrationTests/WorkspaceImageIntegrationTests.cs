@@ -358,8 +358,6 @@ public sealed class WorkspaceImageIntegrationTests
 
         foreach (var path in new[]
                  {
-                     "foo.png",
-                     "docs/foo.png",
                      "../images/foo.png",
                      "images/../foo.png"
                  })
@@ -418,6 +416,69 @@ public sealed class WorkspaceImageIntegrationTests
             {
             }
         }
+    }
+
+
+    [Fact]
+    public async Task SaveToExplicitNestedTargetDoesNotRenameOrOverwrite()
+    {
+        using var temp = new TemporaryDirectory();
+        var service = CreateService(
+            temp.Path, true, new FakeDownloader(PngBytes), out _, out _);
+        var request = new SaveImageRequest(
+            "https://example.test/image", "image/png", "source.png",
+            null, "A", "chapters/assets/diagram.png");
+        var result = await service.SaveAsync(
+            request, TestContext.Current.CancellationToken);
+        Assert.Equal("chapters/assets/diagram.png", result.Path);
+        Assert.Equal("![A](chapters/assets/diagram.png)", result.Markdown);
+
+        var error = await Assert.ThrowsAsync<WorkspaceImageException>(
+            () => service.SaveAsync(
+                request, TestContext.Current.CancellationToken));
+        Assert.Equal("ALREADY_EXISTS", error.Code);
+
+        await Assert.ThrowsAsync<WorkspaceImageException>(
+            () => service.SaveAsync(
+                request with { FileName = "diagram.png" },
+                TestContext.Current.CancellationToken));
+        Assert.Equal(PngBytes, await File.ReadAllBytesAsync(
+            Path.Combine(temp.Path, "chapters", "assets", "diagram.png")));
+    }
+
+    [Fact]
+    public async Task RootWideListLoadAndDeleteNeverTouchMarkdown()
+    {
+        using var temp = new TemporaryDirectory();
+        var service = CreateService(
+            temp.Path, true, new FakeDownloader(PngBytes), out _, out _);
+        var markdown = Path.Combine(temp.Path, "note.md");
+        await File.WriteAllTextAsync(
+            markdown, "![X](cover.png)\n<img src=\"cover.png\">\n");
+        await File.WriteAllBytesAsync(
+            Path.Combine(temp.Path, "cover.png"), PngBytes);
+        Directory.CreateDirectory(Path.Combine(temp.Path, ".git"));
+        await File.WriteAllBytesAsync(
+            Path.Combine(temp.Path, ".git", "ignored.png"), PngBytes);
+        Directory.CreateDirectory(Path.Combine(temp.Path, ".idd"));
+        await File.WriteAllBytesAsync(
+            Path.Combine(temp.Path, ".idd", "asset.gif"), PngBytes);
+
+        var listing = await service.ListAsync(
+            null, 50, TestContext.Current.CancellationToken);
+        Assert.Equal(
+            [".idd/asset.gif", "cover.png"],
+            listing.Images.Select(item => item.Path).ToArray());
+        var loaded = await service.LoadAsync(
+            "cover.png", TestContext.Current.CancellationToken);
+        Assert.Equal(PngBytes, loaded.Data);
+
+        var original = await File.ReadAllBytesAsync(markdown);
+        var deleted = await service.DeleteAsync(
+            "cover.png", TestContext.Current.CancellationToken);
+        Assert.True(deleted.Deleted);
+        Assert.Equal(original, await File.ReadAllBytesAsync(markdown));
+        Assert.False(File.Exists(Path.Combine(temp.Path, "cover.png")));
     }
 
     private static SaveImageRequest SaveRequest(

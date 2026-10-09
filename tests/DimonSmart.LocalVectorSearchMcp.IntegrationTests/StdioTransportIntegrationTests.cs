@@ -120,6 +120,10 @@ public sealed class StdioTransportIntegrationTests
             HasOptionalSchemaProperty(
                 saveTool.JsonSchema,
                 "altText"));
+        Assert.True(
+            HasOptionalSchemaProperty(
+                saveTool.JsonSchema,
+                "targetPath"));
 
         var listTool = Assert.Single(
             tools,
@@ -343,7 +347,7 @@ public sealed class StdioTransportIntegrationTests
                 .Select(content => content.Text));
         Assert.True(
             text.Contains(
-                "Run kb_reindex first.",
+                "INDEX_NOT_READY",
                 StringComparison.Ordinal));
         Assert.DoesNotContain(
             stderr,
