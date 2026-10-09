@@ -128,7 +128,8 @@ public sealed class FragmentPatchIntegrationTests
 
     private static WorkspaceMutationService Service(string root)
     {
-        var config = new LocalVectorSearchMcpConfig {
+        var config = new LocalVectorSearchMcpConfig
+        {
             KnowledgeBase = new KnowledgeBaseConfig { Root = root, AllowWrites = true }
         };
         return new WorkspaceMutationService(config, new KnowledgeBasePathGuard(config),
