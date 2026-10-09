@@ -5,7 +5,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
 
 internal static class ImageListCursor
 {
-    private const string Version = "v1";
+    private const string Version = "v2";
 
     public static string Encode(string relativePath)
     {
@@ -41,7 +41,7 @@ internal static class ImageListCursor
             if (!version.Equals(Version, StringComparison.Ordinal))
             {
                 throw new WorkspaceImageException(
-                    $"Image list cursor version '{version}' is not supported.");
+                    $"Image list cursor version '{version}' is not supported. Start listing again.");
             }
 
             var relativePath = payload[(separator + 1)..];

@@ -34,6 +34,11 @@ internal static class ImageFileNamePolicy
         return $"{stem}-{suffix}{extension}";
     }
 
+    public static void ValidateRequestedFileName(string? fileName)
+    {
+        if (fileName is not null) ValidatePortableBaseName(fileName, "fileName");
+    }
+
     public static string BuildMarkdown(string path, string? altText)
     {
         var alt = (altText ?? "")
@@ -44,11 +49,14 @@ internal static class ImageFileNamePolicy
             .Replace("[", "\\[", StringComparison.Ordinal)
             .Replace("]", "\\]", StringComparison.Ordinal);
 
-        var destination = path.Any(char.IsWhiteSpace)
-                          || path.Contains('(')
-                          || path.Contains(')')
-            ? $"<{path}>"
-            : path;
+        // Escape URI metacharacters without changing the actual asset filename.
+        var escaped = System.Text.RegularExpressions.Regex.Replace(
+            path, @"[%#?<>]|[\x00-\x1F\x7F]", match => Uri.EscapeDataString(match.Value));
+        var destination = escaped.Any(char.IsWhiteSpace)
+                          || escaped.Contains('(')
+                          || escaped.Contains(')')
+            ? $"<{escaped}>"
+            : escaped;
 
         return $"![{alt}]({destination})";
     }

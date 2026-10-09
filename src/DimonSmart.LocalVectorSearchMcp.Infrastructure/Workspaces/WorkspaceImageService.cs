@@ -17,90 +17,72 @@ public sealed class WorkspaceImageService(
     private const int MaxPageSize = 200;
     private const int BufferSize = 64 * 1024;
 
-    public async Task<ImageSaveResponse> SaveAsync(
-        SaveImageRequest request,
-        CancellationToken cancellationToken)
+    public async Task<ImageSaveResponse> SaveAsync(SaveImageRequest request, CancellationToken cancellationToken)
     {
         EnsureWritesEnabled();
-
-        var imagesDirectory = pathGuard.ResolveWorkspacePath("images");
-        var createdDirectory = false;
-        string? temporaryPath = null;
+        cancellationToken.ThrowIfCancellationRequested();
+        var directory = pathGuard.ValidateImageDirectory(request.Directory);
+        var documentPath = request.DocumentPath;
+        if (documentPath is not null) _ = pathGuard.ResolveMarkdownPath(pathGuard.ValidateImagePath(documentPath));
+        ImageFileNamePolicy.ValidateRequestedFileName(request.FileName);
+        var created = new List<string>();
+        string? temp = null;
         try
         {
-            if (!Directory.Exists(imagesDirectory))
+            await WorkspaceMutationGate.RunAsync(() =>
             {
-                Directory.CreateDirectory(imagesDirectory);
-                createdDirectory = true;
-            }
+                var relative = "";
+                if (directory != ".")
+                {
+                    foreach (var part in directory.Split('/'))
+                    {
+                        relative = relative.Length == 0 ? part : relative + "/" + part;
+                        var absolute = pathGuard.ResolveImageDirectory(relative);
+                        if (!Directory.Exists(absolute))
+                        {
+                            Directory.CreateDirectory(absolute);
+                            created.Add(absolute);
+                        }
+                        _ = pathGuard.ResolveImageDirectory(relative);
+                    }
+                }
+                return Task.FromResult(0);
+            }, cancellationToken);
 
-            imagesDirectory = pathGuard.ResolveWorkspacePath("images");
-            var temporaryRelativePath =
-                $"images/.upload-{Guid.NewGuid():N}.tmp";
-            temporaryPath = pathGuard.ResolveImagePath(
-                temporaryRelativePath);
-
+            temp = pathGuard.ResolveWorkspacePath((directory == "." ? "" : directory + "/") +
+                $".upload-{Guid.NewGuid():N}.tmp");
             RemoteFileDownloadResult download;
-            try
-            {
-                download = await downloader.DownloadAsync(
-                    request.DownloadUrl,
-                    temporaryPath,
-                    MaxImageBytes,
-                    cancellationToken);
-            }
-            catch (WorkspaceImageException)
-            {
-                throw;
-            }
-            catch (IOException)
-            {
-                throw new WorkspaceImageException(
-                    "The temporary image file could not be written.");
-            }
-            catch (UnauthorizedAccessException)
-            {
-                throw new WorkspaceImageException(
-                    "The temporary image file could not be written.");
-            }
+            try { download = await downloader.DownloadAsync(request.DownloadUrl, temp, MaxImageBytes, cancellationToken); }
+            catch (WorkspaceImageException) { throw; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            { throw new WorkspaceImageException("The temporary image file could not be written."); }
 
             var format = WorkspaceImageFormats.Detect(download.Prefix)
-                ?? throw new WorkspaceImageException(
-                    "The supplied file is not a supported PNG, JPEG, WebP, or GIF image.");
-            WorkspaceImageFormats.ValidateDeclaredMime(
-                request.DeclaredMimeType,
-                format);
-
-            var requestedName = ImageFileNamePolicy.Resolve(
-                request.FileName,
-                request.SourceFileName,
-                format);
-            var finalRelativePath = MoveWithoutOverwrite(
-                temporaryPath,
-                requestedName);
-            temporaryPath = null;
-
-            return new ImageSaveResponse(
-                finalRelativePath,
-                format.MimeType,
-                download.Bytes,
-                download.Sha256,
-                ImageFileNamePolicy.BuildMarkdown(
-                    finalRelativePath,
-                    request.AltText));
+                ?? throw new WorkspaceImageException("The supplied file is not a supported PNG, JPEG, WebP, or GIF image.");
+            WorkspaceImageFormats.ValidateDeclaredMime(request.DeclaredMimeType, format);
+            var name = ImageFileNamePolicy.Resolve(request.FileName, request.SourceFileName, format);
+            var path = await WorkspaceMutationGate.RunAsync(
+                () => Task.FromResult(MoveWithoutOverwrite(temp, name, directory)), cancellationToken);
+            temp = null;
+            var link = documentPath is null ? path : BuildRelativeDestination(documentPath, path);
+            return new ImageSaveResponse(path, format.MimeType, download.Bytes, download.Sha256,
+                ImageFileNamePolicy.BuildMarkdown(link, request.AltText));
         }
         finally
         {
-            if (temporaryPath is not null)
-            {
-                TryDeleteFile(temporaryPath);
-            }
-
-            if (createdDirectory)
-            {
-                TryDeleteEmptyDirectory(imagesDirectory);
-            }
+            if (temp is not null) TryDeleteFile(temp);
+            foreach (var path in created.AsEnumerable().Reverse()) TryDeleteEmptyDirectory(path);
         }
+    }
+
+    private static string BuildRelativeDestination(string documentPath, string imagePath)
+    {
+        var source = documentPath.Split('/')[..^1];
+        var destination = imagePath.Split('/');
+        var common = 0;
+        while (common < source.Length && common < destination.Length &&
+               string.Equals(source[common], destination[common], StringComparison.Ordinal)) common++;
+        return string.Join("/", Enumerable.Repeat("..", source.Length - common).Concat(destination.Skip(common)));
     }
 
     public Task<ImageListResponse> ListAsync(
@@ -115,14 +97,9 @@ public sealed class WorkspaceImageService(
                 $"pageSize must be between 1 and {MaxPageSize}.");
         }
 
-        var imagesDirectory = pathGuard.ResolveWorkspacePath("images");
+        var imagesDirectory = pathGuard.ResolveImageDirectory(".");
         if (!Directory.Exists(imagesDirectory))
-        {
-            return Task.FromResult(
-                new ImageListResponse([], null));
-        }
-
-        imagesDirectory = pathGuard.ResolveWorkspacePath("images");
+            throw new WorkspaceImageException("Knowledge base root is unavailable.");
         var items = EnumerateImages(
                 imagesDirectory,
                 cancellationToken)
@@ -130,9 +107,18 @@ public sealed class WorkspaceImageService(
             .ThenBy(item => item.Path, StringComparer.Ordinal)
             .ToList();
 
-        var cursorPath = cursor is null
-            ? null
-            : ImageListCursor.Decode(cursor);
+        var cursorPath = cursor is null ? null : ImageListCursor.Decode(cursor);
+        if (cursorPath is not null)
+        {
+            try
+            {
+                pathGuard.ValidateImagePath(cursorPath);
+                if (!WorkspaceImageFormats.TryFromExtension(Path.GetExtension(cursorPath), out _))
+                    throw new WorkspaceImageException("Invalid image cursor path. Start listing again.");
+            }
+            catch (KnowledgeBaseAccessException)
+            { throw new WorkspaceImageException("Invalid image cursor path. Start listing again."); }
+        }
         var startIndex = cursorPath is null
             ? 0
             : FindStartIndex(items, cursorPath);
@@ -263,7 +249,8 @@ public sealed class WorkspaceImageService(
 
     private string MoveWithoutOverwrite(
         string temporaryPath,
-        string requestedName)
+        string requestedName,
+        string directory)
     {
         lock (FinalMoveGate)
         {
@@ -274,9 +261,10 @@ public sealed class WorkspaceImageService(
                     : ImageFileNamePolicy.WithCollisionSuffix(
                         requestedName,
                         suffix);
-                var relativePath = $"images/{fileName}";
-                var absolutePath = pathGuard.ResolveImagePath(
-                    relativePath);
+                var relativePath = directory == "." ? fileName : $"{directory}/{fileName}";
+                var absolutePath = pathGuard.ResolveImagePath(relativePath);
+                _ = pathGuard.ResolveWorkspacePath(Path.GetRelativePath(
+                    config.KnowledgeBase.Root, temporaryPath).Replace('\\', '/'));
 
                 try
                 {
@@ -351,17 +339,20 @@ public sealed class WorkspaceImageService(
                     continue;
                 }
 
-                var relativePath = Path.GetRelativePath(
-                        config.KnowledgeBase.Root,
-                        info.FullName)
-                    .Replace('\\', '/');
-                pathGuard.ValidateImagePath(relativePath);
-
-                yield return new ImageListItem(
-                    relativePath,
-                    format.MimeType,
-                    info.Length,
-                    new DateTimeOffset(info.LastWriteTimeUtc));
+                ImageListItem? item = null;
+                try
+                {
+                    info.Refresh();
+                    if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    var relativePath = Path.GetRelativePath(
+                        config.KnowledgeBase.Root, info.FullName).Replace('\\', '/');
+                    pathGuard.ValidateImagePath(relativePath);
+                    item = new ImageListItem(relativePath, format.MimeType,
+                        info.Length, new DateTimeOffset(info.LastWriteTimeUtc));
+                }
+                catch (Exception error) when (
+                    error is IOException or UnauthorizedAccessException or KnowledgeBaseAccessException) { }
+                if (item is not null) yield return item;
             }
         }
     }
