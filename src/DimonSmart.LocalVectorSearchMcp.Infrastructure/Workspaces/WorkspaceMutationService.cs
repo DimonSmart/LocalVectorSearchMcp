@@ -49,6 +49,7 @@ public sealed class WorkspaceMutationService(
                 document.Markdown,
                 elements,
                 resolvedOperations);
+            ValidateFragmentStructure(document, elements, resolvedOperations, resultingSource);
 
             string updatedSourceHash;
             try
@@ -135,6 +136,54 @@ public sealed class WorkspaceMutationService(
         return result;
     }
 
+    private void ValidateFragmentStructure(
+        MarkdownSourceDocument document,
+        IReadOnlyList<MarkdownElement> elements,
+        IReadOnlyList<PatchOperation> operations,
+        string resultingSource)
+    {
+        var groups = operations
+            .Where(operation => operation.Kind == PatchOperationKind.ReplaceFragment)
+            .GroupBy(operation => operation.Pointer, StringComparer.Ordinal).ToList();
+        if (groups.Count == 0) return;
+
+        var original = elements.Where(element => element.SourceLength > 0)
+            .ToDictionary(element => element.Pointer.Value, StringComparer.Ordinal);
+        var resultDocument = new MarkdownSourceDocument(
+            document.RelativePath, document.AbsolutePath, resultingSource, "",
+            document.LastWriteTimeUtc);
+        var parsed = parser.Parse(resultDocument).Where(element => element.SourceLength > 0).ToList();
+        var used = new HashSet<int>();
+        var eol = document.Markdown.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+
+        foreach (var group in groups)
+        {
+            var parent = original[group.Key];
+            var expected = parent.Text;
+            var replacements = group.Select(op => (
+                Start: parent.Text.IndexOf(op.OldMarkdown!, StringComparison.Ordinal),
+                Length: op.OldMarkdown!.Length,
+                Value: op.Markdown!)).OrderByDescending(replacement => replacement.Start);
+            foreach (var part in replacements)
+            {
+                var markdown = part.Value.Replace("\r\n", "\n", StringComparison.Ordinal)
+                    .Replace("\r", "\n", StringComparison.Ordinal)
+                    .Replace("\n", eol, StringComparison.Ordinal);
+                expected = expected.Remove(part.Start, part.Length).Insert(part.Start, markdown);
+            }
+
+            var match = parsed.Select((element, index) => (element, index))
+                .FirstOrDefault(item => !used.Contains(item.index)
+                    && item.element.Kind == parent.Kind
+                    && item.element.HeadingLevel == parent.HeadingLevel
+                    && string.Equals(item.element.Text, expected, StringComparison.Ordinal));
+            if (match.element is null)
+                throw new WorkspaceMutationException(
+                    "replace_fragment changes the structure of its parent Markdown element. Use replace_element or replace_section.");
+            used.Add(match.index);
+        }
+    }
+
     private void ValidateReplacementOperations(
         MarkdownSourceDocument document,
         IReadOnlyList<MarkdownElement> elements,
@@ -148,6 +197,12 @@ public sealed class WorkspaceMutationService(
 
         foreach (var operation in operations)
         {
+            if (operation.Kind == PatchOperationKind.ReplaceFragment &&
+                (operation.Markdown is null || string.IsNullOrEmpty(operation.OldMarkdown)))
+                throw new WorkspaceMutationException(
+                    "replace_fragment requires a non-empty oldMarkdown and a markdown value (empty string is valid).");
+            if (operation.Kind != PatchOperationKind.ReplaceFragment && operation.OldMarkdown is not null)
+                throw new WorkspaceMutationException("oldMarkdown is only allowed for replace_fragment.");
             if (operation.Pointer == "document")
             {
                 if (operation.Kind == PatchOperationKind.ReplaceSection)
