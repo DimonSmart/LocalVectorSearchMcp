@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 
@@ -23,23 +24,29 @@ public sealed class WorkspaceImageService(
     {
         EnsureWritesEnabled();
 
-        var imagesDirectory = pathGuard.ResolveWorkspacePath("images");
-        var createdDirectory = false;
-        string? temporaryPath = null;
+        if (request.TargetPath is not null && request.FileName is not null)
+        {
+            throw new WorkspaceImageException(
+                "fileName and targetPath cannot be supplied together.");
+        }
+
+        var targetPath = request.TargetPath is null
+            ? null
+            : pathGuard.ValidateImagePath(request.TargetPath);
+        var stagingFolder = targetPath is null
+            ? "images"
+            : Path.GetDirectoryName(targetPath.Replace(
+                '/', Path.DirectorySeparatorChar))?
+                .Replace('\\', '/') ?? "";
+        var temporaryRelativePath = string.IsNullOrEmpty(stagingFolder)
+            ? $".upload-{Guid.NewGuid():N}.tmp"
+            : $"{stagingFolder}/.upload-{Guid.NewGuid():N}.tmp";
+        var createdDirectories = pathGuard.CreateImageParentDirectories(
+            temporaryRelativePath);
+        var temporaryPath = pathGuard.ResolveImagePath(
+            temporaryRelativePath);
         try
         {
-            if (!Directory.Exists(imagesDirectory))
-            {
-                Directory.CreateDirectory(imagesDirectory);
-                createdDirectory = true;
-            }
-
-            imagesDirectory = pathGuard.ResolveWorkspacePath("images");
-            var temporaryRelativePath =
-                $"images/.upload-{Guid.NewGuid():N}.tmp";
-            temporaryPath = pathGuard.ResolveImagePath(
-                temporaryRelativePath);
-
             RemoteFileDownloadResult download;
             try
             {
@@ -53,33 +60,40 @@ public sealed class WorkspaceImageService(
             {
                 throw;
             }
-            catch (IOException)
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
             {
                 throw new WorkspaceImageException(
-                    "The temporary image file could not be written.");
-            }
-            catch (UnauthorizedAccessException)
-            {
-                throw new WorkspaceImageException(
-                    "The temporary image file could not be written.");
+                    "The temporary image could not be written.",
+                    "PERMISSION_DENIED");
             }
 
             var format = WorkspaceImageFormats.Detect(download.Prefix)
                 ?? throw new WorkspaceImageException(
-                    "The supplied file is not a supported PNG, JPEG, WebP, or GIF image.");
+                    "The supplied file is not a supported image.",
+                    "UNSUPPORTED_FORMAT");
             WorkspaceImageFormats.ValidateDeclaredMime(
-                request.DeclaredMimeType,
-                format);
+                request.DeclaredMimeType, format);
 
-            var requestedName = ImageFileNamePolicy.Resolve(
-                request.FileName,
-                request.SourceFileName,
-                format);
+            if (targetPath is not null
+                && !WorkspaceImageFormats.ExtensionMatches(
+                    Path.GetExtension(targetPath), format))
+            {
+                throw new WorkspaceImageException(
+                    "targetPath extension does not match the image signature.",
+                    "UNSUPPORTED_FORMAT");
+            }
+
+            var requestedName = targetPath is null
+                ? ImageFileNamePolicy.Resolve(
+                    request.FileName,
+                    request.SourceFileName,
+                    format)
+                : Path.GetFileName(targetPath);
             var finalRelativePath = MoveWithoutOverwrite(
                 temporaryPath,
-                requestedName);
-            temporaryPath = null;
-
+                requestedName,
+                targetPath);
             return new ImageSaveResponse(
                 finalRelativePath,
                 format.MimeType,
@@ -91,14 +105,10 @@ public sealed class WorkspaceImageService(
         }
         finally
         {
-            if (temporaryPath is not null)
+            TryDeleteFile(temporaryPath);
+            foreach (var directory in createdDirectories.Reverse())
             {
-                TryDeleteFile(temporaryPath);
-            }
-
-            if (createdDirectory)
-            {
-                TryDeleteEmptyDirectory(imagesDirectory);
+                KnowledgeBasePathGuard.TryRemoveEmptyDirectory(directory);
             }
         }
     }
@@ -115,14 +125,12 @@ public sealed class WorkspaceImageService(
                 $"pageSize must be between 1 and {MaxPageSize}.");
         }
 
-        var imagesDirectory = pathGuard.ResolveWorkspacePath("images");
+        var imagesDirectory = Path.GetFullPath(
+            config.KnowledgeBase.Root);
         if (!Directory.Exists(imagesDirectory))
         {
-            return Task.FromResult(
-                new ImageListResponse([], null));
+            return Task.FromResult(new ImageListResponse([], null));
         }
-
-        imagesDirectory = pathGuard.ResolveWorkspacePath("images");
         var items = EnumerateImages(
                 imagesDirectory,
                 cancellationToken)
@@ -165,7 +173,7 @@ public sealed class WorkspaceImageService(
         if (!File.Exists(absolute))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' does not exist.");
+                $"Image '{normalized}' does not exist.", "NOT_FOUND");
         }
 
         var extension = Path.GetExtension(normalized);
@@ -174,7 +182,7 @@ public sealed class WorkspaceImageService(
                 out var expectedFormat))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' has an unsupported file extension.");
+                $"Image '{normalized}' has an unsupported file extension.", "UNSUPPORTED_FORMAT");
         }
 
         var fileInfo = new FileInfo(absolute);
@@ -190,12 +198,12 @@ public sealed class WorkspaceImageService(
             cancellationToken);
         var actualFormat = WorkspaceImageFormats.Detect(read.Prefix)
             ?? throw new WorkspaceImageException(
-                $"Image '{normalized}' has an unsupported or invalid image signature.");
+                $"Image '{normalized}' has an unsupported or invalid image signature.", "UNSUPPORTED_FORMAT");
 
         if (actualFormat.Format != expectedFormat.Format)
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' extension does not match its detected {actualFormat.MimeType} format.");
+                $"Image '{normalized}' extension does not match its detected {actualFormat.MimeType} format.", "UNSUPPORTED_FORMAT");
         }
 
         return new LoadedImage(
@@ -234,7 +242,7 @@ public sealed class WorkspaceImageService(
         if (!File.Exists(absolute))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' does not exist.");
+                $"Image '{normalized}' does not exist.", "NOT_FOUND");
         }
 
         if (!WorkspaceImageFormats.TryFromExtension(
@@ -242,7 +250,7 @@ public sealed class WorkspaceImageService(
                 out _))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' has an unsupported file extension.");
+                $"Image '{normalized}' has an unsupported file extension.", "UNSUPPORTED_FORMAT");
         }
 
         try
@@ -254,7 +262,7 @@ public sealed class WorkspaceImageService(
                 or UnauthorizedAccessException)
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' could not be deleted.");
+                $"Image '{normalized}' could not be deleted.", "PERMISSION_DENIED");
         }
 
         return Task.FromResult(
@@ -263,7 +271,8 @@ public sealed class WorkspaceImageService(
 
     private string MoveWithoutOverwrite(
         string temporaryPath,
-        string requestedName)
+        string requestedName,
+        string? targetPath)
     {
         lock (FinalMoveGate)
         {
@@ -274,7 +283,7 @@ public sealed class WorkspaceImageService(
                     : ImageFileNamePolicy.WithCollisionSuffix(
                         requestedName,
                         suffix);
-                var relativePath = $"images/{fileName}";
+                var relativePath = targetPath ?? $"images/{fileName}";
                 var absolutePath = pathGuard.ResolveImagePath(
                     relativePath);
 
@@ -290,6 +299,12 @@ public sealed class WorkspaceImageService(
                     File.Exists(absolutePath)
                     || Directory.Exists(absolutePath))
                 {
+                    if (targetPath is not null)
+                    {
+                        throw new WorkspaceImageException(
+                            "Destination already exists.", "ALREADY_EXISTS");
+                    }
+
                     continue;
                 }
                 catch (Exception exception) when (
@@ -310,7 +325,7 @@ public sealed class WorkspaceImageService(
         var options = new EnumerationOptions
         {
             RecurseSubdirectories = false,
-            IgnoreInaccessible = true,
+            IgnoreInaccessible = false,
             AttributesToSkip = FileAttributes.ReparsePoint,
             ReturnSpecialDirectories = false
         };
@@ -331,12 +346,34 @@ public sealed class WorkspaceImageService(
                     or DirectoryNotFoundException
                     or IOException)
             {
-                continue;
+                throw new WorkspaceImageException(
+                    "Image directory could not be enumerated.",
+                    "PERMISSION_DENIED");
             }
 
             foreach (var entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0
+                    || entry.Name.Equals(".git",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var relativePath = Path.GetRelativePath(
+                        config.KnowledgeBase.Root,
+                        entry.FullName)
+                    .Replace('\\', '/');
+                try
+                {
+                    pathGuard.ValidateImagePath(relativePath);
+                }
+                catch (KnowledgeBaseAccessException)
+                {
+                    continue;
+                }
+
                 if (entry is DirectoryInfo childDirectory)
                 {
                     directories.Push(childDirectory);
@@ -350,12 +387,6 @@ public sealed class WorkspaceImageService(
                 {
                     continue;
                 }
-
-                var relativePath = Path.GetRelativePath(
-                        config.KnowledgeBase.Root,
-                        info.FullName)
-                    .Replace('\\', '/');
-                pathGuard.ValidateImagePath(relativePath);
 
                 yield return new ImageListItem(
                     relativePath,
@@ -470,7 +501,7 @@ public sealed class WorkspaceImageService(
         if (!config.KnowledgeBase.AllowWrites)
         {
             throw new WorkspaceImageException(
-                "Workspace writes are disabled. Set knowledgeBase.allowWrites to true to enable mutation tools.");
+                "Workspace writes are disabled. Set knowledgeBase.allowWrites to true to enable mutation tools.", "PERMISSION_DENIED");
         }
     }
 

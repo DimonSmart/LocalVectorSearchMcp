@@ -34,7 +34,6 @@ public static class ServiceRegistration
             sp => sp.GetRequiredService<MarkdownChunker>());
         services.AddSingleton<IMarkdownDocumentLoader, MarkdownDocumentLoader>();
         services.AddSingleton<IMarkdownElementParser, MarkdownElementParser>();
-        services.AddSingleton<IMarkdownImageReferenceUpdater, MarkdownImageReferenceUpdater>();
         services.AddSingleton<KnowledgeBasePathGuard>();
         services.AddSingleton<IndexOperationGate>();
         services.AddSingleton<InMemoryIndexSynchronizationState>();

@@ -122,6 +122,8 @@ Verify:
 9. For `delete_section`, verify nested headings and raw Markdown are removed, EOF deletion works, stale/legacy/ambiguous pointers are rejected, an overlapping inner operation rejects the whole patch, a boundary sibling edit succeeds, and CRLF plus UTF-8 BOM are preserved.
 10. `kb_list_files` returns non-Markdown files as `asset`.
 
+Check that `kb_read.elements[].kind` is a string enum (document, front_matter, heading, paragraph, code_block, list_item, table, block_quote) and `kb_search.topK=0` returns INVALID_ARGUMENT while `topK>50` caps at 50. Expected errors use IsError=true and text JSON `{code,message}`.
+
 ## 8. Verify image save
 
 Use a disposable writable workspace and pass a small PNG through ChatGPT's OpenAI file parameter:
@@ -144,11 +146,13 @@ Save the same name again and confirm the original remains unchanged and the new 
 
 Supported save formats are PNG, JPEG, WebP, and GIF. SVG and unknown signatures must be rejected. The hard transfer limit is 25 MiB.
 
+Test `kb_save_image.targetPath=chapters/diagram.png` creates its parent and saves at exactly that path. Repeating the same target returns ALREADY_EXISTS, and passing fileName alongside targetPath is invalid. Keep the original default save collision suffix behavior.
+
 ## 9. Verify image list and load
 
 Set `knowledgeBase.allowWrites: false` and confirm both tools still work.
 
-`kb_list_images` should recursively list only supported image extensions beneath `images/`, use stable ordering, and paginate with an opaque cursor. The default page size is 50; valid values are 1..200.
+`kb_list_images` should recursively list only supported image extensions throughout `knowledgeBase.root`, use stable ordering, and paginate with an opaque cursor. The default page size is 50; valid values are 1..200.
 
 Call:
 
@@ -160,26 +164,28 @@ Confirm the first result content block is a real MCP `ImageContentBlock`, not on
 
 For an end-to-end ChatGPT vision smoke test, copy `docs/test-assets/red-circle.png` to `<knowledgeBase.root>/images/red-circle.png`, restart/refresh the MCP connection, call `kb_load_image path=images/red-circle.png`, and ask what is visible without giving the file name or alt text as a hint. The expected visual answer is a red circle on a white background. If the raw stdio test below sees `ImageContentBlock` but ChatGPT still exposes only metadata, the loss is after the MCP server/stdio boundary.
 
-A mismatched extension/signature, file over 25 MiB, traversal path, outside-`images/` path, or symlink/junction/reparse escape must be rejected.
+A mismatched extension/signature, file over 25 MiB, traversal path, outside-root path, or symlink/junction/reparse escape must be rejected.
+
+Also test root-level images, images in `chapters/`, and files under `.idd/`; list/load must work even if `images/` does not exist. Never enumerate `.git/`, SQLite index/sidecars or reparse points.
 
 ## 10. Verify image delete
 
 With writes disabled, `kb_delete_image` must return a controlled error and leave the file untouched.
 
-Also verify `kb_move_image` in a writable disposable workspace: move an image between two different subdirectories under `knowledgeBase.root`, confirm the old path disappears and the new path has the same SHA-256, confirm supported inline Markdown image references are rewritten relative to each document, and verify an outside-root target, reparse-point path, mismatched format, stale `expectedSha256`, and existing target are all rejected without partial changes. Repeat with `updateReferences=false` and confirm Markdown plus reconciliation remain untouched.
+Also verify `kb_move_image` in a writable disposable workspace: move an image between two different subdirectories under `knowledgeBase.root`, confirm the old path disappears and the new path has the same SHA-256, confirm Markdown remains byte-identical and no indexing is scheduled. Outside-root targets, reparse-point paths, format mismatches, stale expectedSha256, and occupied targets must fail. updateReferences=false is permitted; true fails with INVALID_ARGUMENT directing the client to kb_patch.
 
-With writes enabled, delete a nested image path and confirm:
+With writes enabled, delete a nested image path even when referenced from Markdown (including inline/reference-style/HTML) and confirm:
 
 - only the named file disappears;
 - its parent directory is not automatically removed;
 - `kb_list_images` no longer returns it;
 - `kb_list_files` no longer returns it.
 
-Missing files, directories, unsupported extensions, outside-`images/` paths, and linked/reparse paths must be rejected.
+Missing files, directories, unsupported extensions, outside-root paths, and linked/reparse paths must be rejected.
 
 ## 11. Verify index isolation
 
-Compare index status/search before and after image save/list/load/delete. Image operations must not:
+Compare index status/search before and after all five image operations. Image operations must not:
 
 - create indexed documents;
 - create FTS/vector chunks;

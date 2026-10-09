@@ -106,7 +106,7 @@ kb_move_image
 _meta["openai/fileParams"] = ["file"]
 ```
 
-ChatGPT passes the OpenAI file object containing `download_url` and `file_id`, with optional `mime_type` and `file_name`. The server downloads the temporary URL over HTTPS, enforces a 25 MiB hard limit, detects the real image format from its signature, computes SHA-256, and stores it in:
+ChatGPT passes the OpenAI file object containing `download_url` and `file_id`, with optional `mime_type` and `file_name`. An optional explicit `targetPath` chooses an exact root-relative image path without overwriting/collision suffixes; supplying `fileName` and `targetPath` together is invalid. The returned `markdown` is root-relative and must be adjusted for nested Markdown documents. The server downloads the temporary URL over HTTPS, enforces a 25 MiB hard limit, detects the real image format from its signature, computes SHA-256, and stores it in:
 
 ```text
 <knowledgeBase.root>/images/
@@ -140,7 +140,7 @@ Existing files are not overwritten. A collision produces `chapter-10-01-2.png`, 
 
 ### Workspace → ChatGPT
 
-`kb_list_images` recursively lists supported image assets beneath `images/` with cursor pagination. It is read-only.
+`kb_list_images` recursively lists supported image assets under all of `knowledgeBase.root` with cursor pagination. It is read-only.
 
 `kb_load_image("images/chapter-10-01.png")` revalidates size and signature, computes SHA-256, and returns the actual image as the first standard MCP `ImageContentBlock`, followed by a JSON text block with `path`, `mimeType`, `bytes`, and `sha256`. The tool deliberately does not return `StructuredContent`: this content-first shape avoids ChatGPT connector wrappers collapsing a mixed image+structured result to metadata only. ChatGPT can therefore inspect or analyze an existing workspace image without a custom base64 protocol.
 
@@ -148,9 +148,9 @@ Both list and load work when `knowledgeBase.allowWrites=false`.
 
 ### Delete
 
-`kb_delete_image` deletes exactly one supported image file beneath `images/` and requires writes to be enabled. Nested paths created by external tools are supported. Parent directories are not removed automatically.
+`kb_delete_image` deletes exactly one supported binary image file within `knowledgeBase.root` without searching or changing Markdown links and requires writes to be enabled. Nested paths created by external tools are supported. Parent directories are not removed automatically.
 
-`kb_move_image` requires writes to be enabled and can move a supported image between any safe source and target paths inside `knowledgeBase.root`. Paths outside that root are never allowed. By default it also updates supported inline Markdown image references; set `updateReferences=false` for a binary-only move.
+`kb_move_image` requires writes to be enabled and can move a supported image between any safe source and target paths inside `knowledgeBase.root`. Paths outside that root are never allowed. It performs a binary-only move; omitted or false updateReferences works, true is rejected. Use separate kb_read/kb_patch calls to repair document-relative links, without multi-file transactions.
 
 Images remain ordinary assets. They are visible in `kb_list_files` but are not indexed, embedded, or added to FTS/vector search.
 

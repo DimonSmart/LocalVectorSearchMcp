@@ -18,7 +18,7 @@ Large repositories often contain the answer, but not in the file the agent happe
 - `kb_read` returns focused slices from the current Markdown source instead of forcing the agent to read whole files or wait for indexing.
 - Element-level optimistic concurrency prevents an agent from overwriting a semantic target that changed after it was read, while unrelated document edits do not block the patch.
 - Optional file watching keeps the index synchronized with edits from VS Code, Obsidian, or other editors.
-- PNG, JPEG, WebP, and GIF files can be stored as non-indexed workspace assets under `images/`.
+- PNG, JPEG, WebP, and GIF files can be stored as non-indexed assets throughout `knowledgeBase.root` (default `images/`).
 - Every project gets its own local SQLite index.
 - No cloud database or mandatory YAML configuration is required.
 
@@ -151,7 +151,7 @@ Return the Markdown image reference.
 | Storage | Project-local SQLite |
 | Indexed content | Markdown |
 | Editable content | Markdown, guarded by exact element and subtree hashes |
-| Image assets | PNG, JPEG, WebP, GIF; save/list/load/delete use `images/`, safe moves may use any in-root path |
+| Image assets | PNG, JPEG, WebP, GIF; all image tools use root-relative paths, saving to `images/` by default |
 | Navigation | File listing, image listing, and heading outlines |
 | Transport | MCP over stdio |
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
@@ -168,11 +168,11 @@ The MCP server exposes fifteen tools. MCP reindexing is asynchronous: `kb_reinde
 - `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
 - `kb_list_files` — list Markdown files and non-indexed assets.
 - `kb_outline` — return a deterministic heading tree.
-- `kb_save_image` — save an image supplied through the OpenAI file parameter into `images/`.
+- `kb_save_image` — save an image supplied through the OpenAI file parameter (optional `targetPath`).
 - `kb_list_images` — list supported image assets recursively with cursor pagination.
 - `kb_load_image` — return an existing image as a real MCP image content block.
-- `kb_delete_image` — delete one image asset under `images/`.
-- `kb_move_image` — safely rename or move a supported image anywhere inside `knowledgeBase.root`, optionally updating Markdown image references.
+- `kb_delete_image` — delete one binary image under root without changing Markdown.
+- `kb_move_image` — safely move one binary image anywhere inside root without changing Markdown references.
 
 For low-level MCP or connector calls, a tool with no user arguments still uses an explicit empty `arguments` object. The canonical `kb_status` wire call is:
 
@@ -187,50 +187,28 @@ Clients should not rely on omitting the argument object; `{}` is the interoperab
 
 ## Image assets
 
-Image assets are intentionally simple files in the workspace rather than a media subsystem.
+All five image tools work with PNG, JPEG, WebP and GIF files **anywhere under `knowledgeBase.root`**. Paths are root-relative; `.git/`, internal SQLite files, traversal and symlink/junction/reparse-point paths are forbidden. `images/` is the recommended default folder, not an API restriction. Images are ordinary assets and are never indexed or embedded.
 
-`kb_save_image` accepts PNG, JPEG, WebP, and GIF, detects the real format from the file signature, and limits the incoming file to 25 MiB. It saves only directly under:
+`kb_save_image(file, fileName?, altText?, targetPath?)` requires `allowWrites=true` and preserves the OpenAI `openai/fileParams` metadata. Downloads remain HTTPS-only with SSRF/redirect protection, a 25 MiB streaming limit, MIME/signature checks and SHA-256. Without `targetPath`, saves default to `images/`, using `fileName` or source basename and numeric suffixes for collisions (`cover.png`, `cover-2.png`). Explicit `targetPath` includes the final file name and extension, may create intermediate safe directories, and **never renames or overwrites** an occupied destination (`ALREADY_EXISTS`). Combining `targetPath` and `fileName` is invalid.
 
-```text
-<knowledgeBase.root>/images/
-```
+The save result includes `path`, `mimeType`, `bytes`, lowercase `sha256`, and `markdown`. The generated Markdown destination is relative to the **workspace root**. For a document in `chapters/`, the caller must recompute and escape the relative destination from that document.
 
-An explicit `fileName` must be a portable basename. It cannot choose a subdirectory, contain traversal/path components, use a Windows device name, or declare an extension that conflicts with the detected format. If the name is omitted, a safe basename from the OpenAI file metadata is used when possible; otherwise a generated name is used.
+`kb_list_images(cursor?, pageSize?)` lists supported image extensions throughout the root, sorted case-insensitively with ordinal tie-breaking. Cursor pagination defaults to 50 items (range 1–200) and supports the last cursor item being deleted. `kb_load_image(path)` validates signature, extension and size; its MCP result contains a real `ImageContentBlock` first and a JSON metadata text block second, **without** `StructuredContent`.
 
-Existing files are never overwritten. Collisions are resolved with suffixes:
+`kb_move_image` renames or moves **only one binary image**, anywhere under root. Input is `{sourcePath,targetPath,expectedSha256?,updateReferences?}`. `expectedSha256` is an optional 64-digit hex optimistic concurrency check; mismatches produce `CONFLICT`. The deprecated `updateReferences` may be omitted or set to `false`; `true` produces `INVALID_ARGUMENT`. The response is `{previousPath,path,sha256}` and contains no Markdown/index fields.
 
-```text
-cover.png
-cover-2.png
-cover-3.png
-```
+`kb_delete_image(path)` simply deletes the supported binary file, without scanning for Markdown references, checking if it is used, or removing its parent directories. Its result remains `{path,deleted:true}`. Both binary move and delete can leave broken Markdown links. Image operations never schedule indexing.
 
-The final move uses no-overwrite semantics, so concurrent saves cannot replace an existing asset.
+To repair links, use separate `kb_read` / `kb_patch` calls on correctly addressable Markdown elements. A move-and-patch workflow is not a multi-file transaction: find relevant documents before the move, move the image, patch the necessary elements with current semantic anchors, and verify the new paths. Raw link constructs that cannot be addressed safely should not be rewritten by replacing arbitrary larger sections. Git can be used for recovery.
 
-`kb_move_image` is the semantic rename/move operation. Unlike save/list/load/delete it is not restricted to `images/`: both paths may be anywhere inside `knowledgeBase.root`. By default it updates supported inline Markdown image references in the configured source set, preserving alt text, title, surrounding formatting, BOM, and line endings. Set `updateReferences=false` for a binary-only move. Reference-style images and raw HTML `<img>` are intentionally not rewritten in the first version.
-
-
-The response contains `path`, detected `mimeType`, byte count, lowercase SHA-256, and a Markdown reference such as:
-
-```markdown
-![Cover](images/cover.png)
-```
-
-`kb_list_images` and `kb_load_image` are read-only and work even when `knowledgeBase.allowWrites` is false. Listing is recursive so externally created paths such as `images/chapter-01/diagram.webp` can be discovered. The default page size is 50 and the maximum is 200.
-
-`kb_load_image` revalidates size, signature, and extension/signature agreement, computes SHA-256, and returns the real bytes as MCP `ImageContentBlock`.
-
-`kb_save_image`, `kb_delete_image`, and `kb_move_image` require:
+Saving, moving, and deleting require:
 
 ```yaml
 knowledgeBase:
   allowWrites: true
 ```
 
-Save/list/load/delete image paths are guarded against traversal, symlink/junction/reparse-point escape, and access outside `images/`. `kb_move_image` uses `knowledgeBase.root` as its boundary instead: source and target may be in different workspace subdirectories but can never resolve outside the configured root, and an existing target is never overwritten. The OpenAI temporary download URL must be absolute HTTPS and cannot resolve to loopback/private/link-local destinations. Redirect targets are revalidated. Signed download URLs and query secrets are not logged or returned in controlled errors.
-
-Images are visible through `kb_list_files` as `asset`, but the binary assets do not create search chunks, enter FTS, or call embeddings. `kb_move_image` can update supported inline Markdown image destinations; only Markdown documents actually changed by that operation are scheduled for reconciliation.
-
+Expected tool errors return `IsError=true` and a JSON text object with `code` and `message`, e.g. `INVALID_PATH`, `UNSUPPORTED_FORMAT`, `ALREADY_EXISTS`, `CONFLICT`, `PERMISSION_DENIED`. Image tools have no `indexSynchronized`; for Markdown mutations its value is `true` only when reconciliation has already been confirmed or was unnecessary, and `false` when source changes succeeded but reconciliation is still unconfirmed.
 ## Local-first and project-isolated
 
 Each server process belongs to one project and one configured Markdown root. It cannot select or search another project's index through the MCP API.
@@ -267,7 +245,7 @@ Markdown files remain the source of truth for indexed knowledge. `kb_read` and `
 
 For structural edits, `replace_element` replaces exactly one Markdown element and `delete` removes exactly one element; deleting a heading with `delete` preserves its section body. `replace_section` replaces a heading together with its complete owned section subtree, while `delete_section` removes that whole subtree. Both section operations require a canonical v2 heading pointer and validate `subtreeHash`.
 
-Image save/delete are independent asset mutations and do not synchronize the Markdown index. `kb_move_image` synchronizes only Markdown documents whose image destinations it actually changes.
+None of the five image tools changes Markdown or schedules Markdown index synchronization.
 
 ### `kb_patch` examples
 
@@ -344,12 +322,12 @@ Delete:
 }
 ```
 
-Supported `kind` values are `replace`, `replace_element`, `replace_section`, `insert_before`, `insert_after`, and `delete`. `replace`, `replace_element`, `replace_section`, and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries. Existing valid single-element `replace` requests remain compatible; multi-element replacement through `replace` is intentionally rejected and should use `replace_section` or other explicit operations.
+Supported `kind` values are `replace`, `replace_element`, `replace_section`, `delete_section`, `insert_before`, `insert_after`, and `delete`. `replace`, `replace_element`, `replace_section`, and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries. Existing valid single-element `replace` requests remain compatible; multi-element replacement through `replace` is intentionally rejected and should use `replace_section` or other explicit operations.
 
 An unrelated edit elsewhere in the file does not invalidate a `Self` mutation when the target `selfHash` is still valid. If the target moved because content was inserted above it, `kb_patch` relocates it only when the same element kind and exact `selfHash` identify exactly one current element. `replace_section` then also verifies the original `subtreeHash`, so edits anywhere in the owned section range—including raw/non-indexed Markdown—are rejected rather than overwritten.
 
 ## Current scope
 
-The current version supports indexed local Markdown plus ordinary image assets. Save/list/load/delete use `images/`; `kb_move_image` may relocate a supported image to another safe path inside `knowledgeBase.root`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
+The current version supports indexed local Markdown plus ordinary image assets. All five image tools use `knowledgeBase.root` as the boundary; saving defaults to `images/`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
 
 PDF/DOCX/OCR, arbitrary binary upload, image embeddings/search, image resizing/transcoding/thumbnails, automatic Markdown image insertion, a media database, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.

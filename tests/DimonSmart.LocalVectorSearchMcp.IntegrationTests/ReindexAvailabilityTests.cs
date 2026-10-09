@@ -87,14 +87,10 @@ public sealed class ReindexAvailabilityTests
         Assert.True(result.IsError is true);
         var text = Assert.IsType<TextContentBlock>(
             Assert.Single(result.Content)).Text;
-        Assert.Contains(
-            "Index rebuild is currently in progress",
-            text,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "indexing.isRunning = false",
-            text,
-            StringComparison.Ordinal);
+        using var json = System.Text.Json.JsonDocument.Parse(text);
+        Assert.Equal(
+            "INDEX_NOT_READY",
+            json.RootElement.GetProperty("code").GetString());
     }
 
     private sealed class FixedSemanticPointerReader : ISemanticPointerReader
