@@ -12,9 +12,15 @@ public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
             throw new KnowledgeBaseAccessException("Path is required.");
         }
 
-        if (Path.IsPathRooted(path))
+        if (Path.IsPathRooted(path) || path.StartsWith('/') || path.StartsWith('\\')
+            || (path.Length >= 2 && char.IsLetter(path[0]) && path[1] == ':'))
         {
             throw new KnowledgeBaseAccessException("Absolute paths are not allowed.");
+        }
+
+        if (path.Any(char.IsControl))
+        {
+            throw new KnowledgeBaseAccessException("Control characters are not allowed in paths.");
         }
 
         if (path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
@@ -66,32 +72,43 @@ public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
         return ResolveWorkspacePath(normalized);
     }
 
+    // images/ is the default save directory, not an access boundary.
     public string ValidateImagePath(string path)
     {
         var normalized = ValidateRelativePath(path);
-        if (!normalized.Equals("images", PathComparison())
-            && !normalized.StartsWith("images/", PathComparison()))
+        if (normalized is "." or "" || normalized.EndsWith('/')
+            || normalized.Split('/').Any(part => part is "." or "" or "..")
+            || path.Contains('\\'))
         {
-            throw new KnowledgeBaseAccessException(
-                "Image paths must be inside the workspace images/ directory.");
+            throw new KnowledgeBaseAccessException("A normalized workspace-relative image file path is required.");
         }
 
         return normalized;
     }
 
     public string ResolveImagePath(string path)
-    {
-        var normalized = ValidateImagePath(path);
-        return ResolveWorkspacePath(normalized);
-    }
+        => ResolveWorkspacePath(ValidateImagePath(path));
 
     public string ValidateWorkspaceImagePath(string path)
-        => ValidateRelativePath(path);
+        => ValidateImagePath(path);
 
     public string ResolveWorkspaceImagePath(string path)
+        => ResolveImagePath(path);
+
+    public string ValidateImageDirectory(string? directory)
     {
-        var normalized = ValidateWorkspaceImagePath(path);
-        return ResolveWorkspacePath(normalized);
+        var value = directory ?? "images";
+        if (value == ".") return value;
+        var normalized = ValidateImagePath(value);
+        return normalized;
+    }
+
+    public string ResolveImageDirectory(string? directory)
+    {
+        var normalized = ValidateImageDirectory(directory);
+        return normalized == "."
+            ? Path.GetFullPath(config.KnowledgeBase.Root)
+            : ResolveWorkspacePath(normalized);
     }
 
     private static void EnsureNoReparsePoints(string root, string absolute)
@@ -103,12 +120,15 @@ public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
             StringSplitOptions.RemoveEmptyEntries))
         {
             current = Path.Combine(current, part);
-            if (!File.Exists(current) && !Directory.Exists(current))
+            FileAttributes attributes;
+            try
             {
-                continue;
+                attributes = File.GetAttributes(current);
             }
+            catch (FileNotFoundException) { continue; }
+            catch (DirectoryNotFoundException) { continue; }
 
-            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
                 throw new KnowledgeBaseAccessException(
                     "Paths through symbolic links, junctions, or reparse points are not allowed.");

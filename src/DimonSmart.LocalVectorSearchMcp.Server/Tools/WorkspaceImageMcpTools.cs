@@ -167,10 +167,10 @@ public sealed class WorkspaceImageMcpTools(
     [Description(
         "Moves a supported image only within the configured knowledgeBase.root. " +
         "Paths outside the configured root are never allowed. " +
-        "By default updates supported inline Markdown image references and never overwrites an existing target.")]
+        "Moves only the binary asset; does not read or modify Markdown, and never overwrites an existing target. Use kb_patch to edit references.")]
     public async Task<CallToolResult> MoveImageAsync(
         [Description(
-            "Image move request containing workspace-relative sourcePath and targetPath, optional expectedSha256, and updateReferences (default true).")]
+            "Image move request containing workspace-relative sourcePath and targetPath, optional expectedSha256, and deprecated updateReferences (true is rejected; absent/false move the file only).")]
         MoveImageRequest request,
         CancellationToken cancellationToken)
     {
