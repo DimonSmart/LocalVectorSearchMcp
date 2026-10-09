@@ -5,7 +5,8 @@ public sealed record SaveImageRequest(
     string? DeclaredMimeType,
     string? SourceFileName,
     string? FileName,
-    string? AltText);
+    string? AltText,
+    string? TargetPath = null);
 
 public sealed record ImageSaveResponse(
     string Path,
@@ -42,20 +43,14 @@ public sealed record MoveImageRequest(
     string SourcePath,
     string TargetPath,
     string? ExpectedSha256 = null,
-    bool UpdateReferences = true);
+    [property: System.ComponentModel.Description(
+        "Deprecated. Omit or set false; true is rejected. Update Markdown links separately using kb_patch.")]
+    bool? UpdateReferences = null);
 
 public sealed record ImageMoveResponse(
     string PreviousPath,
     string Path,
-    string Sha256,
-    int ReferencesUpdated,
-    IReadOnlyList<string> DocumentsUpdated,
-    bool IndexSynchronized,
-    string? IndexError);
-
-public sealed record MarkdownImageReferenceUpdate(
-    string Markdown,
-    int ReferencesUpdated);
+    string Sha256);
 
 public sealed record RemoteFileDownloadResult(
     long Bytes,
@@ -70,15 +65,6 @@ public interface IRemoteFileDownloader
         string destinationPath,
         long maxBytes,
         CancellationToken cancellationToken);
-}
-
-public interface IMarkdownImageReferenceUpdater
-{
-    MarkdownImageReferenceUpdate Update(
-        string markdown,
-        string documentPath,
-        string sourcePath,
-        string targetPath);
 }
 
 public interface IWorkspaceImageMoveService
