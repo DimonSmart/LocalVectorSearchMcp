@@ -316,12 +316,12 @@ Delete:
 }
 ```
 
-Supported `kind` values are `replace`, `replace_element`, `replace_section`, `insert_before`, `insert_after`, and `delete`. `replace`, `replace_element`, `replace_section`, and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries. Existing valid single-element `replace` requests remain compatible; multi-element replacement through `replace` is intentionally rejected and should use `replace_section` or other explicit operations.
+Supported `kind` values are `replace`, `replace_element`, `replace_fragment`, `replace_section`, `delete_section`, `insert_before`, `insert_after`, and `delete`. `replace_fragment` requires a non-empty `oldMarkdown` and mandatory `markdown` (an empty replacement is allowed). `replace`, `replace_element`, `replace_section`, and insert operations require `markdown`; delete does not. The special `document` pointer remains unhashed and can be used with `insert_before` or `insert_after` at document boundaries. Existing valid single-element `replace` requests remain compatible; multi-element replacement through `replace` is intentionally rejected and should use `replace_section` or other explicit operations.
 
 An unrelated edit elsewhere in the file does not invalidate a `Self` mutation when the target `selfHash` is still valid. If the target moved because content was inserted above it, `kb_patch` relocates it only when the same element kind and exact `selfHash` identify exactly one current element. `replace_section` then also verifies the original `subtreeHash`, so edits anywhere in the owned section range—including raw/non-indexed Markdown—are rejected rather than overwritten.
 
 ## Current scope
 
-The current version supports indexed local Markdown plus ordinary image assets. Save/list/load/delete use `images/`; `kb_move_image` may relocate a supported image to another safe path inside `knowledgeBase.root`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
+The current version supports indexed local Markdown plus ordinary image assets. All image tools use any safe in-root path; saves default to `images/` but may target another directory. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
 
 PDF/DOCX/OCR, arbitrary binary upload, image embeddings/search, image resizing/transcoding/thumbnails, automatic Markdown image insertion, a media database, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
