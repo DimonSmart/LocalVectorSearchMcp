@@ -184,7 +184,9 @@ public sealed class ServerLayerTests
         Assert.True(result.IsError is true);
         Assert.Null(result.StructuredContent);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("Document 'missing.md' was not found.", text);
+        using var error = JsonDocument.Parse(text);
+        Assert.Equal("NOT_FOUND",
+            error.RootElement.GetProperty("code").GetString());
         Assert.DoesNotContain(
             "An error occurred invoking",
             text,

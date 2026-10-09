@@ -173,7 +173,7 @@ public sealed class WorkspaceImageService(
         if (!File.Exists(absolute))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' does not exist.");
+                $"Image '{normalized}' does not exist.", "NOT_FOUND");
         }
 
         var extension = Path.GetExtension(normalized);
@@ -182,7 +182,7 @@ public sealed class WorkspaceImageService(
                 out var expectedFormat))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' has an unsupported file extension.");
+                $"Image '{normalized}' has an unsupported file extension.", "UNSUPPORTED_FORMAT");
         }
 
         var fileInfo = new FileInfo(absolute);
@@ -198,12 +198,12 @@ public sealed class WorkspaceImageService(
             cancellationToken);
         var actualFormat = WorkspaceImageFormats.Detect(read.Prefix)
             ?? throw new WorkspaceImageException(
-                $"Image '{normalized}' has an unsupported or invalid image signature.");
+                $"Image '{normalized}' has an unsupported or invalid image signature.", "UNSUPPORTED_FORMAT");
 
         if (actualFormat.Format != expectedFormat.Format)
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' extension does not match its detected {actualFormat.MimeType} format.");
+                $"Image '{normalized}' extension does not match its detected {actualFormat.MimeType} format.", "UNSUPPORTED_FORMAT");
         }
 
         return new LoadedImage(
@@ -242,7 +242,7 @@ public sealed class WorkspaceImageService(
         if (!File.Exists(absolute))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' does not exist.");
+                $"Image '{normalized}' does not exist.", "NOT_FOUND");
         }
 
         if (!WorkspaceImageFormats.TryFromExtension(
@@ -250,7 +250,7 @@ public sealed class WorkspaceImageService(
                 out _))
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' has an unsupported file extension.");
+                $"Image '{normalized}' has an unsupported file extension.", "UNSUPPORTED_FORMAT");
         }
 
         try
@@ -262,7 +262,7 @@ public sealed class WorkspaceImageService(
                 or UnauthorizedAccessException)
         {
             throw new WorkspaceImageException(
-                $"Image '{normalized}' could not be deleted.");
+                $"Image '{normalized}' could not be deleted.", "PERMISSION_DENIED");
         }
 
         return Task.FromResult(
@@ -501,7 +501,7 @@ public sealed class WorkspaceImageService(
         if (!config.KnowledgeBase.AllowWrites)
         {
             throw new WorkspaceImageException(
-                "Workspace writes are disabled. Set knowledgeBase.allowWrites to true to enable mutation tools.");
+                "Workspace writes are disabled. Set knowledgeBase.allowWrites to true to enable mutation tools.", "PERMISSION_DENIED");
         }
     }
 
