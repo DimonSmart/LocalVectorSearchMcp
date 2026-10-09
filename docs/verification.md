@@ -148,7 +148,7 @@ Supported save formats are PNG, JPEG, WebP, and GIF. SVG and unknown signatures 
 
 Set `knowledgeBase.allowWrites: false` and confirm both tools still work.
 
-`kb_list_images` should recursively list only supported image extensions beneath `images/`, use stable ordering, and paginate with an opaque cursor. The default page size is 50; valid values are 1..200.
+`kb_list_images` should recursively list supported image extensions throughout `knowledgeBase.root`, use stable ordering, and paginate with an opaque cursor. The default page size is 50; valid values are 1..200.
 
 Call:
 
@@ -160,13 +160,13 @@ Confirm the first result content block is a real MCP `ImageContentBlock`, not on
 
 For an end-to-end ChatGPT vision smoke test, copy `docs/test-assets/red-circle.png` to `<knowledgeBase.root>/images/red-circle.png`, restart/refresh the MCP connection, call `kb_load_image path=images/red-circle.png`, and ask what is visible without giving the file name or alt text as a hint. The expected visual answer is a red circle on a white background. If the raw stdio test below sees `ImageContentBlock` but ChatGPT still exposes only metadata, the loss is after the MCP server/stdio boundary.
 
-A mismatched extension/signature, file over 25 MiB, traversal path, outside-`images/` path, or symlink/junction/reparse escape must be rejected.
+A mismatched extension/signature, file over 25 MiB, traversal path, outside-root path, or symlink/junction/reparse escape must be rejected.
 
 ## 10. Verify image delete
 
 With writes disabled, `kb_delete_image` must return a controlled error and leave the file untouched.
 
-Also verify `kb_move_image` in a writable disposable workspace: move an image between two different subdirectories under `knowledgeBase.root`, confirm the old path disappears and the new path has the same SHA-256, confirm supported inline Markdown image references are rewritten relative to each document, and verify an outside-root target, reparse-point path, mismatched format, stale `expectedSha256`, and existing target are all rejected without partial changes. Repeat with `updateReferences=false` and confirm Markdown plus reconciliation remain untouched.
+Also verify `kb_move_image` in a writable disposable workspace: move an image between two different subdirectories under `knowledgeBase.root`, confirm the old path disappears and the new path has the same SHA-256, confirm all Markdown source bytes remain unchanged, and verify an outside-root target, reparse-point path, mismatched format, stale `expectedSha256`, and existing target are all rejected without partial changes. Repeat with `updateReferences=false`, then `updateReferences=true`; only the latter must be rejected before filesystem changes. Check cursor v1 rejection and v2 pagination.
 
 With writes enabled, delete a nested image path and confirm:
 
@@ -175,7 +175,7 @@ With writes enabled, delete a nested image path and confirm:
 - `kb_list_images` no longer returns it;
 - `kb_list_files` no longer returns it.
 
-Missing files, directories, unsupported extensions, outside-`images/` paths, and linked/reparse paths must be rejected.
+Missing files, directories, unsupported extensions, outside-root paths, and linked/reparse paths must be rejected.
 
 ## 11. Verify index isolation
 
@@ -207,3 +207,11 @@ dotnet test
 ```
 
 Release CI additionally runs formatting, builds, and tests on Linux, Windows, and macOS.
+
+
+## v2 fragment and image workflow verification
+
+1. Save a file into `directory: "assets/figures"` with `documentPath: "chapters/intro.md"` and verify the returned root-relative `path` and Markdown `../assets/figures/...` destination; then use `kb_patch replace_fragment` to insert that exact snippet into a concrete paragraph.
+2. Replace one of two different inline image references in the same paragraph. Verify the untouched image and surrounding bytes are identical. Test two disjoint fragments for one parent anchor in a single batch; duplicate, ambiguous and overlapping fragments must fail atomically.
+3. Confirm `insert_before(document)` preserves leading YAML front matter. Validate UTF-8 BOM, CRLF, read-only image list/load and the first actual `ImageContentBlock` in load output.
+4. Move an image and check `kb_move_image` returns only `previousPath`, `path`, `sha256`; references stay unchanged until a separate patch. A failed patch is a partial workflow success requiring a fresh read and retry.
