@@ -48,9 +48,28 @@ public sealed class KnowledgeMcpTools(
         SearchToolRequest request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.Query))
+        {
+            return ToolErrors.Create(
+                "INVALID_ARGUMENT", "query must not be empty.");
+        }
+
+        if (request.TopK is <= 0)
+        {
+            return ToolErrors.Create(
+                "INVALID_ARGUMENT", "topK must be greater than zero.");
+        }
+
+        if (!AreValidGlobs(request.IncludeGlobs)
+            || !AreValidGlobs(request.ExcludeGlobs))
+        {
+            return ToolErrors.Create(
+                "INVALID_ARGUMENT", "One or more glob patterns are invalid.");
+        }
+
         int? topK = request.TopK is null
             ? null
-            : Math.Clamp(request.TopK.Value, 1, 50);
+            : Math.Min(request.TopK.Value, 50);
         try
         {
             if (IsDestructiveRebuildRunning())
@@ -68,29 +87,21 @@ public sealed class KnowledgeMcpTools(
                 StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(response, JsonOptions.Default)
             };
         }
-        catch (IndexNotReadyException exception)
+        catch (IndexNotReadyException)
         {
-            return new CallToolResult
-            {
-                Content = [new TextContentBlock { Text = exception.Message }],
-                IsError = true
-            };
+            return ToolErrors.Create(
+                "INDEX_NOT_READY", "Index is currently unavailable.");
         }
-        catch (EmbeddingProviderException exception)
+        catch (EmbeddingProviderException)
         {
-            return new CallToolResult
-            {
-                Content =
-                [
-                    new TextContentBlock
-                    {
-                        Text =
-                            $"Semantic search is unavailable: {exception.Message} " +
-                            "Use mode=\"lexical\"; hybrid search falls back to lexical automatically."
-                    }
-                ],
-                IsError = true
-            };
+            return ToolErrors.Create(
+                "INDEX_NOT_READY",
+                "Semantic search is unavailable; use lexical mode.");
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or IOException)
+        {
+            return ToolErrors.FromException(exception);
         }
     }
 
@@ -130,7 +141,7 @@ public sealed class KnowledgeMcpTools(
         }
         catch (Exception exception) when (IsControlledToolException(exception))
         {
-            return ControlledToolError(exception);
+            return ToolErrors.FromException(exception);
         }
     }
 
@@ -230,37 +241,69 @@ public sealed class KnowledgeMcpTools(
             or SemanticPointerNotFoundException
             or KnowledgeBaseAccessException;
 
-    private static CallToolResult ControlledToolError(Exception exception)
-        => new()
+    private static bool AreValidGlobs(IReadOnlyList<string>? globs)
+    {
+        if (globs is null)
         {
-            Content = [new TextContentBlock { Text = exception.Message }],
-            IsError = true
-        };
+            return true;
+        }
+
+        return globs.All(glob =>
+            !string.IsNullOrWhiteSpace(glob)
+            && !glob.StartsWith('/')
+            && !glob.StartsWith('\\')
+            && !glob.Contains(':')
+            && !glob.Any(char.IsControl)
+            && !glob.Replace('\\', '/').Split('/').Contains(".."));
+    }
 
     private bool IsDestructiveRebuildRunning()
         => reindexCoordinator?.GetStatus().Current?.IsDestructiveRebuild == true;
 
     private static CallToolResult IndexRebuildInProgressError()
-        => new()
-        {
-            Content =
-            [
-                new TextContentBlock
-                {
-                    Text =
-                        "Index rebuild is currently in progress. " +
-                        "Retry after kb_status reports indexing.isRunning = false."
-                }
-            ],
-            IsError = true
-        };
+        => ToolErrors.Create(
+            "INDEX_NOT_READY",
+            "Index rebuild is in progress; check kb_status before retrying.");
 
-    [McpServerTool(Name = "kb_list_files")]
+    [McpServerTool(
+        Name = "kb_list_files",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(WorkspaceFileList))]
     [Description("Lists Markdown and asset files under the configured workspace root.")]
-    public Task<WorkspaceFileList> ListFilesAsync(
+    public async Task<CallToolResult> ListFilesAsync(
         ListFilesToolRequest request,
         CancellationToken cancellationToken)
-        => navigation.ListFilesAsync(request.PathPrefix, request.IncludeGlob, cancellationToken);
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(request.IncludeGlob)
+                && !AreValidGlobs([request.IncludeGlob]))
+            {
+                return ToolErrors.Create(
+                    "INVALID_ARGUMENT", "includeGlob is invalid.");
+            }
+
+            var response = await navigation.ListFilesAsync(
+                request.PathPrefix, request.IncludeGlob, cancellationToken);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock
+                {
+                    Text = System.Text.Json.JsonSerializer.Serialize(
+                        response, JsonOptions.Default)
+                }],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(
+                    response, JsonOptions.Default)
+            };
+        }
+        catch (Exception exception) when (
+            IsControlledToolException(exception)
+            || exception is ArgumentException or IOException
+                or UnauthorizedAccessException)
+        {
+            return ToolErrors.FromException(exception);
+        }
+    }
 
     [McpServerTool(Name = "kb_outline")]
     [Description("Returns a deterministic heading outline for one Markdown file.")]

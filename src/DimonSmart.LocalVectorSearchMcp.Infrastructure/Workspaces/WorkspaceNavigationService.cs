@@ -29,7 +29,7 @@ public sealed partial class WorkspaceNavigationService(
         var options = new EnumerationOptions
         {
             RecurseSubdirectories = false,
-            IgnoreInaccessible = true,
+            IgnoreInaccessible = false,
             AttributesToSkip = FileAttributes.ReparsePoint,
             ReturnSpecialDirectories = false
         };
@@ -51,7 +51,8 @@ public sealed partial class WorkspaceNavigationService(
                     or DirectoryNotFoundException
                     or IOException)
             {
-                continue;
+                throw new UnauthorizedAccessException(
+                    "Workspace file enumeration could not be completed.");
             }
 
             foreach (var entry in entries)
