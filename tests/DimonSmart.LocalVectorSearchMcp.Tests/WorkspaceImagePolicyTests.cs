@@ -138,7 +138,7 @@ public sealed class WorkspaceImagePolicyTests
             () => ImageListCursor.Decode("not-base64!"));
 
         var unsupported = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes("v2\nimages/a.png"))
+                Encoding.UTF8.GetBytes("v1\nimages/a.png"))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');

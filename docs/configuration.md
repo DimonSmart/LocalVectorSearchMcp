@@ -294,3 +294,8 @@ local-vector-search-mcp --reindex --force
 ```
 
 The same operation is available through `kb_reindex` with `force: true`.
+
+
+### Image asset paths
+
+All five image tools are scoped to safe workspace-relative paths under `knowledgeBase.root`, independently of Markdown include/exclude patterns. Saves default to `directory: "images"`; use `directory: "."` for the root or a nested directory such as `assets/figures`. Optional `documentPath: "chapters/intro.md"` makes the returned Markdown destination relative to that document rather than the root. Image moves never rewrite Markdown. Explicit `updateReferences: true` is rejected; use `kb_patch` separately. Image operations do not reindex Markdown.

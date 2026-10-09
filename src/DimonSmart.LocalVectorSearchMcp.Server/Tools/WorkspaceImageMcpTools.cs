@@ -18,7 +18,7 @@ public sealed class WorkspaceImageMcpTools(
         OutputSchemaType = typeof(ImageSaveResponse))]
     [McpMeta("openai/fileParams", JsonValue = """["file"]""")]
     [Description(
-        "Saves a PNG, JPEG, WebP, or GIF supplied through the OpenAI file parameter into the workspace images/ directory. " +
+        "Saves a PNG, JPEG, WebP, or GIF supplied through the OpenAI file parameter into the workspace (images/ by default). " +
         "Requires knowledgeBase.allowWrites=true and never overwrites an existing image.")]
     public async Task<CallToolResult> SaveImageAsync(
         [Description(
@@ -30,7 +30,11 @@ public sealed class WorkspaceImageMcpTools(
         string? fileName = null,
         [Description(
             "Optional alt text used to build the returned Markdown image reference.")]
-        string? altText = null)
+        string? altText = null,
+        [Description("Optional workspace-relative save directory; default images; . denotes root.")]
+        string? directory = null,
+        [Description("Optional .md workspace path used to make the returned Markdown destination relative.")]
+        string? documentPath = null)
     {
         if (string.IsNullOrWhiteSpace(file.DownloadUrl))
         {
@@ -52,7 +56,9 @@ public sealed class WorkspaceImageMcpTools(
                     file.MimeType,
                     file.FileName,
                     fileName,
-                    altText),
+                    altText,
+                    directory,
+                    documentPath),
                 cancellationToken);
             return Structured(response);
         }
@@ -69,7 +75,7 @@ public sealed class WorkspaceImageMcpTools(
         UseStructuredContent = true,
         OutputSchemaType = typeof(ImageListResponse))]
     [Description(
-        "Lists PNG, JPEG, WebP, and GIF assets recursively under workspace images/ using opaque cursor pagination.")]
+        "Lists PNG, JPEG, WebP, and GIF assets recursively under knowledgeBase.root using opaque cursor pagination.")]
     public async Task<CallToolResult> ListImagesAsync(
         CancellationToken cancellationToken,
         [Description("Opaque cursor returned by the previous page.")]
@@ -96,10 +102,10 @@ public sealed class WorkspaceImageMcpTools(
 
     [McpServerTool(Name = "kb_load_image")]
     [Description(
-        "Loads an existing supported image under workspace images/ and returns the real MCP image content first, followed by JSON metadata.")]
+        "Loads an existing supported image under knowledgeBase.root and returns the real MCP image content first, followed by JSON metadata.")]
     public async Task<CallToolResult> LoadImageAsync(
         [Description(
-            "Project-relative image path under images/, for example images/chapter-01.png.")]
+            "Project-relative image path under knowledgeBase.root, for example images/chapter-01.png.")]
         string path,
         CancellationToken cancellationToken)
     {
@@ -138,10 +144,10 @@ public sealed class WorkspaceImageMcpTools(
         UseStructuredContent = true,
         OutputSchemaType = typeof(ImageDeleteResponse))]
     [Description(
-        "Deletes one supported image file under workspace images/. Requires knowledgeBase.allowWrites=true and never removes parent directories.")]
+        "Deletes one supported image file under knowledgeBase.root. Requires knowledgeBase.allowWrites=true and never removes parent directories.")]
     public async Task<CallToolResult> DeleteImageAsync(
         [Description(
-            "Project-relative image path under images/.")]
+            "Project-relative image path under knowledgeBase.root.")]
         string path,
         CancellationToken cancellationToken)
     {
@@ -167,10 +173,10 @@ public sealed class WorkspaceImageMcpTools(
     [Description(
         "Moves a supported image only within the configured knowledgeBase.root. " +
         "Paths outside the configured root are never allowed. " +
-        "By default updates supported inline Markdown image references and never overwrites an existing target.")]
+        "Moves only the binary asset; does not read or modify Markdown, and never overwrites an existing target. Use kb_patch to edit references.")]
     public async Task<CallToolResult> MoveImageAsync(
         [Description(
-            "Image move request containing workspace-relative sourcePath and targetPath, optional expectedSha256, and updateReferences (default true).")]
+            "Image move request containing workspace-relative sourcePath and targetPath, optional expectedSha256, and deprecated updateReferences (true is rejected; absent/false move the file only).")]
         MoveImageRequest request,
         CancellationToken cancellationToken)
     {

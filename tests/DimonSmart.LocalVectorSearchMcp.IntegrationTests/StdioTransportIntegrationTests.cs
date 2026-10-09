@@ -120,6 +120,8 @@ public sealed class StdioTransportIntegrationTests
             HasOptionalSchemaProperty(
                 saveTool.JsonSchema,
                 "altText"));
+        Assert.True(HasOptionalSchemaProperty(saveTool.JsonSchema, "directory"));
+        Assert.True(HasOptionalSchemaProperty(saveTool.JsonSchema, "documentPath"));
 
         var listTool = Assert.Single(
             tools,
@@ -205,6 +207,7 @@ public sealed class StdioTransportIntegrationTests
             [
                 "replace",
                 "replace_element",
+                "replace_fragment",
                 "replace_section",
                 "delete_section",
                 "insert_before",
@@ -217,6 +220,7 @@ public sealed class StdioTransportIntegrationTests
                 .Select(item => item.GetString()!)
                 .ToArray());
 
+        Assert.True(TryFindSchemaProperty(operationItemSchema, "oldMarkdown", out _));
         var patchDescription = patchTool.ProtocolTool.Description ?? "";
         Assert.Contains("replace_element", patchDescription, StringComparison.Ordinal);
         Assert.Contains("replace_section", patchDescription, StringComparison.Ordinal);

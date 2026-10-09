@@ -23,7 +23,7 @@ public sealed record ReadToolRequest(
     int? MaxElements = null,
     int? MaxBytes = null);
 
-public sealed record PatchToolOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null);
+public sealed record PatchToolOperation(PatchOperationKind Kind, string Pointer, string? Markdown = null, string? OldMarkdown = null);
 
 public sealed record PatchToolRequest(
     string Path,

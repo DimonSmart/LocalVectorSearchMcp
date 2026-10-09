@@ -18,7 +18,7 @@ public static class MarkdownSourcePatcher
             .Where(element => element.SourceLength > 0)
             .ToDictionary(element => element.Pointer.Value, StringComparer.Ordinal);
         var duplicate = operations.GroupBy(operation => operation.Pointer, StringComparer.Ordinal)
-            .FirstOrDefault(group => group.Count() > 1);
+            .FirstOrDefault(group => group.Count() > 1 && group.Any(op => op.Kind != PatchOperationKind.ReplaceFragment));
         if (duplicate is not null)
         {
             throw new WorkspaceMutationException(
@@ -29,9 +29,11 @@ public static class MarkdownSourcePatcher
         var edits = new List<SourceEdit>(operations.Count);
         foreach (var operation in operations)
         {
+            if (operation.Kind != PatchOperationKind.ReplaceFragment && operation.OldMarkdown is not null)
+                throw new WorkspaceMutationException("oldMarkdown is accepted only by replace_fragment.");
             if (operation.Pointer == "document")
             {
-                edits.Add(CreateDocumentEdit(source, operation, eol));
+                edits.Add(CreateDocumentEdit(source, elements, operation, eol));
                 continue;
             }
 
@@ -44,6 +46,8 @@ public static class MarkdownSourcePatcher
             var markdown = NormalizeLineEndings(operation.Markdown ?? "", eol);
             var edit = operation.Kind switch
             {
+                PatchOperationKind.ReplaceFragment
+                    => CreateFragmentEdit(source, element, operation, markdown),
                 PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
                     when operation.Markdown is not null
                     => new SourceEdit(
@@ -100,13 +104,20 @@ public static class MarkdownSourcePatcher
             edits.Add(edit);
         }
 
+        foreach (var edit in edits)
+        {
+            if (edit.Start < 0 || edit.Length < 0 || edit.Start > source.Length ||
+                edit.Length > source.Length - edit.Start)
+                throw new WorkspaceMutationException("Patch edit is outside source bounds.");
+        }
         var ordered = edits.OrderBy(edit => edit.Start).ThenBy(edit => edit.Length).ToList();
         for (var index = 1; index < ordered.Count; index++)
         {
             var previous = ordered[index - 1];
             var current = ordered[index];
             if (current.Start < previous.Start + previous.Length
-                || current.Start == previous.Start)
+                || current.Start == previous.Start
+                || (current.Length == 0 && current.Start == previous.Start + previous.Length))
             {
                 throw new WorkspaceMutationException(
                     $"Patch operations at '{previous.Pointer}' and '{current.Pointer}' overlap.");
@@ -120,6 +131,24 @@ public static class MarkdownSourcePatcher
         }
 
         return result;
+    }
+
+    private static SourceEdit CreateFragmentEdit(
+        string source, MarkdownElement element, PatchOperation operation, string replacement)
+    {
+        if (operation.Markdown is null)
+            throw new WorkspaceMutationException("replace_fragment requires markdown (empty is allowed).");
+        if (string.IsNullOrEmpty(operation.OldMarkdown))
+            throw new WorkspaceMutationException("replace_fragment requires non-empty oldMarkdown.");
+        var own = source.Substring(element.SourceStart, element.SourceLength);
+        var start = own.IndexOf(operation.OldMarkdown, StringComparison.Ordinal);
+        if (start < 0)
+            throw new WorkspaceMutationException("fragment_not_found: oldMarkdown was not found within the element.");
+        // Searching from start+1 also catches overlapping occurrences.
+        if (own.IndexOf(operation.OldMarkdown, start + 1, StringComparison.Ordinal) >= 0)
+            throw new WorkspaceMutationException("ambiguous_fragment: oldMarkdown is not unique within the element.");
+        return new SourceEdit(element.SourceStart + start,
+            operation.OldMarkdown.Length, replacement, operation.Pointer);
     }
 
     private static SourceEdit CreateSectionEdit(
@@ -155,6 +184,7 @@ public static class MarkdownSourcePatcher
 
     private static SourceEdit CreateDocumentEdit(
         string source,
+        IReadOnlyList<MarkdownElement> elements,
         PatchOperation operation,
         string eol)
     {
@@ -162,7 +192,8 @@ public static class MarkdownSourcePatcher
             or PatchOperationKind.ReplaceElement
             or PatchOperationKind.ReplaceSection
             or PatchOperationKind.DeleteSection
-            or PatchOperationKind.Delete)
+            or PatchOperationKind.Delete
+            or PatchOperationKind.ReplaceFragment)
         {
             throw new WorkspaceMutationException(
                 $"Operation '{GetKindName(operation.Kind)}' is not supported for the document pointer.");
@@ -183,11 +214,7 @@ public static class MarkdownSourcePatcher
         return operation.Kind switch
         {
             PatchOperationKind.InsertBefore
-                => new SourceEdit(
-                    0,
-                    0,
-                    markdown.TrimEnd('\r', '\n') + GetLeadingBlockSeparator(source, eol),
-                    operation.Pointer),
+                => CreateDocumentPrepend(source, elements, markdown, eol, operation.Pointer),
             PatchOperationKind.InsertAfter
                 => new SourceEdit(
                     source.Length,
@@ -197,6 +224,25 @@ public static class MarkdownSourcePatcher
             _ => throw new WorkspaceMutationException(
                 $"Operation '{GetKindName(operation.Kind)}' is not supported for the document pointer.")
         };
+    }
+
+    private static SourceEdit CreateDocumentPrepend(
+        string source, IReadOnlyList<MarkdownElement> elements, string markdown, string eol, string pointer)
+    {
+        var yaml = elements.FirstOrDefault(element => element.Kind == MarkdownElementKind.FrontMatter
+            && element.SourceStart == 0);
+        if (yaml is null)
+            return new SourceEdit(0, 0,
+                markdown.TrimEnd('\r', '\n') + GetLeadingBlockSeparator(source, eol), pointer);
+
+        var position = yaml.SourceStart + yaml.SourceLength;
+        if (position < source.Length && source[position] == '\r') position++;
+        if (position < source.Length && source[position] == '\n') position++;
+        var prefix = position > 0 && source[position - 1] is not ('\r' or '\n') ? eol : "";
+        var suffix = source[position..];
+        var separator = suffix.Length == 0 ? "" : GetLeadingBlockSeparator(suffix, eol);
+        return new SourceEdit(position, 0,
+            prefix + markdown.TrimEnd('\r', '\n') + separator, pointer);
     }
 
     private static string EnsureTrailingBlockSeparator(string markdown, string eol)
@@ -236,6 +282,7 @@ public static class MarkdownSourcePatcher
         {
             PatchOperationKind.Replace => "replace",
             PatchOperationKind.ReplaceElement => "replace_element",
+            PatchOperationKind.ReplaceFragment => "replace_fragment",
             PatchOperationKind.ReplaceSection => "replace_section",
             PatchOperationKind.DeleteSection => "delete_section",
             PatchOperationKind.InsertBefore => "insert_before",
