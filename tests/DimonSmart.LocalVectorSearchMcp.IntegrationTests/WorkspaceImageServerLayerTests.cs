@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Server.Tools;
 using ModelContextProtocol.Protocol;
@@ -92,14 +93,11 @@ public sealed class WorkspaceImageServerLayerTests
 
         var metadata = Assert.IsType<TextContentBlock>(
             result.Content[1]);
-        Assert.Contains(
-            "\"path\":\"images/red-circle.png\"",
-            metadata.Text,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "\"sha256\":\"abc123\"",
-            metadata.Text,
-            StringComparison.Ordinal);
+        using var metadataDocument = JsonDocument.Parse(metadata.Text);
+        var root = metadataDocument.RootElement;
+        Assert.Equal("images/red-circle.png", root.GetProperty("path").GetString());
+        Assert.Equal("image/png", root.GetProperty("mimeType").GetString());
+        Assert.Equal("abc123", root.GetProperty("sha256").GetString());
     }
 
     [Fact]

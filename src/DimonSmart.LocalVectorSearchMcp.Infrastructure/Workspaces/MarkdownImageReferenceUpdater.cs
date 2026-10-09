@@ -11,6 +11,10 @@ public sealed class MarkdownImageReferenceUpdater(
     LocalVectorSearchMcpConfig config,
     KnowledgeBasePathGuard pathGuard) : IMarkdownImageReferenceUpdater
 {
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UsePreciseSourceLocation()
+        .Build();
+
     public MarkdownImageReferenceUpdate Update(
         string markdown,
         string documentPath,
@@ -21,7 +25,7 @@ public sealed class MarkdownImageReferenceUpdater(
         var sourceAbsolute = pathGuard.ResolveWorkspaceImagePath(sourcePath);
         var targetAbsolute = pathGuard.ResolveWorkspaceImagePath(targetPath);
         var documentDirectory = Path.GetDirectoryName(documentAbsolute)!;
-        var syntax = Markdig.Markdown.Parse(markdown);
+        var syntax = Markdig.Markdown.Parse(markdown, Pipeline);
         var replacements = new List<Replacement>();
 
         foreach (var link in syntax.Descendants<LinkInline>())
