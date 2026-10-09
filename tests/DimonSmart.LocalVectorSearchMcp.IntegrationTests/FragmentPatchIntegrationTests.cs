@@ -22,7 +22,7 @@ public sealed class FragmentPatchIntegrationTests
             Fragment("1.p1", paragraph, "![Old](a.png)", "![New](../assets/a.png)")
         ]), TestContext.Current.CancellationToken);
         Assert.Equal("# Title\n\nText ![New](../assets/a.png) and ![Keep](b.png).\n",
-            await File.ReadAllTextAsync(path), TestContext.Current.CancellationToken);
+            await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public sealed class FragmentPatchIntegrationTests
             Fragment("p1", paragraph, "![B](b.png)", "![B](assets/b.png)")
         ]), TestContext.Current.CancellationToken);
         Assert.Equal("alpha ![A](assets/a.png) middle ![B](assets/b.png) omega\n",
-            await File.ReadAllTextAsync(path), TestContext.Current.CancellationToken);
+            await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -53,7 +53,7 @@ public sealed class FragmentPatchIntegrationTests
                 Fragment("p1", "aaaaa", old, "B")
             ]), TestContext.Current.CancellationToken));
         Assert.Contains(code, error.Message);
-        Assert.Equal("aaaaa\n", await File.ReadAllTextAsync(path), TestContext.Current.CancellationToken);
+        Assert.Equal("aaaaa\n", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public sealed class FragmentPatchIntegrationTests
                 Fragment("p1", paragraph, "abcde", "X"),
                 Fragment("p1", paragraph, "cdef", "Y")
             ]), TestContext.Current.CancellationToken));
-        Assert.Equal(paragraph + "\n", await File.ReadAllTextAsync(path), TestContext.Current.CancellationToken);
+        Assert.Equal(paragraph + "\n", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -83,7 +83,7 @@ public sealed class FragmentPatchIntegrationTests
             Service(temp.Path).PatchAsync(new PatchRequest("chapter.md", [
                 Fragment("p1", "hello world", "hello world", replacement)
             ]), TestContext.Current.CancellationToken));
-        Assert.Equal("hello world\n", await File.ReadAllTextAsync(path), TestContext.Current.CancellationToken);
+        Assert.Equal("hello world\n", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Fact]

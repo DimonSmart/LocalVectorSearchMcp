@@ -26,7 +26,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
         Assert.Equal(Convert.ToHexString(SHA256.HashData(Png)).ToLowerInvariant(), response.Sha256);
         Assert.False(File.Exists(Path.Combine(temp.Path, "images", "a.png")));
         Assert.True(File.Exists(Path.Combine(temp.Path, "assets", "diagrams", "a.png")));
-        Assert.Equal("![A](images/a.png)", await File.ReadAllTextAsync(Path.Combine(temp.Path, "document.md")), TestContext.Current.CancellationToken);
+        Assert.Equal("![A](images/a.png)", await File.ReadAllTextAsync(Path.Combine(temp.Path, "document.md"), TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -75,7 +75,7 @@ public sealed class WorkspaceImageMoveIntegrationTests
         await File.WriteAllBytesAsync(Path.Combine(temp.Path, "images", "b.png"), [1, 2, 3], TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<WorkspaceImageException>(() => CreateService(temp.Path).MoveAsync(
             new MoveImageRequest("images/a.png", "images/b.png"), TestContext.Current.CancellationToken));
-        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(temp.Path, "images", "b.png")), TestContext.Current.CancellationToken);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(temp.Path, "images", "b.png"), TestContext.Current.CancellationToken));
     }
 
     [Fact]
