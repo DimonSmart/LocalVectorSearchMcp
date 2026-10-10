@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Text.Json.Serialization;
+using DimonSmart.LocalVectorSearchMcp.Core.Serialization;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 
@@ -22,10 +24,17 @@ public sealed record ReindexLastOperation(
     bool Force,
     DateTimeOffset StartedAtUtc,
     DateTimeOffset CompletedAtUtc,
-    [property: Description("Terminal outcome: succeeded, failed or cancelled.")]
-    string Outcome,
+    ReindexOutcome Outcome,
     ReindexResponse? Result,
     string? Error);
+
+[JsonConverter(typeof(StrictJsonStringEnumConverter<ReindexOutcome>))]
+public enum ReindexOutcome
+{
+    Succeeded,
+    Failed,
+    Cancelled
+}
 
 public sealed record ReindexStatus(
     bool IsRunning,

@@ -55,9 +55,9 @@ public sealed class MarkdownTableIntegrationTests
         Assert.Equal("Site", model.Data.Rows[0].Cells[1]);
         Assert.Equal("a|b", model.Data.Rows[1].Cells[0]);
         Assert.Equal("", model.Data.Rows[1].Cells[2]);
-        Assert.Equal("left", model.Data.Columns[0].Alignment);
-        Assert.Equal("center", model.Data.Columns[1].Alignment);
-        Assert.Equal("right", model.Data.Columns[2].Alignment);
+        Assert.Equal(TableAlignment.Left, model.Data.Columns[0].Alignment);
+        Assert.Equal(TableAlignment.Center, model.Data.Columns[1].Alignment);
+        Assert.Equal(TableAlignment.Right, model.Data.Columns[2].Alignment);
         Assert.False(model.HasExtraCells);
     }
 
@@ -150,7 +150,7 @@ public sealed class MarkdownTableIntegrationTests
         var model = MarkdownTableSource.Read(source, table).Data;
         Assert.Equal(new[] { "Product", "Cost", "Note" },
             model.Columns.Select(col => col.Name));
-        Assert.Equal("center", model.Columns[1].Alignment);
+        Assert.Equal(TableAlignment.Center, model.Columns[1].Alignment);
         Assert.Equal(new[] { "Pork", "Lamb", "Chicken" },
             model.Rows.Select(row => row.Cells[0]));
         Assert.All(model.Rows, row => Assert.Equal("ok", row.Cells[2]));
@@ -271,7 +271,7 @@ public sealed class MarkdownTableIntegrationTests
         Assert.Equal(3, addressed.Table.RowCount);
         Assert.Equal("Chicken", addressed.Table.Rows[1].Cells[0]);
         Assert.Equal("Price", addressed.Table.Columns[1].Name);
-        Assert.Equal("right", addressed.Table.Columns[1].Alignment);
+        Assert.Equal(TableAlignment.Right, addressed.Table.Columns[1].Alignment);
         Assert.Equal(Pointer(Initial), addressed.Pointer);
         Assert.Equal(root.SourceHash, addressed.SourceHash);
     }

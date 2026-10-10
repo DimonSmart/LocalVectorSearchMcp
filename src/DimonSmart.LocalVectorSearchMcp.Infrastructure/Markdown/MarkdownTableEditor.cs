@@ -132,7 +132,7 @@ internal static class MarkdownTableEditor
                     var span = table.Separator.Cells[c].Content;
                     var dashes = Math.Max(3, source.AsSpan(span.Start, span.Length).Count('-'));
                     Add(span, AlignmentDashes(request.Alignment.Value, dashes));
-                    columns[c] = columns[c] with { Alignment = AlignmentName(request.Alignment.Value) };
+                    columns[c] = columns[c] with { Alignment = request.Alignment.Value };
                     break;
                 }
             case TableEditAction.InsertColumn:
@@ -161,7 +161,7 @@ internal static class MarkdownTableEditor
                         rawLines.Add(RenderLine(line, cells));
                     }
                     ReplaceWholeTable(table, rawLines, edits, pointer);
-                    columns.Insert(c, new MarkdownTableColumn(c, request.Name, AlignmentName(alignment)));
+                    columns.Insert(c, new MarkdownTableColumn(c, request.Name, alignment));
                     for (var r = 0; r < rows.Count; r++) rows[r].Insert(c, value);
                     break;
                 }
@@ -329,9 +329,6 @@ internal static class MarkdownTableEditor
             .Append(table.Separator.Ending)
             .Append(table.Header.Ending)
             .FirstOrDefault(ending => ending.Length > 0) ?? "\n";
-
-    private static string AlignmentName(TableAlignment value)
-        => value.ToString().ToLowerInvariant();
 
     private static string AlignmentDashes(TableAlignment alignment, int count)
     {

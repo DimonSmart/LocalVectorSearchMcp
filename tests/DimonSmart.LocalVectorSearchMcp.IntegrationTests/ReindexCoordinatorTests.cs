@@ -45,7 +45,7 @@ public sealed class ReindexCoordinatorTests
             var completed = coordinator.GetStatus();
             Assert.False(completed.IsRunning);
             Assert.Null(completed.Current);
-            Assert.Equal("succeeded", completed.Last!.Outcome);
+            Assert.Equal(ReindexOutcome.Succeeded, completed.Last!.Outcome);
             Assert.Equal(expected, completed.Last.Result);
             Assert.Null(completed.Last.Error);
         }
@@ -74,7 +74,7 @@ public sealed class ReindexCoordinatorTests
 
             var failed = coordinator.GetStatus();
             Assert.False(failed.IsRunning);
-            Assert.Equal("failed", failed.Last!.Outcome);
+            Assert.Equal(ReindexOutcome.Failed, failed.Last!.Outcome);
             Assert.Equal("boom", failed.Last.Error);
 
             var retry = coordinator.TryStart(
@@ -105,7 +105,7 @@ public sealed class ReindexCoordinatorTests
 
         var status = coordinator.GetStatus();
         Assert.False(status.IsRunning);
-        Assert.Equal("cancelled", status.Last!.Outcome);
+        Assert.Equal(ReindexOutcome.Cancelled, status.Last!.Outcome);
         Assert.Null(status.Last.Result);
         Assert.Null(status.Last.Error);
     }

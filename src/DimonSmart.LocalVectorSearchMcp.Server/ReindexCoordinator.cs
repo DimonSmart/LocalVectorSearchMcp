@@ -109,7 +109,7 @@ public sealed class ReindexCoordinator(
             Complete(
                 started,
                 completedAtUtc,
-                "succeeded",
+                ReindexOutcome.Succeeded,
                 result,
                 null);
 
@@ -130,7 +130,7 @@ public sealed class ReindexCoordinator(
             Complete(
                 started,
                 completedAtUtc,
-                "cancelled",
+                ReindexOutcome.Cancelled,
                 null,
                 null);
             logger.LogInformation(
@@ -145,7 +145,7 @@ public sealed class ReindexCoordinator(
             Complete(
                 started,
                 completedAtUtc,
-                "failed",
+                ReindexOutcome.Failed,
                 null,
                 exception.Message);
             logger.LogError(
@@ -193,7 +193,7 @@ public sealed class ReindexCoordinator(
     private void Complete(
         ReindexCurrentOperation started,
         DateTimeOffset completedAtUtc,
-        string outcome,
+        ReindexOutcome outcome,
         ReindexResponse? result,
         string? error)
     {

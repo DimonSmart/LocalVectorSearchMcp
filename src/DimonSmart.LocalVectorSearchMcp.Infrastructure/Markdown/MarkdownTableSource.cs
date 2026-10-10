@@ -118,17 +118,17 @@ internal sealed class MarkdownTableSource
         }
     }
 
-    private static string Alignment(ReadOnlySpan<char> separator)
+    private static TableAlignment Alignment(ReadOnlySpan<char> separator)
     {
         var text = separator.Trim();
         var left = text.StartsWith(":", StringComparison.Ordinal);
         var right = text.EndsWith(":", StringComparison.Ordinal);
         return (left, right) switch
         {
-            (true, true) => "center",
-            (true, false) => "left",
-            (false, true) => "right",
-            _ => "none"
+            (true, true) => TableAlignment.Center,
+            (true, false) => TableAlignment.Left,
+            (false, true) => TableAlignment.Right,
+            _ => TableAlignment.None
         };
     }
 

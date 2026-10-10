@@ -1117,6 +1117,10 @@ public sealed class StdioTransportIntegrationTests
             Path.Combine(temp.Path, "outline.md"),
             "# First\n\n## Second\n\n### Third\n",
             cancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(temp.Path, "table.md"),
+            "| Food | Description |\n|:---|:---:|\n| Chicken | **Tender** meat |\n",
+            cancellationToken);
 
         var transport = CreateTransport(
             "typed-contracts", configPath, temp.Path,
@@ -1203,10 +1207,18 @@ public sealed class StdioTransportIntegrationTests
             readOutput,
             "document", "front_matter", "heading", "paragraph",
             "code_block", "list_item", "table", "block_quote");
+        AssertStringEnum(
+            SchemaProperty(readOutput, "table", "columns", "[]", "alignment"),
+            readOutput, "none", "left", "center", "right");
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(readOutput, "table", "rows", "[]", "cells", "[]").ValueKind);
 
         var status = Assert.Single(tools, tool => tool.Name == "kb_status");
         AssertParameterlessToolSchema(status.JsonSchema);
         var statusOutput = status.ProtocolTool.OutputSchema!.Value;
+        AssertStringEnum(
+            SchemaProperty(statusOutput, "indexing", "last", "outcome"),
+            statusOutput, "succeeded", "failed", "cancelled");
         Assert.NotEqual(JsonValueKind.Undefined,
             SchemaProperty(statusOutput, "indexing", "last", "outcome").ValueKind);
         Assert.NotEqual(JsonValueKind.Undefined,
@@ -1274,6 +1286,36 @@ public sealed class StdioTransportIntegrationTests
                 Assert.Equal(3, third.GetProperty("level").GetInt32());
             }
         }
+
+        var tableRoot = await client.CallToolAsync(
+            "kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "table.md" }
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(tableRoot.IsError is true, ResultText(tableRoot));
+        var tablePointer = Assert.IsType<JsonElement>(tableRoot.StructuredContent)
+            .GetProperty("elements").EnumerateArray().Single()
+            .GetProperty("pointer").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(tablePointer));
+
+        var tableRead = await client.CallToolAsync(
+            "kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "table.md", pointer = tablePointer }
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(tableRead.IsError is true, ResultText(tableRead));
+        var tableStructured = Assert.IsType<JsonElement>(tableRead.StructuredContent);
+        AssertMatchesSchema(tableStructured, readOutput, readOutput);
+        var table = tableStructured.GetProperty("table");
+        Assert.Equal(2, table.GetProperty("columnCount").GetInt32());
+        Assert.Equal("left", table.GetProperty("columns")[0]
+            .GetProperty("alignment").GetString());
+        Assert.Equal("Tender meat", table.GetProperty("rows")[0]
+            .GetProperty("cells")[1].GetString());
 
         var error = await client.CallToolAsync(
             "kb_outline",
