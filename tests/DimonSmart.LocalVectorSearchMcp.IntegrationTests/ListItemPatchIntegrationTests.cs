@@ -185,6 +185,43 @@ public sealed class ListItemPatchIntegrationTests
     }
 
     [Fact]
+    public async Task ReplaceSubtree_RejectsStaleChildRevision()
+    {
+        const string original = "- Parent\n  - First\n";
+        const string latest = "- Parent\n  - Changed child\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, original, TestContext.Current.CancellationToken);
+        var staleParent = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        await File.WriteAllTextAsync(file, latest, TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<SemanticAnchorConflictException>(() =>
+            CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+                [new PatchOperation(PatchOperationKind.ReplaceSubtree,
+                    SemanticAnchor.FromElement(staleParent).ToString(),
+                    "- Updated\n  - New child")]),
+                TestContext.Current.CancellationToken));
+        Assert.Equal(SemanticAnchorConflictReason.SubtreeHashMismatch, error.Reason);
+        Assert.Equal(latest, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceOwnText_AcceptsLegacySelfHashAnchor()
+    {
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, "- Parent\n  - Child\n",
+            TestContext.Current.CancellationToken);
+        var parent = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        var anchor = new SemanticAnchor(parent.Pointer, parent.SelfHash).ToString();
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceElement,
+                anchor, "- New parent")]), TestContext.Current.CancellationToken);
+        Assert.Equal("- New parent\n  - Child\n",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task InsertAfterParent_GoesAfterDescendants()
     {
         const string source = "- Parent\n  - Child\n- End\n";

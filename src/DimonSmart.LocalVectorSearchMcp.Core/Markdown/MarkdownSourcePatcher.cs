@@ -167,7 +167,7 @@ public static class MarkdownSourcePatcher
                     fragment, operation.Pointer),
             PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
                 when operation.Markdown is not null && !quote
-                => CreateListOwnEdit(map, fragment, operation.Pointer),
+                => CreateListOwnEdit(source, map, fragment, operation.Pointer),
             PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
                 when operation.Markdown is not null
                 => new SourceEdit(map.ReplaceRange.Start, map.ReplaceRange.Length,
@@ -187,7 +187,7 @@ public static class MarkdownSourcePatcher
     }
 
     private static SourceEdit CreateListOwnEdit(
-        MarkdownElementSourceMap map, string fragment, string pointer)
+        string source, MarkdownElementSourceMap map, string fragment, string pointer)
     {
         // OwnSegments excludes child item spans. Only the prefix before the first
         // nested item is contiguous; edit that prefix and leave descendants and
@@ -198,7 +198,15 @@ public static class MarkdownSourcePatcher
                 $"Unsupported list container at '{pointer}': own source prefix is ambiguous.");
 
         var prefix = map.OwnSegments[0];
-        return new SourceEdit(prefix.Start, prefix.Length, fragment, pointer);
+        var separatorStart = prefix.End;
+        while (separatorStart > prefix.Start
+            && source[separatorStart - 1] is '\r' or '\n')
+            separatorStart--;
+
+        // Blank lines directly before a nested list are formatting boundaries,
+        // not part of the prose being rewritten. Preserve them as well.
+        var separator = source[separatorStart..prefix.End];
+        return new SourceEdit(prefix.Start, prefix.Length, fragment + separator, pointer);
     }
 
     private static string GetListInsertAfter(string source, int position,

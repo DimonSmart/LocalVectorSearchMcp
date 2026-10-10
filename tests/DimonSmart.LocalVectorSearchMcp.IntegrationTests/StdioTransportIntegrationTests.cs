@@ -209,6 +209,7 @@ public sealed class StdioTransportIntegrationTests
             [
                 "replace",
                 "replace_element",
+                "replace_subtree",
                 "replace_section",
                 "delete_section",
                 "insert_before",
@@ -223,6 +224,7 @@ public sealed class StdioTransportIntegrationTests
 
         var patchDescription = patchTool.ProtocolTool.Description ?? "";
         Assert.Contains("replace_element", patchDescription, StringComparison.Ordinal);
+        Assert.Contains("replace_subtree", patchDescription, StringComparison.Ordinal);
         Assert.Contains("replace_section", patchDescription, StringComparison.Ordinal);
         Assert.Contains("delete_section", patchDescription, StringComparison.Ordinal);
         Assert.Contains("deprecated alias", patchDescription, StringComparison.OrdinalIgnoreCase);
