@@ -159,13 +159,19 @@ public sealed class SourceMarkdownSliceReader(
             sourceStart,
             sourceEnd - sourceStart);
 
+        // The structured projection is only requested for a concrete table pointer.
+        // It is computed from precisely the same source revision as the slice.
+        var addressedTable = !isDocumentRoot && pageElements[0].Kind == MarkdownElementKind.Table
+            ? MarkdownTableSource.Read(document.Markdown, pageElements[0]).Data
+            : null;
         return new MarkdownSlice(
             normalized,
             responsePointer,
             includedElements,
             markdown,
             nextPointer,
-            document.SourceHash);
+            document.SourceHash,
+            addressedTable);
     }
 
     private static int SelectElementCount(

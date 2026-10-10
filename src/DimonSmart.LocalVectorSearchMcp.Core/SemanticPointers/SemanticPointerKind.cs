@@ -8,5 +8,6 @@ public enum SemanticPointerKind
     CodeBlock,
     ListItem,
     BlockQuote,
+    Table,
     FrontMatter
 }

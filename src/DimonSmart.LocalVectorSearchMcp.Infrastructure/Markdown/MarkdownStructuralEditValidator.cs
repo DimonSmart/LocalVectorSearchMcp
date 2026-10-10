@@ -1,7 +1,7 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using Markdig;
-using Markdig.Extensions.Yaml;
+
 using Markdig.Syntax;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
@@ -12,16 +12,14 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 /// </summary>
 internal static class MarkdownStructuralEditValidator
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseYamlFrontMatter().Build();
-
     public static void Validate(
         string beforeSource,
         string afterSource,
         IReadOnlyList<MarkdownElement> before,
         IReadOnlyList<MarkdownElement> after,
         IReadOnlyList<PatchOperation> operations,
-        IReadOnlyList<MarkdownSourceEdit> edits)
+        IReadOnlyList<MarkdownSourceEdit> edits,
+        IReadOnlySet<int>? modifiedTableStarts = null)
     {
         var orderedEdits = edits.OrderBy(edit => edit.Start).ToArray();
         var original = ReadBlocks(beforeSource);
@@ -61,6 +59,8 @@ internal static class MarkdownStructuralEditValidator
         foreach (var old in before.Where(element =>
             element.Kind != MarkdownElementKind.Document))
         {
+            if (old.Kind == MarkdownElementKind.Table
+                && modifiedTableStarts?.Contains(old.SourceStart) == true) continue;
             var position = MapOrigin(old.SourceStart);
             if (position is null || ownEditedListStarts.Contains(old.SourceStart)) continue;
             var candidates = afterElementsByStart[(position.Value, old.Kind)].ToArray();
@@ -96,6 +96,12 @@ internal static class MarkdownStructuralEditValidator
         // thematic breaks, paragraphs hidden within list items, etc.
         foreach (var old in original.Where(block => block.Block is not ContainerBlock))
         {
+            // Table paragraphs are owned by the edited table rather than global elements.
+            if (modifiedTableStarts is not null
+                && original.Any(parent => parent.Block is Markdig.Extensions.Tables.Table
+                    && modifiedTableStarts.Contains(parent.Start)
+                    && (ReferenceEquals(parent.Block, old.Block)
+                        || IsDescendantOf(old.Block, parent.Block)))) continue;
             if (orderedEdits.Any(edit => Intersects(old.Range, edit))) continue;
             var position = MapOrigin(old.Start);
             if (position is null) continue;
@@ -117,6 +123,26 @@ internal static class MarkdownStructuralEditValidator
                     || MapOrigin(originalParents[index].Start) != newParents[index].Start)
                     throw Conflict(old.Kind, "surviving block changed list or quote parent");
             }
+        }
+
+        // A whole-table replacement must remain an atomic table in the full document,
+        // not merely when parsed as a detached replacement fragment.
+        foreach (var operation in operations.Where(operation =>
+            operation.Kind is PatchOperationKind.Replace or PatchOperationKind.ReplaceElement))
+        {
+            if (!originalElements.TryGetValue(operation.Pointer, out var target)
+                || target.Kind != MarkdownElementKind.Table)
+                continue;
+            var mapped = MapOrigin(target.SourceStart);
+            if (mapped is null)
+            {
+                var edit = orderedEdits.Single(item => item.Pointer == operation.Pointer);
+                var offset = orderedEdits.Where(item => item.Start < edit.Start)
+                    .Sum(item => item.Replacement.Length - item.Length);
+                mapped = edit.Start + offset;
+            }
+            if (afterElementsByStart[(mapped.Value, MarkdownElementKind.Table)].Count() != 1)
+                throw Conflict(operation.Pointer, "table replacement changed Markdown block ownership");
         }
 
         // A list's own Span.Start is not stable. Match its surviving direct items
@@ -260,7 +286,7 @@ internal static class MarkdownStructuralEditValidator
 
     private static IReadOnlyList<BlockInfo> ReadBlocks(string source)
     {
-        var document = Markdig.Markdown.Parse(source, Pipeline);
+        var document = Markdig.Markdown.Parse(source, MarkdownPipelines.Tables);
         return document.Descendants().OfType<Block>()
             .Where(block => block.Span.Start >= 0)
             .Select(block => new BlockInfo(block,
