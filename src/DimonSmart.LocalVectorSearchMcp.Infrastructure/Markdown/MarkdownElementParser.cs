@@ -10,8 +10,8 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 
 public sealed partial class MarkdownElementParser : IMarkdownElementParser
 {
-     public IReadOnlyList<MarkdownElement> Parse(MarkdownSourceDocument document)
-        => ParseDetailed(document).Elements;
+    public IReadOnlyList<MarkdownElement> Parse(MarkdownSourceDocument document)
+       => ParseDetailed(document).Elements;
 
     public MarkdownParseResult ParseDetailed(MarkdownSourceDocument document)
     {
