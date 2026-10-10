@@ -1353,7 +1353,7 @@ public sealed class StdioTransportIntegrationTests
                     if (property.Name == "$ref")
                     {
                         Assert.NotEqual(JsonValueKind.Undefined,
-                            FollowSchemaRef(root, property.Value.GetString()!));
+                            FollowSchemaRef(root, property.Value.GetString()!).ValueKind);
                     }
                     else
                     {
@@ -1369,6 +1369,16 @@ public sealed class StdioTransportIntegrationTests
     private static void AssertMatchesSchema(
         JsonElement value, JsonElement schema, JsonElement document)
     {
+        if (value.ValueKind == JsonValueKind.Null
+            && schema.ValueKind == JsonValueKind.Object
+            && (schema.TryGetProperty("anyOf", out var nullableAlternatives)
+                || schema.TryGetProperty("oneOf", out nullableAlternatives)))
+        {
+            Assert.Contains(nullableAlternatives.EnumerateArray(),
+                alternative => IsNullSchema(alternative, document));
+            return;
+        }
+
         schema = ResolveSchema(schema, document);
         if (schema.TryGetProperty("type", out var type))
         {
