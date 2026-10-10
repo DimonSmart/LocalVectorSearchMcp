@@ -34,6 +34,94 @@ public sealed class StdioTransportIntegrationTests
     ];
 
     [Fact]
+    public async Task StdioTransportReadsAndEditsTableThroughActualMcpCalls()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(temp.Path, cancellationToken, allowWrites: true);
+        var path = Path.Combine(temp.Path, "table.md");
+        await File.WriteAllTextAsync(path,
+            "# Menu\n\n| Product | Price |\n|---|---:|\n| Chicken | 18 |\n\nAfter.\n",
+            cancellationToken);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "table-edit-integration",
+            Command = "dotnet",
+            Arguments = [typeof(KnowledgeMcpTools).Assembly.Location, "--config", configPath],
+            WorkingDirectory = temp.Path,
+            StandardErrorLines = stderr.Enqueue
+        });
+        await using var client = await McpClient.CreateAsync(transport,
+            cancellationToken: cancellationToken);
+
+        var read = await client.CallToolAsync("kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "table.md" }
+            }, cancellationToken: cancellationToken);
+        Assert.False(read.IsError is true, ResultText(read));
+        string pointer;
+        using (var doc = JsonDocument.Parse(ResultText(read)))
+        {
+            pointer = doc.RootElement.GetProperty("elements").EnumerateArray()
+                .Single(element => element.GetProperty("kind").GetString() == "table")
+                .GetProperty("pointer").GetString()!;
+        }
+
+        var structured = await client.CallToolAsync("kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "table.md", pointer, maxElements = 1 }
+            }, cancellationToken: cancellationToken);
+        Assert.False(structured.IsError is true, ResultText(structured));
+        using (var doc = JsonDocument.Parse(ResultText(structured)))
+        {
+            Assert.Equal("Chicken", doc.RootElement.GetProperty("table")
+                .GetProperty("rows")[0].GetProperty("cells")[0].GetString());
+        }
+
+        var update = await client.CallToolAsync("kb_edit_table",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "table.md",
+                ["pointer"] = pointer,
+                ["action"] = "update_cells",
+                ["updates"] = new[]
+                {
+                    new
+                    {
+                        where = new { column = "Product", @equals = "Chicken" },
+                        column = "Price",
+                        value = "20"
+                    }
+                }
+            }, cancellationToken: cancellationToken);
+        Assert.False(update.IsError is true, ResultText(update));
+        string nextPointer;
+        using (var doc = JsonDocument.Parse(ResultText(update)))
+        {
+            nextPointer = doc.RootElement.GetProperty("pointer").GetString()!;
+            Assert.NotEqual(pointer, nextPointer);
+        }
+
+        var rename = await client.CallToolAsync("kb_edit_table",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "table.md",
+                ["pointer"] = nextPointer,
+                ["action"] = "rename_column",
+                ["column"] = "Price",
+                ["newName"] = "Cost"
+            }, cancellationToken: cancellationToken);
+        Assert.False(rename.IsError is true, ResultText(rename));
+        var source = await File.ReadAllTextAsync(path, cancellationToken);
+        Assert.Contains("| Chicken | 20 |", source, StringComparison.Ordinal);
+        Assert.Contains("| Cost |", source, StringComparison.Ordinal);
+        Assert.EndsWith("After.\n", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task StdioTransportDiscoversProductionImageToolsAndReturnsImageContent()
     {
         var cancellationToken =
