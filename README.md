@@ -331,3 +331,11 @@ An unrelated edit elsewhere in the file does not invalidate a `Self` mutation wh
 The current version supports indexed local Markdown plus ordinary image assets. All five image tools use `knowledgeBase.root` as the boundary; saving defaults to `images/`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
 
 PDF/DOCX/OCR, arbitrary binary upload, image embeddings/search, image resizing/transcoding/thumbnails, automatic Markdown image insertion, a media database, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
+
+### Addressable Markdown list items and atomic quotes
+
+`kb_read` exposes individual list items as `list_item` using `li1`, `1.li2`, `1.li2.li1` plus the normal two-hash anchor suffix. Parent Text excludes nested item text. `delete` and `replace_element` remove/replace the **whole subtree** and require both current hashes. Adjacent insertions check self hash and accept one source-indented sibling with a compatible list marker; neither blank lines nor ordered numbers are silently normalized.
+
+A stand-alone Markdown quote is one opaque `block_quote` with `qN` or `1.qN`, regardless of internal Markdown (including `> - item`). It can only be read, searched, deleted, inserted around, or replaced as a whole. Older paragraph pointers suppressed inside lists/quotes must be re-read.
+
+Search pointer and read hint still identify the first *chunk* element, not necessarily the exact list-item match. Chunker v5 requires explicit derived-index rebuild: `kb_reindex(force=true)` or CLI `--reindex --force`. No Markdown migration is performed.
