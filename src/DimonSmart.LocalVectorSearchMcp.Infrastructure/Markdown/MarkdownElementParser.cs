@@ -4,6 +4,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using Markdig;
 using Markdig.Extensions.Tables;
+using Markdig.Extensions.Yaml;
 using Markdig.Syntax;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
