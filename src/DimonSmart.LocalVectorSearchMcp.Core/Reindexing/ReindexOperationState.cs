@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 
 public sealed record ReindexProgress(
@@ -20,6 +22,7 @@ public sealed record ReindexLastOperation(
     bool Force,
     DateTimeOffset StartedAtUtc,
     DateTimeOffset CompletedAtUtc,
+    [property: Description("Terminal outcome: succeeded, failed or cancelled.")]
     string Outcome,
     ReindexResponse? Result,
     string? Error);
@@ -30,7 +33,9 @@ public sealed record ReindexStatus(
     ReindexLastOperation? Last);
 
 public sealed record ReindexStartResponse(
+    [property: Description("True if a new operation was queued; false if an operation was already running. This does not mean indexing has completed.")]
     bool Started,
+    [property: Description("Active operation, including the previously running operation when started is false. Check kb_status for completion.")]
     ReindexCurrentOperation Current);
 
 public interface IReindexStateReader
