@@ -389,6 +389,13 @@ public sealed class WorkspaceMutationService(
         }
 
         var replacement = replacementElements[0];
+        if (target.Kind == MarkdownElementKind.Table
+            && replacement.Kind != MarkdownElementKind.Table)
+        {
+            throw new WorkspaceMutationException(
+                "replace_element must replace a table with exactly one valid GFM table.");
+        }
+
         if (target.Kind == MarkdownElementKind.Heading
             && (replacement.Kind != MarkdownElementKind.Heading
                 || replacement.HeadingLevel != target.HeadingLevel))
