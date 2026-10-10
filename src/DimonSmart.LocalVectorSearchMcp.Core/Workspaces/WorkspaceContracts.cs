@@ -78,10 +78,7 @@ public interface IWorkspaceMutationService
 [JsonConverter(typeof(Serialization.StrictJsonStringEnumConverter<WorkspaceFileKind>))]
 public enum WorkspaceFileKind
 {
-    [JsonStringEnumMemberName("markdown")]
     Markdown,
-
-    [JsonStringEnumMemberName("asset")]
     Asset
 }
 
