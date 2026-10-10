@@ -175,7 +175,7 @@ internal static class MarkdownStructuralEditValidator
                     : originalElements[expectedParent];
                 var mappedParent = existingParent is null ? null
                     : MapOrigin(existingParent.SourceStart);
-                var actualParent = root.SourceMap.ParentPointer is null ? null
+                int? actualParent = root.SourceMap.ParentPointer is null ? null
                     : after.Single(element =>
                         element.Pointer.Value == root.SourceMap.ParentPointer).SourceStart;
                 if (mappedParent != actualParent)
