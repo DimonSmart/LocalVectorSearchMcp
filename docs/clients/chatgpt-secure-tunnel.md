@@ -142,7 +142,7 @@ Existing files are not overwritten. A collision produces `chapter-10-01-2.png`, 
 
 `kb_list_images` recursively lists supported image assets under all of `knowledgeBase.root` with cursor pagination. It is read-only.
 
-`kb_load_image("images/chapter-10-01.png")` revalidates size and signature, computes SHA-256, and returns the actual image as the first standard MCP `ImageContentBlock`, followed by a JSON text block with `path`, `mimeType`, `bytes`, and `sha256`. The tool deliberately does not return `StructuredContent`: this content-first shape avoids ChatGPT connector wrappers collapsing a mixed image+structured result to metadata only. ChatGPT can therefore inspect or analyze an existing workspace image without a custom base64 protocol.
+`kb_load_image("images/chapter-10-01.png")` revalidates size and signature, computes SHA-256, and returns a standard MCP `ImageContentBlock`, followed by JSON metadata (`path`, `mimeType`, `bytes`, `sha256`) describing the unchanged source file. PNG, JPEG and WebP return the original image bytes. For GIF, the image block contains a static PNG preview of the first frame (`image/png`), because some ChatGPT connector adapters do not expose `image/gif` blocks; the metadata still describes the original GIF (`image/gif`). The tool deliberately does not return `StructuredContent`: this content-first shape avoids ChatGPT connector wrappers collapsing a mixed image+structured result to metadata only. ChatGPT can therefore inspect or analyze an existing workspace image without a custom base64 protocol.
 
 Both list and load work when `knowledgeBase.allowWrites=false`.
 

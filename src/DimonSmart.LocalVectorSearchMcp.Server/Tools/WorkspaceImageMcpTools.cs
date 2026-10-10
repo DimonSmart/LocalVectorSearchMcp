@@ -99,7 +99,7 @@ public sealed class WorkspaceImageMcpTools(
 
     [McpServerTool(Name = "kb_load_image")]
     [Description(
-        "Loads an existing supported image anywhere under knowledgeBase.root; returns an MCP image block followed by JSON metadata.")]
+        "Loads an image under knowledgeBase.root as an MCP image block and original-file JSON metadata. GIF returns a PNG preview of its first frame (animation is not preserved in the preview).")]
     public async Task<CallToolResult> LoadImageAsync(
         [Description(
             "Root-relative image path, for example chapters/diagram.png.")]
@@ -114,13 +114,22 @@ public sealed class WorkspaceImageMcpTools(
             var metadataJson = JsonSerializer.Serialize(
                 loaded.Metadata,
                 JsonOptions.Default);
+            // GIF image blocks are not reliably exposed by every MCP client.
+            // Supply a PNG preview of the first frame without modifying the file.
+            var isGif = loaded.Metadata.MimeType == "image/gif";
+            var imageBytes = isGif
+                ? GifPreview.CreatePng(loaded.Data)
+                : loaded.Data;
+            var imageMimeType = isGif
+                ? "image/png"
+                : loaded.Metadata.MimeType;
             return new CallToolResult
             {
                 Content =
                 [
                     ImageContentBlock.FromBytes(
-                        loaded.Data,
-                        loaded.Metadata.MimeType),
+                        imageBytes,
+                        imageMimeType),
                     new TextContentBlock
                     {
                         Text = metadataJson

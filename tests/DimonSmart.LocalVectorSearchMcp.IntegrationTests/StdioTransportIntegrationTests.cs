@@ -41,6 +41,14 @@ public sealed class StdioTransportIntegrationTests
         var configPath = await CreateConfigAsync(
             temp.Path,
             cancellationToken);
+        const string animatedGifBase64 =
+            "R0lGODlhAgABAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAgABAAAIBQABAAgIACH5BAEKAAEALAAAAAACAAEAgQD/AAAAAAAAAAAAAAgFAAEACAgAOw==";
+        var originalGif = Convert.FromBase64String(animatedGifBase64);
+        var gifPath = Path.Combine(temp.Path, "images", "stdio.gif");
+        await File.WriteAllBytesAsync(
+            gifPath,
+            originalGif,
+            cancellationToken);
         var stderr = new ConcurrentQueue<string>();
 
         var transport = new StdioClientTransport(
@@ -334,6 +342,44 @@ public sealed class StdioTransportIntegrationTests
         Assert.Equal("images/stdio.png", metadata.Path);
         Assert.Equal("image/png", metadata.MimeType);
         Assert.Null(imageResult.StructuredContent);
+
+        var gifResult = await client.CallToolAsync(
+            "kb_load_image",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "images/stdio.gif"
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(gifResult.IsError is true, ResultText(gifResult));
+        Assert.Null(gifResult.StructuredContent);
+        Assert.Equal(2, gifResult.Content.Count);
+
+        var gifPreview = Assert.IsType<ImageContentBlock>(
+            gifResult.Content[0]);
+        Assert.Equal("image/png", gifPreview.MimeType);
+        var previewBytes = gifPreview.DecodedData.ToArray();
+        Assert.Equal(
+            new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a },
+            previewBytes[..8]);
+        var decoded = StbImageSharp.ImageResult.FromMemory(
+            previewBytes,
+            StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+        Assert.Equal(
+            new byte[] { 255, 0, 0, 255 },
+            decoded.Data[..4]);
+
+        var gifMetadata = Assert.IsType<TextContentBlock>(
+            gifResult.Content[1]);
+        var original = JsonSerializer.Deserialize<ImageLoadResponse>(
+            gifMetadata.Text,
+            JsonOptions.Default);
+        Assert.NotNull(original);
+        Assert.Equal("images/stdio.gif", original.Path);
+        Assert.Equal("image/gif", original.MimeType);
+        Assert.Equal(originalGif.LongLength, original.Bytes);
+        Assert.Equal(originalGif, await File.ReadAllBytesAsync(
+            gifPath,
+            cancellationToken));
     }
 
     [Fact]
