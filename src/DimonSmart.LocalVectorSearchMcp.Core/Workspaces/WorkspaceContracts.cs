@@ -70,6 +70,7 @@ public sealed record MutationResponse(
 public interface IWorkspaceMutationService
 {
     Task<MutationResponse> PatchAsync(PatchRequest request, CancellationToken cancellationToken);
+    Task<TableEditResponse> EditTableAsync(TableEditRequest request, CancellationToken cancellationToken);
     Task<MutationResponse> CreateAsync(string path, string markdown, CancellationToken cancellationToken);
     Task<MutationResponse> MoveAsync(MoveRequest request, CancellationToken cancellationToken);
     Task<MutationResponse> DeleteAsync(DeleteRequest request, CancellationToken cancellationToken);

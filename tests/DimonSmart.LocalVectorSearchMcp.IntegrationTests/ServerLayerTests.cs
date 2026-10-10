@@ -28,6 +28,7 @@ public sealed class ServerLayerTests
             [
                 "kb_create",
                 "kb_delete",
+                "kb_edit_table",
                 "kb_list_files",
                 "kb_move",
                 "kb_outline",
@@ -313,6 +314,10 @@ public sealed class ServerLayerTests
             CancellationToken cancellationToken)
             => Task.FromException<MutationResponse>(exception);
 
+        public Task<TableEditResponse> EditTableAsync(
+            TableEditRequest request, CancellationToken cancellationToken)
+            => Task.FromException<TableEditResponse>(exception);
+
         public Task<MutationResponse> CreateAsync(
             string path,
             string markdown,
@@ -337,6 +342,12 @@ public sealed class ServerLayerTests
             PatchRequest request,
             CancellationToken cancellationToken)
             => Task.FromResult(response);
+
+        public Task<TableEditResponse> EditTableAsync(
+            TableEditRequest request, CancellationToken cancellationToken)
+            => Task.FromResult(new TableEditResponse(
+                response.Path, "t1~0000000000000000~0000000000000000",
+                response.SourceHash ?? "", response.IndexSynchronized, response.IndexError));
 
         public Task<MutationResponse> CreateAsync(
             string path,

@@ -70,6 +70,7 @@ public static class SemanticAnchorResolver
             SemanticPointerKind.CodeBlock => MarkdownElementKind.CodeBlock,
             SemanticPointerKind.ListItem => MarkdownElementKind.ListItem,
             SemanticPointerKind.BlockQuote => MarkdownElementKind.BlockQuote,
+            SemanticPointerKind.Table => MarkdownElementKind.Table,
             _ => throw new SemanticPointerFormatException(
                 $"Invalid semantic pointer: {pointer.Value}")
         };

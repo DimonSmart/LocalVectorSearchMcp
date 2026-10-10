@@ -6,4 +6,5 @@ public sealed record MarkdownSlice(
     IReadOnlyList<MarkdownSliceElement> Elements,
     string Markdown,
     string? NextPointer,
-    string SourceHash = "");
+    string SourceHash = "",
+    MarkdownTable? Table = null);

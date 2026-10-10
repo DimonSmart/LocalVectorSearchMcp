@@ -6,7 +6,7 @@ namespace DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 
 public sealed class MarkdownChunker(ChunkingConfig config, EmbeddingTextBuilder textBuilder) : IMarkdownChunker
 {
-    public const string Version = "5";
+    public const string Version = "6";
 
     public IReadOnlyList<MarkdownChunk> BuildChunks(MarkdownSourceDocument document, IReadOnlyList<MarkdownElement> elements)
     {

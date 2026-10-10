@@ -79,7 +79,7 @@ public sealed class ChunkingManifestCompatibilityTests
             .ReindexAsync(new ReindexRequest(ReindexScope.Changed, true), cancellationToken);
         Assert.Equal(1, response.IndexedFiles);
         var manifest = await ReadManifestAsync(config, cancellationToken);
-        Assert.Equal("5", manifest["chunker_version"]);
+        Assert.Equal("6", manifest["chunker_version"]);
         Assert.Equal("5", manifest["schema_version"]);
     }
 
