@@ -37,7 +37,16 @@ public sealed class WorkspaceMutationService(
                 config.KnowledgeBase,
                 normalized,
                 cancellationToken);
-            var parseResult = parser.ParseDetailed(document);
+            MarkdownParseResult parseResult;
+            try
+            {
+                parseResult = parser.ParseDetailed(document);
+            }
+            catch (InvalidOperationException exception)
+            {
+                throw new WorkspaceMutationException(
+                    $"Unsupported Markdown source structure: {exception.Message}");
+            }
             var elements = parseResult.Elements;
             var resolvedOperations = ResolvePatchOperations(
                 request.Operations,
@@ -59,13 +68,25 @@ public sealed class WorkspaceMutationService(
                 .ToHashSet(StringComparer.Ordinal);
             if (resolvedOperations.Any(operation => structuredTargets.Contains(operation.Pointer)))
             {
-                MarkdownStructuralEditValidator.Validate(
-                    document.Markdown,
-                    resultingSource,
-                    elements,
-                    parser.Parse(document with { Markdown = resultingSource }),
-                    resolvedOperations,
-                    plannedEdits);
+                try
+                {
+                    var updatedElements = parser.Parse(document with
+                    {
+                        Markdown = resultingSource
+                    });
+                    MarkdownStructuralEditValidator.Validate(
+                        document.Markdown,
+                        resultingSource,
+                        elements,
+                        updatedElements,
+                        resolvedOperations,
+                        plannedEdits);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    throw new WorkspaceMutationException(
+                        $"Unsupported Markdown structure after patch: {exception.Message}");
+                }
             }
 
             string updatedSourceHash;
