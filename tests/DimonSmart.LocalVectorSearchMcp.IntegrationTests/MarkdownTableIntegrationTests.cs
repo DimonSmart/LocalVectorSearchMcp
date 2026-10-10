@@ -46,8 +46,8 @@ public sealed class MarkdownTableIntegrationTests
             "| **Chicken** | [Site](https://example.com) | 1 |" + eol +
             "| a\\|b | " + @"x" + " | |";
         var document = Document(source, bom);
-        var table = Assert.Single(new MarkdownElementParser().Parse(document)
-            .Where(item => item.Kind == MarkdownElementKind.Table));
+        var table = Assert.Single(new MarkdownElementParser().Parse(document),
+            item => item.Kind == MarkdownElementKind.Table);
         var model = MarkdownTableSource.Read(source, table);
         Assert.Equal(3, model.Data.ColumnCount);
         Assert.Equal(2, model.Data.RowCount);
@@ -65,8 +65,8 @@ public sealed class MarkdownTableIntegrationTests
     public void Planner_RejectsExtraPhysicalCellsWithoutRewritingSource()
     {
         const string source = "| A | B |\n|---|---|\n| 1 | 2 | hidden |\n";
-        var table = Assert.Single(Parse(source).Elements.Where(element =>
-            element.Kind == MarkdownElementKind.Table));
+        var table = Assert.Single(Parse(source).Elements,
+            element => element.Kind == MarkdownElementKind.Table);
         var map = MarkdownTableSource.Read(source, table);
         Assert.True(map.HasExtraCells);
         Assert.Throws<WorkspaceMutationException>(() => MarkdownTableEditor.Plan(
@@ -145,8 +145,8 @@ public sealed class MarkdownTableIntegrationTests
             Column: "Price", NewName: "Cost"));
 
         var source = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
-        var table = Assert.Single(Parse(source).Elements.Where(element =>
-            element.Kind == MarkdownElementKind.Table));
+        var table = Assert.Single(Parse(source).Elements,
+            element => element.Kind == MarkdownElementKind.Table);
         var model = MarkdownTableSource.Read(source, table).Data;
         Assert.Equal(new[] { "Product", "Cost", "Note" },
             model.Columns.Select(col => col.Name));
@@ -242,7 +242,8 @@ public sealed class MarkdownTableIntegrationTests
             Updates: [new TableCellUpdate("**Meat** | A\\B",
                 RowIndex: 1, Column: "Product")]), TestContext.Current.CancellationToken);
         var source = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
-        var table = Assert.Single(Parse(source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        var table = Assert.Single(Parse(source).Elements,
+            e => e.Kind == MarkdownElementKind.Table);
         var values = MarkdownTableSource.Read(source, table).Data;
         Assert.Equal("**Meat** | A\\B", values.Rows[1].Cells[0]);
 
@@ -253,7 +254,8 @@ public sealed class MarkdownTableIntegrationTests
             TestContext.Current.CancellationToken);
         source = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
         Assert.Contains("**Bold**", source, StringComparison.Ordinal);
-        table = Assert.Single(Parse(source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        table = Assert.Single(Parse(source).Elements,
+            e => e.Kind == MarkdownElementKind.Table);
         Assert.Equal("Bold", MarkdownTableSource.Read(source, table).Data.Rows[1].Cells[0]);
     }
 
@@ -274,7 +276,8 @@ public sealed class MarkdownTableIntegrationTests
         Assert.Contains(replacement, updated, StringComparison.Ordinal);
         Assert.Contains("Before.\n\n", updated, StringComparison.Ordinal);
         Assert.EndsWith("After.\n", updated, StringComparison.Ordinal);
-        var table = Assert.Single(Parse(updated).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        var table = Assert.Single(Parse(updated).Elements,
+            e => e.Kind == MarkdownElementKind.Table);
         Assert.Equal(2, MarkdownTableSource.Read(updated, table).Data.ColumnCount);
     }
 
@@ -282,12 +285,14 @@ public sealed class MarkdownTableIntegrationTests
     public void DeleteColumnToOneColumnRetainsExplicitGfmPipes()
     {
         const string source = "Name | Price\n---|---:\nChicken | 25";
-        var table = Assert.Single(Parse(source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        var table = Assert.Single(Parse(source).Elements,
+            e => e.Kind == MarkdownElementKind.Table);
         var map = MarkdownTableSource.Read(source, table);
         var plan = MarkdownTableEditor.Plan(source, map,
             new TableEditRequest("a.md", SemanticAnchor.FromElement(table).ToString(),
                 TableEditAction.DeleteColumn, Column: "Price"));
-        var updated = Assert.Single(Parse(plan.Source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        var updated = Assert.Single(Parse(plan.Source).Elements,
+            e => e.Kind == MarkdownElementKind.Table);
         MarkdownTableEditor.ValidateResult(plan, MarkdownTableSource.Read(plan.Source, updated));
         Assert.Contains("| Name |", plan.Source, StringComparison.Ordinal);
     }
@@ -299,8 +304,8 @@ public sealed class MarkdownTableIntegrationTests
         => new MarkdownElementParser().ParseDetailed(Document(source));
 
     private static string Pointer(string source)
-        => SemanticAnchor.FromElement(Assert.Single(Parse(source).Elements.Where(element =>
-            element.Kind == MarkdownElementKind.Table))).ToString();
+        => SemanticAnchor.FromElement(Assert.Single(Parse(source).Elements,
+            element => element.Kind == MarkdownElementKind.Table)).ToString();
 
     private static WorkspaceMutationService CreateService(string root)
     {
