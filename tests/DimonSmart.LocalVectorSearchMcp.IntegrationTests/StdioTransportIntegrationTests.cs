@@ -1257,6 +1257,101 @@ public sealed class StdioTransportIntegrationTests
                 "Failed to start the MCP server process.");
     }
 
+
+    [Fact]
+    public async Task StdioListAndQuote_AreAddressableWithoutExposingQuoteChildren()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        const string source = "- Parent\n  - Child\n- Tail\n\n> - Quoted\n";
+        var filePath = Path.Combine(temp.Path, "semantic.md");
+        await File.WriteAllTextAsync(filePath, source, cancellationToken);
+        var configPath = await CreateConfigAsync(temp.Path, cancellationToken, allowWrites: true);
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "list-quote-stdio-regression",
+            Command = "dotnet",
+            Arguments = [typeof(KnowledgeMcpTools).Assembly.Location, "--config", configPath],
+            WorkingDirectory = temp.Path
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport, cancellationToken: cancellationToken);
+        var read = await client.CallToolAsync(
+            "kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "semantic.md" }
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(read.IsError is true, ResultText(read));
+
+        string childPointer;
+        string quotePointer;
+        using (var json = JsonDocument.Parse(ResultText(read)))
+        {
+            var elements = json.RootElement.GetProperty("elements").EnumerateArray().ToArray();
+            Assert.Equal(4, elements.Length);
+            Assert.Equal(["list_item", "list_item", "list_item", "block_quote"],
+                elements.Select(e => e.GetProperty("kind").GetString()));
+            Assert.StartsWith("li1.li1~", elements[1].GetProperty("pointer").GetString());
+            Assert.StartsWith("q1~", elements[3].GetProperty("pointer").GetString());
+            childPointer = elements[1].GetProperty("pointer").GetString()!;
+            quotePointer = elements[3].GetProperty("pointer").GetString()!;
+        }
+
+        var delete = await client.CallToolAsync(
+            "kb_patch",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "semantic.md",
+                    operations = new[] { new { kind = "delete", pointer = childPointer } }
+                }
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(delete.IsError is true, ResultText(delete));
+        Assert.Equal("- Parent\n- Tail\n\n> - Quoted\n",
+            await File.ReadAllTextAsync(filePath, cancellationToken));
+
+        var replace = await client.CallToolAsync(
+            "kb_patch",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "semantic.md",
+                    operations = new[]
+                    {
+                        new { kind = "replace_element", pointer = quotePointer, markdown = "> New" }
+                    }
+                }
+            },
+            cancellationToken: cancellationToken);
+        Assert.False(replace.IsError is true, ResultText(replace));
+        Assert.Equal("- Parent\n- Tail\n\n> New\n",
+            await File.ReadAllTextAsync(filePath, cancellationToken));
+
+        var invalid = await client.CallToolAsync(
+            "kb_patch",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "semantic.md",
+                    operations = new[]
+                    {
+                        new { kind = "delete", pointer = "q1.li1~0123456789abcdef~fedcba9876543210" }
+                    }
+                }
+            },
+            cancellationToken: cancellationToken);
+        Assert.True(invalid.IsError is true);
+        Assert.Equal("- Parent\n- Tail\n\n> New\n",
+            await File.ReadAllTextAsync(filePath, cancellationToken));
+    }
+
     private static async Task<string> CreateConfigAsync(
         string root,
         CancellationToken cancellationToken,
