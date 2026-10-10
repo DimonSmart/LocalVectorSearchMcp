@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core.Search;
 
-[JsonConverter(typeof(SearchModeJsonConverter))]
+[JsonConverter(typeof(Serialization.StrictJsonStringEnumConverter<SearchMode>))]
 public enum SearchMode
 {
     Semantic,

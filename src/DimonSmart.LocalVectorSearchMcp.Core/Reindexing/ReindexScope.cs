@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 
-[JsonConverter(typeof(ReindexScopeJsonConverter))]
+[JsonConverter(typeof(Serialization.StrictJsonStringEnumConverter<ReindexScope>))]
 public enum ReindexScope
 {
     Changed,

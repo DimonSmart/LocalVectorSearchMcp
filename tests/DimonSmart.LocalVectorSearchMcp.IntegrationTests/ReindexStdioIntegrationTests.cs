@@ -63,6 +63,11 @@ public sealed class ReindexStdioIntegrationTests
             cancellationToken: cancellationToken);
 
         Assert.False(first.IsError is true);
+        Assert.NotNull(first.StructuredContent);
+        Assert.Equal(
+            "changed",
+            first.StructuredContent.Value.GetProperty("current")
+                .GetProperty("scope").GetString());
         var start = JsonSerializer.Deserialize<ReindexStartResponse>(
             ResultText(first),
             JsonOptions.Default);
@@ -77,6 +82,7 @@ public sealed class ReindexStdioIntegrationTests
                 new Dictionary<string, object?>(),
                 cancellationToken: cancellationToken);
             Assert.False(statusResult.IsError is true);
+            Assert.NotNull(statusResult.StructuredContent);
             status = JsonSerializer.Deserialize<StatusResponse>(
                 ResultText(statusResult),
                 JsonOptions.Default)
@@ -122,6 +128,9 @@ public sealed class ReindexStdioIntegrationTests
             },
             cancellationToken: cancellationToken);
         Assert.False(duplicate.IsError is true);
+        Assert.NotNull(duplicate.StructuredContent);
+        Assert.False(duplicate.StructuredContent.Value
+            .GetProperty("started").GetBoolean());
         var duplicateStart =
             JsonSerializer.Deserialize<ReindexStartResponse>(
                 ResultText(duplicate),
@@ -142,6 +151,7 @@ public sealed class ReindexStdioIntegrationTests
                 new Dictionary<string, object?>(),
                 cancellationToken: cancellationToken);
             Assert.False(result.IsError is true);
+            Assert.NotNull(result.StructuredContent);
             completed = JsonSerializer.Deserialize<StatusResponse>(
                 ResultText(result),
                 JsonOptions.Default)

@@ -99,7 +99,7 @@ public sealed class WorkspaceImageMcpTools(
 
     [McpServerTool(Name = "kb_load_image")]
     [Description(
-        "Loads an image under knowledgeBase.root as an MCP image block and original-file JSON metadata. GIF returns a PNG preview of its first frame (animation is not preserved in the preview).")]
+        "Returns an MCP image content block and a separate text content block containing JSON metadata (path, mimeType, bytes and sha256 of the original file). GIF images produce a PNG preview of the first frame without animation; JSON metadata still describes the original GIF. The complete multimodal result is not represented by a JSON outputSchema.")]
     public async Task<CallToolResult> LoadImageAsync(
         [Description(
             "Root-relative image path, for example chapters/diagram.png.")]
