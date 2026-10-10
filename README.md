@@ -338,4 +338,11 @@ PDF/DOCX/OCR, arbitrary binary upload, image embeddings/search, image resizing/t
 
 A stand-alone Markdown quote is one opaque `block_quote` with `qN` or `1.qN`, regardless of internal Markdown (including `> - item`). It can only be read, searched, deleted, inserted around, or replaced as a whole. Older paragraph pointers suppressed inside lists/quotes must be re-read.
 
+List-item editing uses exact half-open source ranges: the subtree contains every descendant, whereas the parent's own text consists only of its non-child source segments. `replace_element` replaces the full subtree; `delete` consumes its terminating line ending when present; `insert_after` inserts after all descendants. No AST serialization or document-wide whitespace normalization is performed, and unmodified source bytes (including BOM and mixed EOL) are retained.
+
+A list insertion or replacement must supply **one** item with the target's physical indentation and compatible marker style (ordered marker numbers may differ). Nested items, code, HTML comments, and other Markdown blocks are permitted when Markdig places them inside that item. Independent blocks outside the new subtree are rejected. For example, `- Updated\n\n<!-- detached -->` cannot replace a top-level item when the comment splits its list; `- Updated\n\n  <!-- nested -->` is allowed if Markdig assigns the comment to the item. A quote fragment similarly must form exactly one opaque quote without absorbing its neighbors.
+
+The server re-parses the **entire proposed result** before writing: existing elements, non-addressable blocks, list-container ownership, parent relationships, and neighboring boundaries must survive. Ambiguous or overlapping edits (including multiple operations in one `kb_patch`) fail atomically with a structural error; the source file is left unchanged. Unsupported indentation, list splitting/merging, and quote-boundary ambiguity are intentionally rejected instead of being auto-formatted.
+
+
 Search pointer and read hint still identify the first *chunk* element, not necessarily the exact list-item match. Chunker v5 requires explicit derived-index rebuild: `kb_reindex(force=true)` or CLI `--reindex --force`. No Markdown migration is performed.
