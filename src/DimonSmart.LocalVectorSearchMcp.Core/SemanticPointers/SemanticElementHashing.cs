@@ -36,7 +36,7 @@ public static class SemanticElementHashing
                     && !elements.Any(other =>
                         other.Kind == MarkdownElementKind.ListItem
                         && other.SourceMap?.ParentPointer == element.Pointer.Value))
-                || subtreeRange == ownRange
+                || (element.Kind != MarkdownElementKind.ListItem && subtreeRange == ownRange)
                     ? selfHash
                     : SemanticFingerprint.Compute(
                         source.AsSpan(subtreeRange.Start, subtreeRange.Length));
