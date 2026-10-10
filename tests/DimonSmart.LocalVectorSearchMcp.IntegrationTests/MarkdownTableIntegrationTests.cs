@@ -176,6 +176,87 @@ public sealed class MarkdownTableIntegrationTests
             await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task ReadSlice_ReturnsStructuredDataOnlyForAddressedTable()
+    {
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "a.md"), Initial,
+            TestContext.Current.CancellationToken);
+        var config = new LocalVectorSearchMcpConfig
+        {
+            KnowledgeBase = new KnowledgeBaseConfig { Root = temp.Path }
+        };
+        var reader = new SourceMarkdownSliceReader(config,
+            new KnowledgeBasePathGuard(config),
+            new MarkdownDocumentLoader(), new MarkdownElementParser());
+        var cancellation = TestContext.Current.CancellationToken;
+        var root = await reader.ReadSliceAsync("a.md",
+            SemanticAnchorParser.Parse("document"), 20, 10000, cancellation);
+        Assert.Null(root.Table);
+        var addressed = await reader.ReadSliceAsync("a.md",
+            SemanticAnchorParser.Parse(Pointer(Initial)), 1, 10000, cancellation);
+        Assert.NotNull(addressed.Table);
+        Assert.Equal(3, addressed.Table.ColumnCount);
+        Assert.Equal(3, addressed.Table.RowCount);
+        Assert.Equal("Chicken", addressed.Table.Rows[1].Cells[0]);
+        Assert.Equal("Price", addressed.Table.Columns[1].Name);
+        Assert.Equal("right", addressed.Table.Columns[1].Alignment);
+        Assert.Equal(Pointer(Initial), addressed.Pointer);
+        Assert.Equal(root.SourceHash, addressed.SourceHash);
+    }
+
+    [Fact]
+    public async Task Patch_RejectsReplacingTableWithParagraph()
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "a.md");
+        await File.WriteAllTextAsync(path, Initial, TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+        await Assert.ThrowsAsync<WorkspaceMutationException>(() => service.PatchAsync(
+            new PatchRequest("a.md",
+                [new PatchOperation(PatchOperationKind.ReplaceElement,
+                    Pointer(Initial), "Not a table.")]),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(Initial, await File.ReadAllTextAsync(path,
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task TextEscaping_NoOpAndMarkdownFormattingRemainSafe()
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "a.md");
+        await File.WriteAllTextAsync(path, Initial, TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+        var pointer = Pointer(Initial);
+        var noOp = await service.EditTableAsync(new TableEditRequest(
+            "a.md", pointer, TableEditAction.UpdateCells,
+            Updates: [new TableCellUpdate("Chicken", RowIndex: 1, Column: "Product")]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(pointer, noOp.Pointer);
+        Assert.Equal(Initial, await File.ReadAllTextAsync(path,
+            TestContext.Current.CancellationToken));
+
+        var edited = await service.EditTableAsync(new TableEditRequest(
+            "a.md", noOp.Pointer, TableEditAction.UpdateCells,
+            Updates: [new TableCellUpdate("**Meat** | A\\B",
+                RowIndex: 1, Column: "Product")]), TestContext.Current.CancellationToken);
+        var source = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        var table = Assert.Single(Parse(source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        var values = MarkdownTableSource.Read(source, table).Data;
+        Assert.Equal("**Meat** | A\\B", values.Rows[1].Cells[0]);
+
+        await service.EditTableAsync(new TableEditRequest(
+            "a.md", edited.Pointer, TableEditAction.UpdateCells,
+            Updates: [new TableCellUpdate("**Bold**", RowIndex: 1,
+                Column: "Product", ValueFormat: TableValueFormat.Markdown)]),
+            TestContext.Current.CancellationToken);
+        source = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        Assert.Contains("**Bold**", source, StringComparison.Ordinal);
+        table = Assert.Single(Parse(source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        Assert.Equal("Bold", MarkdownTableSource.Read(source, table).Data.Rows[1].Cells[0]);
+    }
+
     private static MarkdownSourceDocument Document(string source, bool bom = false)
         => new("a.md", "a.md", source, "", DateTimeOffset.UtcNow, bom);
 
