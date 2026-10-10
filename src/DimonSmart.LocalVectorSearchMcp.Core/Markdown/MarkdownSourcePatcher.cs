@@ -8,6 +8,13 @@ public static class MarkdownSourcePatcher
         string source,
         IReadOnlyList<MarkdownElement> elements,
         IReadOnlyList<PatchOperation> operations)
+        => Apply(source, elements, operations, out _);
+
+    public static string Apply(
+        string source,
+        IReadOnlyList<MarkdownElement> elements,
+        IReadOnlyList<PatchOperation> operations,
+        out IReadOnlyList<MarkdownSourceEdit> plannedEdits)
     {
         if (operations.Count == 0)
         {
@@ -42,7 +49,9 @@ public static class MarkdownSourcePatcher
             }
 
             var markdown = NormalizeLineEndings(operation.Markdown ?? "", eol);
-            var edit = operation.Kind switch
+            var edit = element.Kind is MarkdownElementKind.ListItem or MarkdownElementKind.BlockQuote
+                ? CreateStructuredEdit(source, element, operation, markdown, eol)
+                : operation.Kind switch
             {
                 PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
                     when operation.Markdown is not null
@@ -113,6 +122,10 @@ public static class MarkdownSourcePatcher
             }
         }
 
+        plannedEdits = ordered
+            .Select(edit => new MarkdownSourceEdit(edit.Start, edit.Length, edit.Replacement, edit.Pointer))
+            .ToArray();
+
         var result = source;
         foreach (var edit in ordered.OrderByDescending(edit => edit.Start))
         {
@@ -120,6 +133,71 @@ public static class MarkdownSourcePatcher
         }
 
         return result;
+    }
+
+    private static SourceEdit CreateStructuredEdit(
+        string source,
+        MarkdownElement target,
+        PatchOperation operation,
+        string markdown,
+        string eol)
+    {
+        var map = target.SourceMap ?? throw new WorkspaceMutationException(
+            "Unsupported list container: exact source ownership is not available.");
+        var quote = target.Kind == MarkdownElementKind.BlockQuote;
+        var fragment = markdown.TrimEnd('\r', '\n');
+
+        if (operation.Kind is PatchOperationKind.ReplaceSection or PatchOperationKind.DeleteSection)
+            throw new WorkspaceMutationException(
+                "Section operations require a heading pointer.");
+
+        if (!quote && (map.MarkerStyle is null || map.Indent < 0))
+            throw new WorkspaceMutationException(
+                $"Unsupported list container at '{target.Pointer.Value}': marker or indentation is ambiguous.");
+
+        return operation.Kind switch
+        {
+            PatchOperationKind.Delete when operation.Markdown is null
+                => new SourceEdit(map.DeleteRange.Start, map.DeleteRange.Length,
+                    "", operation.Pointer),
+            PatchOperationKind.Delete => throw new WorkspaceMutationException(
+                "delete does not accept markdown content for list items or quotes."),
+            PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
+                when operation.Markdown is not null
+                => new SourceEdit(map.ReplaceRange.Start, map.ReplaceRange.Length,
+                    fragment, operation.Pointer),
+            PatchOperationKind.InsertBefore when operation.Markdown is not null
+                => new SourceEdit(map.BeforePosition, 0,
+                    fragment + (quote ? eol + eol : eol), operation.Pointer),
+            PatchOperationKind.InsertAfter when operation.Markdown is not null
+                => new SourceEdit(map.AfterPosition, 0,
+                    quote
+                        ? GetQuoteInsertAfter(source, map.AfterPosition, fragment, eol)
+                        : GetListInsertAfter(source, map.AfterPosition, fragment, eol),
+                    operation.Pointer),
+            _ => throw new WorkspaceMutationException(
+                $"Patch operation '{operation.Kind}' requires markdown content.")
+        };
+    }
+
+    private static string GetListInsertAfter(string source, int position,
+        string fragment, string eol)
+    {
+        var prefix = position > 0 && source[position - 1] != '\n' ? eol : "";
+        var suffix = position < source.Length ? eol : "";
+        return prefix + fragment + suffix;
+    }
+
+    private static string GetQuoteInsertAfter(string source, int position,
+        string fragment, string eol)
+    {
+        var prefix = position > 0 && source[position - 1] == '\n'
+            ? eol : eol + eol;
+        var suffix = position < source.Length
+            ? (source.AsSpan(position).StartsWith(eol, StringComparison.Ordinal)
+                ? eol : eol + eol)
+            : "";
+        return prefix + fragment + suffix;
     }
 
     private static SourceEdit CreateSectionEdit(
@@ -246,3 +324,5 @@ public static class MarkdownSourcePatcher
 
     private sealed record SourceEdit(int Start, int Length, string Replacement, string Pointer);
 }
+
+public sealed record MarkdownSourceEdit(int Start, int Length, string Replacement, string Pointer);
