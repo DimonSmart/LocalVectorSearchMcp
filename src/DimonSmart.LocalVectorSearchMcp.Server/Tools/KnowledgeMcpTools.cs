@@ -41,7 +41,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_status",
         UseStructuredContent = true,
         OutputSchemaType = typeof(StatusResponse))]
-    [Description("Returns local vector search index status.")]
+    [Description("Returns local vector search index status, including project counts, pending synchronization, active or last reindex operation, and manifest compatibility.")]
     public async Task<StatusResponse> StatusAsync(CancellationToken cancellationToken)
     {
         await indexInitializer.InitializeAsync(cancellationToken);
@@ -115,7 +115,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_read",
         UseStructuredContent = true,
         OutputSchemaType = typeof(MarkdownSlice))]
-    [Description("Reads the current Markdown source starting at a semantic pointer or hashed semantic anchor. Reading is independent of embeddings and background indexing. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. List items are liN addresses, nested within parent liN; BlockQuote is one opaque qN element. GFM tables are standalone tN elements; address a table to receive structured columns and data rows. Omit pointer or use \"document\" to read from the beginning of the document.")]
+    [Description("Reads the current Markdown source starting at a semantic pointer or hashed semantic anchor. Reading is independent of embeddings and background indexing. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. List items are liN addresses, nested within parent liN; BlockQuote is one opaque qN element. GFM tables are standalone tN elements; address a table to receive structured columns and data rows. Table cells are normalized display text (for example, inline Markdown formatting is removed); use the returned markdown slice when original cell markup is needed. Omit pointer or use \"document\" to read from the beginning of the document.")]
     public async Task<CallToolResult> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
@@ -172,7 +172,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_edit_table",
         UseStructuredContent = true,
         OutputSchemaType = typeof(TableEditResponse))]
-    [Description("Edits one GFM pipe table without generating whole-table Markdown. First call kb_read on the table and pass its full hashed tN pointer. Supports update_cells, insert_row, delete_row, insert_column, delete_column, rename_column and set_alignment. Data rows have zero-based rowIndex; header is excluded. Prefer unique where {column,equals} selectors and column names; use numeric indexes if names or values are ambiguous. update_cells accepts several changes atomically. Use the returned pointer for subsequent edits; on CONFLICT call kb_read again. Use kb_patch to delete the entire table.")]
+    [Description("Edits one GFM pipe table without generating whole-table Markdown. First call kb_read on the table and pass its full hashed tN pointer. update_cells requires nonempty updates; every update requires value, one row selector (rowIndex or where), and one column selector (column or columnIndex). insert_row requires values or valuesByColumn; delete_row requires a row selector. insert_column requires name and accepts defaultValue, alignment, and an optional before-column selector. delete_column requires a column selector; rename_column also requires newName; set_alignment requires alignment (none, left, center, or right). Data rows have zero-based rowIndex; header is excluded. Prefer unique where {column,equals} selectors and column names; use numeric indexes if names or values are ambiguous. Irrelevant or conflicting action fields are rejected. Use the returned pointer for subsequent edits; on CONFLICT call kb_read again. Use kb_patch to delete the entire table.")]
     public async Task<CallToolResult> EditTableAsync(
         string path,
         string pointer,

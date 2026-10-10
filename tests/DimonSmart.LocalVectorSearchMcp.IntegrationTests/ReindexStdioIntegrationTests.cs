@@ -161,7 +161,7 @@ public sealed class ReindexStdioIntegrationTests
         while (completed.Indexing?.IsRunning == true);
 
         Assert.Equal(
-            "succeeded",
+            ReindexOutcome.Succeeded,
             completed.Indexing?.Last?.Outcome);
         Assert.Equal(
             1,
