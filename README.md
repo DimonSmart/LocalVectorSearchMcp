@@ -157,7 +157,7 @@ Return the Markdown image reference.
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
 | Default embeddings | Local Ollama-compatible endpoint; use `embedding.provider: none` for offline FTS5-only mode |
 
-The MCP server exposes fifteen tools. MCP reindexing is asynchronous: `kb_reindex` starts or joins the single active reindex and returns immediately, while `kb_status.indexing` reports progress and the last outcome. The CLI `--reindex` command remains synchronous and exits only after indexing finishes.
+The MCP server exposes sixteen tools. MCP reindexing is asynchronous: `kb_reindex` starts or joins the single active reindex and returns immediately, while `kb_status.indexing` reports progress and the last outcome. The CLI `--reindex` command remains synchronous and exits only after indexing finishes.
 
 
 - `kb_status` — inspect the current index.
@@ -165,6 +165,7 @@ The MCP server exposes fifteen tools. MCP reindexing is asynchronous: `kb_reinde
 - `kb_search` — run optionally path-scoped lexical, semantic, or hybrid search against the derived index; each result identifies its indexed revision with `indexedSourceHash`.
 - `kb_read` — read the current Markdown source from a semantic pointer and receive the exact source revision `sourceHash`.
 - `kb_patch` — atomically replace/delete individual semantic elements or complete heading sections, and insert before/after elements.
+- `kb_edit_table` — source-aware editing of GFM table cells, rows, columns and alignment through a hashed table pointer.
 - `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
 - `kb_list_files` — list Markdown files and non-indexed assets.
 - `kb_outline` — return a deterministic heading tree.
@@ -346,3 +347,31 @@ The server re-parses the **entire proposed result** before writing: existing ele
 
 
 Search pointer and read hint still identify the first *chunk* element, not necessarily the exact list-item match. Chunker v5 requires explicit derived-index rebuild: `kb_reindex(force=true)` or CLI `--reindex --force`. No Markdown migration is performed.
+
+
+## Semantic Markdown tables
+
+Standalone GFM pipe tables appear as atomic `table` elements with section-local `tN` pointers. Address `kb_read` with a table's hashed pointer to obtain `table.columns` (name, index, alignment) and `table.rows` (data-row indexes beginning at zero and visible cell text). Ordinary document paging does not duplicate the structured projection.
+
+The new `kb_edit_table` tool takes `path`, a current `pointer` of the form `tN~selfHash~subtreeHash`, and one of seven actions: `update_cells`, `insert_row`, `delete_row`, `insert_column`, `delete_column`, `rename_column`, or `set_alignment`. Example:
+
+```json
+{
+  "path": "recipes.md",
+  "pointer": "1.t1~<selfHash>~<subtreeHash>",
+  "action": "update_cells",
+  "updates": [
+    {
+      "where": { "column": "Product", "equals": "Chicken" },
+      "column": "Price",
+      "value": "20"
+    }
+  ]
+}
+```
+
+Prefer `where` when a row value is unique and `column` when the header is unique; otherwise use numeric `rowIndex` and `columnIndex`. Lookups are exact and case-sensitive. `update_cells` batches multiple updates atomically. Values default to literal `text`, safely escaping Markdown; `valueFormat=markdown` permits intentional inline formatting. Newly inserted row values and column defaults are literal text.
+
+Successful responses contain the new table `pointer`, updated `sourceHash` and index synchronization status. Reuse the returned pointer to chain edits; on `CONFLICT`, reread the table. Edits reject tables with extra ignored physical cells, preserve unrelated Markdown, and use the existing atomic workspace writer. Tables inside code, lists or block quotes have no independent table pointers. To remove a table entirely, use `kb_patch`.
+
+Table parsing changes the derived index format to chunker version 6. Rebuild incompatible indexes via `kb_reindex(force=true)` or CLI `--reindex --force`; no Markdown-file migration is needed.
