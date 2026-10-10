@@ -108,7 +108,16 @@ public sealed class WorkspaceMutationService(
                     "A fingerprint is required when mutating a concrete semantic element.");
             }
 
-            var scope = operation.Kind.GetMutationScope();
+            if (elements.FirstOrDefault()?.ReservedPointers?.Contains(anchor.LogicalPointer.Value) == true)
+            {
+                throw new SemanticAnchorConflictException(
+                    SemanticAnchorConflictReason.SemanticTargetNotFound,
+                    "The original pointer belongs to a now-atomic list or quote. " +
+                    "Read the document again and use its list_item or block_quote pointer.");
+            }
+
+            var resolved = SemanticAnchorResolver.ResolveCandidate(anchor, candidates);
+            var scope = operation.Kind.GetMutationScope(resolved.Kind);
             if (scope == MutationScope.Subtree && anchor.SubtreeHash is null)
             {
                 throw new SemanticAnchorConflictException(
@@ -117,7 +126,6 @@ public sealed class WorkspaceMutationService(
                     "Read the document again and use the current semantic pointer.");
             }
 
-            var resolved = SemanticAnchorResolver.ResolveCandidate(anchor, candidates);
             if (scope == MutationScope.Subtree
                 && !string.Equals(
                     anchor.SubtreeHash,
@@ -126,7 +134,7 @@ public sealed class WorkspaceMutationService(
             {
                 throw new SemanticAnchorConflictException(
                     SemanticAnchorConflictReason.SubtreeHashMismatch,
-                    "The target section changed after the pointer was created.");
+                    "The target subtree changed after the pointer was created. Read the document again.");
             }
 
             result.Add(operation with { Pointer = resolved.Pointer.Value });
