@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
+using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Server;
@@ -1005,6 +1007,427 @@ public sealed class StdioTransportIntegrationTests
             string.IsNullOrEmpty(stdout),
             $"Unexpected stdout before any MCP request:{Environment.NewLine}{stdout}{Environment.NewLine}{stderr}");
     }
+
+
+    [Fact]
+    public async Task PublishedMcpSchemasDescribeEveryToolAndMatchStructuredResults()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(
+            temp.Path, cancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(temp.Path, "outline.md"),
+            "# First\\n\\n## Second\\n\\n### Third\\n",
+            cancellationToken);
+
+        var transport = CreateTransport(
+            "typed-contracts", configPath, temp.Path,
+            new ConcurrentQueue<string>());
+        await using var client = await McpClient.CreateAsync(
+            transport, cancellationToken: cancellationToken);
+
+        var tools = await client.ListToolsAsync(
+            cancellationToken: cancellationToken);
+        Assert.Equal(ExpectedTools, tools.Select(tool => tool.Name)
+            .OrderBy(name => name, StringComparer.Ordinal));
+
+        // Optional artifact for manual inspection of the actual wire contracts.
+        var snapshotPath = Environment.GetEnvironmentVariable(
+            "MCP_TOOLS_LIST_SNAPSHOT");
+        if (!string.IsNullOrWhiteSpace(snapshotPath))
+        {
+            await File.WriteAllTextAsync(
+                snapshotPath,
+                JsonSerializer.Serialize(
+                    tools.Select(tool => tool.ProtocolTool),
+                    JsonOptions.Default),
+                cancellationToken);
+        }
+
+        foreach (var tool in tools)
+        {
+            AssertSchemaRefsResolve(tool.JsonSchema);
+            if (tool.Name == "kb_load_image")
+            {
+                Assert.Null(tool.ProtocolTool.OutputSchema);
+                continue;
+            }
+
+            var output = Assert.IsType<JsonElement>(
+                tool.ProtocolTool.OutputSchema);
+            AssertSchemaRefsResolve(output);
+        }
+
+        var search = Assert.Single(tools, tool => tool.Name == "kb_search");
+        AssertStringEnum(
+            SchemaProperty(search.JsonSchema, "request", "mode"),
+            search.JsonSchema,
+            "semantic", "lexical", "hybrid");
+        var searchOutput = search.ProtocolTool.OutputSchema!.Value;
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(searchOutput, "results", "[]", "readHint"));
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(searchOutput, "results", "[]", "indexedSourceHash"));
+        AssertStringEnum(
+            SchemaProperty(searchOutput, "results", "[]", "searchMode"),
+            searchOutput,
+            "semantic", "lexical", "hybrid");
+
+        var reindex = Assert.Single(tools, tool => tool.Name == "kb_reindex");
+        AssertStringEnum(
+            SchemaProperty(reindex.JsonSchema, "request", "scope"),
+            reindex.JsonSchema, "changed", "all");
+        var reindexOutput = reindex.ProtocolTool.OutputSchema!.Value;
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(reindexOutput, "current", "startedAtUtc"));
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(reindexOutput, "current", "isDestructiveRebuild"));
+
+        var patch = Assert.Single(tools, tool => tool.Name == "kb_patch");
+        AssertStringEnum(
+            SchemaProperty(patch.JsonSchema,
+                "request", "operations", "[]", "kind"),
+            patch.JsonSchema,
+            "replace", "replace_element", "replace_subtree",
+            "replace_section", "delete_section", "insert_before",
+            "insert_after", "delete");
+
+        var files = Assert.Single(tools, tool => tool.Name == "kb_list_files");
+        var filesOutput = files.ProtocolTool.OutputSchema!.Value;
+        AssertStringEnum(
+            SchemaProperty(filesOutput, "files", "[]", "kind"),
+            filesOutput, "markdown", "asset");
+
+        var read = Assert.Single(tools, tool => tool.Name == "kb_read");
+        var readOutput = read.ProtocolTool.OutputSchema!.Value;
+        AssertStringEnum(
+            SchemaProperty(readOutput, "elements", "[]", "kind"),
+            readOutput,
+            "document", "front_matter", "heading", "paragraph",
+            "code_block", "list_item", "table", "block_quote");
+
+        var status = Assert.Single(tools, tool => tool.Name == "kb_status");
+        AssertParameterlessToolSchema(status.JsonSchema);
+        var statusOutput = status.ProtocolTool.OutputSchema!.Value;
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(statusOutput, "indexing", "last", "outcome"));
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(statusOutput, "compatibility", "isCompatible"));
+
+        var outline = Assert.Single(tools, tool => tool.Name == "kb_outline");
+        var outlineOutput = outline.ProtocolTool.OutputSchema!.Value;
+        Assert.NotEqual(JsonValueKind.Undefined,
+            SchemaProperty(outlineOutput,
+                "headings", "[]", "children", "[]", "children"));
+
+        var calls = new (string Name, IReadOnlyDictionary<string, object?> Args)[]
+        {
+            ("kb_status", new Dictionary<string, object?>()),
+            ("kb_outline", new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "outline.md" }
+            }),
+            ("kb_list_files", new Dictionary<string, object?>
+            {
+                ["request"] = new { }
+            }),
+            ("kb_read", new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "outline.md" }
+            }),
+            ("kb_reindex", new Dictionary<string, object?>
+            {
+                ["request"] = new { scope = "changed" }
+            })
+        };
+
+        foreach (var call in calls)
+        {
+            var tool = Assert.Single(tools, tool => tool.Name == call.Name);
+            var result = await client.CallToolAsync(
+                call.Name, call.Args, cancellationToken: cancellationToken);
+            Assert.False(result.IsError is true, ResultText(result));
+            var structured = Assert.IsType<JsonElement>(
+                result.StructuredContent);
+            using var text = JsonDocument.Parse(ResultText(result));
+            Assert.True(JsonElement.DeepEquals(
+                text.RootElement, structured));
+            AssertMatchesSchema(
+                structured, tool.ProtocolTool.OutputSchema!.Value,
+                tool.ProtocolTool.OutputSchema!.Value);
+
+            if (call.Name == "kb_list_files")
+            {
+                var kinds = structured.GetProperty("files")
+                    .EnumerateArray()
+                    .Select(file => file.GetProperty("kind").GetString())
+                    .ToArray();
+                Assert.Contains("markdown", kinds);
+                Assert.Contains("asset", kinds);
+            }
+
+            if (call.Name == "kb_outline")
+            {
+                var first = structured.GetProperty("headings")[0];
+                var second = first.GetProperty("children")[0];
+                var third = second.GetProperty("children")[0];
+                Assert.Equal(1, first.GetProperty("level").GetInt32());
+                Assert.Equal(2, second.GetProperty("level").GetInt32());
+                Assert.Equal(3, third.GetProperty("level").GetInt32());
+            }
+        }
+
+        var error = await client.CallToolAsync(
+            "kb_outline",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "missing.md" }
+            },
+            cancellationToken: cancellationToken);
+        Assert.True(error.IsError is true);
+        Assert.Null(error.StructuredContent);
+        using var errorJson = JsonDocument.Parse(ResultText(error));
+        Assert.Equal("NOT_FOUND",
+            errorJson.RootElement.GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("\"semantic\"", SearchMode.Semantic)]
+    [InlineData("\"LEXICAL\"", SearchMode.Lexical)]
+    [InlineData("\"hybrid\"", SearchMode.Hybrid)]
+    public void SearchModeWireFormatRetainsCaseInsensitiveStrings(
+        string json, SearchMode expected)
+    {
+        Assert.Equal(expected, JsonSerializer.Deserialize<SearchMode>(
+            json, JsonOptions.Default));
+        Assert.Equal(expected, JsonSerializer.Deserialize<SearchMode>(json));
+        Assert.Equal(expected.ToWireValue(),
+            JsonSerializer.Serialize(expected, JsonOptions.Default).Trim('"'));
+    }
+
+    [Theory]
+    [InlineData("\"changed\"", ReindexScope.Changed)]
+    [InlineData("\"ALL\"", ReindexScope.All)]
+    public void ReindexScopeWireFormatRetainsCaseInsensitiveStrings(
+        string json, ReindexScope expected)
+    {
+        Assert.Equal(expected, JsonSerializer.Deserialize<ReindexScope>(
+            json, JsonOptions.Default));
+        Assert.Equal(expected, JsonSerializer.Deserialize<ReindexScope>(json));
+        Assert.Equal(expected.ToWireValue(),
+            JsonSerializer.Serialize(expected, JsonOptions.Default).Trim('"'));
+    }
+
+    [Theory]
+    [InlineData("\"markdown\"", WorkspaceFileKind.Markdown)]
+    [InlineData("\"ASSET\"", WorkspaceFileKind.Asset)]
+    public void FileKindWireFormatRetainsCaseInsensitiveStrings(
+        string json, WorkspaceFileKind expected)
+    {
+        Assert.Equal(expected,
+            JsonSerializer.Deserialize<WorkspaceFileKind>(json));
+        Assert.Equal(expected,
+            JsonSerializer.Deserialize<WorkspaceFileKind>(
+                json, JsonOptions.Default));
+    }
+
+    [Theory]
+    [InlineData("5")]
+    [InlineData("\"bogus\"")]
+    public void StrictEnumConvertersRejectUnsupportedWireValues(string json)
+    {
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<SearchMode>(json));
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<ReindexScope>(json));
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<WorkspaceFileKind>(json));
+    }
+
+    private static void AssertStringEnum(
+        JsonElement schema, JsonElement document, params string[] expected)
+    {
+        schema = ResolveSchema(schema, document);
+        Assert.Equal("string",
+            schema.GetProperty("type").GetString());
+        Assert.Equal(expected,
+            schema.GetProperty("enum").EnumerateArray()
+                .Select(item => item.GetString()!).ToArray());
+    }
+
+    private static JsonElement SchemaProperty(
+        JsonElement document, params string[] path)
+    {
+        var schema = document;
+        foreach (var segment in path)
+        {
+            schema = ResolveSchema(schema, document);
+            schema = segment == "[]"
+                ? schema.GetProperty("items")
+                : schema.GetProperty("properties").GetProperty(segment);
+        }
+
+        return ResolveSchema(schema, document);
+    }
+
+    private static JsonElement ResolveSchema(
+        JsonElement schema, JsonElement document)
+    {
+        for (var depth = 0; depth < 32; depth++)
+        {
+            if (schema.ValueKind != JsonValueKind.Object)
+            {
+                return schema;
+            }
+
+            if (schema.TryGetProperty("$ref", out var reference))
+            {
+                schema = FollowSchemaRef(document, reference.GetString()!);
+                continue;
+            }
+
+            if (schema.TryGetProperty("anyOf", out var alternatives)
+                || schema.TryGetProperty("oneOf", out alternatives))
+            {
+                schema = alternatives.EnumerateArray()
+                    .First(item => !IsNullSchema(item, document));
+                continue;
+            }
+
+            if (schema.TryGetProperty("allOf", out var all))
+            {
+                schema = all[0];
+                continue;
+            }
+
+            return schema;
+        }
+
+        throw new Xunit.Sdk.XunitException("Schema reference cycle.");
+    }
+
+    private static bool IsNullSchema(
+        JsonElement schema, JsonElement document)
+    {
+        if (schema.TryGetProperty("$ref", out var reference))
+        {
+            return IsNullSchema(
+                FollowSchemaRef(document, reference.GetString()!), document);
+        }
+
+        return schema.TryGetProperty("type", out var type)
+            && type.ValueKind == JsonValueKind.String
+            && type.GetString() == "null";
+    }
+
+    private static JsonElement FollowSchemaRef(
+        JsonElement document, string reference)
+    {
+        Assert.StartsWith("#/", reference, StringComparison.Ordinal);
+        var current = document;
+        foreach (var token in reference[2..].Split('/'))
+        {
+            current = current.GetProperty(
+                token.Replace("~1", "/").Replace("~0", "~"));
+        }
+
+        return current;
+    }
+
+    private static void AssertSchemaRefsResolve(JsonElement schema)
+    {
+        static void Visit(JsonElement node, JsonElement root)
+        {
+            if (node.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var child in node.EnumerateArray())
+                {
+                    Visit(child, root);
+                }
+            }
+            else if (node.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in node.EnumerateObject())
+                {
+                    if (property.Name == "$ref")
+                    {
+                        Assert.NotEqual(JsonValueKind.Undefined,
+                            FollowSchemaRef(root, property.Value.GetString()!));
+                    }
+                    else
+                    {
+                        Visit(property.Value, root);
+                    }
+                }
+            }
+        }
+
+        Visit(schema, schema);
+    }
+
+    private static void AssertMatchesSchema(
+        JsonElement value, JsonElement schema, JsonElement document)
+    {
+        schema = ResolveSchema(schema, document);
+        if (schema.TryGetProperty("type", out var type))
+        {
+            var allowed = type.ValueKind == JsonValueKind.Array
+                ? type.EnumerateArray().Select(element => element.GetString()!)
+                : [type.GetString()!];
+            Assert.Contains(JsonType(value), allowed);
+        }
+
+        if (schema.TryGetProperty("enum", out var choices))
+        {
+            Assert.Contains(choices.EnumerateArray(),
+                item => JsonElement.DeepEquals(item, value));
+        }
+
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            if (schema.TryGetProperty("required", out var required))
+            {
+                foreach (var item in required.EnumerateArray())
+                {
+                    Assert.True(value.TryGetProperty(item.GetString()!, out _),
+                        $"Required field missing: {item.GetString()}");
+                }
+            }
+
+            if (schema.TryGetProperty("properties", out var properties))
+            {
+                foreach (var property in properties.EnumerateObject())
+                {
+                    if (value.TryGetProperty(property.Name, out var actual))
+                    {
+                        AssertMatchesSchema(actual, property.Value, document);
+                    }
+                }
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Array
+            && schema.TryGetProperty("items", out var items))
+        {
+            foreach (var item in value.EnumerateArray())
+            {
+                AssertMatchesSchema(item, items, document);
+            }
+        }
+    }
+
+    private static string JsonType(JsonElement element)
+        => element.ValueKind switch
+        {
+            JsonValueKind.Object => "object",
+            JsonValueKind.Array => "array",
+            JsonValueKind.String => "string",
+            JsonValueKind.Number => "number",
+            JsonValueKind.True or JsonValueKind.False => "boolean",
+            JsonValueKind.Null => "null",
+            _ => throw new Xunit.Sdk.XunitException(
+                "Unsupported JSON value.")
+        };
 
     private static void AssertParameterlessToolSchema(
         JsonElement schema)
