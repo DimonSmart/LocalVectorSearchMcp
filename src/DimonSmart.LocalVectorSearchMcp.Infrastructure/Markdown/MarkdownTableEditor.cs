@@ -315,8 +315,14 @@ internal static class MarkdownTableEditor
     }
 
     private static string RenderLine(MarkdownTableSource.Line original, IReadOnlyList<string> cells)
-        => (original.LeadingPipe ? "| " : "") + string.Join(" | ", cells) +
-            (original.TrailingPipe ? " |" : "");
+    {
+        // A one-column pipe table must retain explicit pipes; otherwise its
+        // header/delimiter may be reinterpreted as a Setext heading.
+        var border = cells.Count == 1;
+        return (original.LeadingPipe || border ? "| " : "") +
+            string.Join(" | ", cells) +
+            (original.TrailingPipe || border ? " |" : "");
+    }
 
     private static string DetectEol(string source)
         => source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
