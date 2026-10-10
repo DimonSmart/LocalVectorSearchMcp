@@ -22,7 +22,10 @@ public sealed class KnowledgeMcpTools(
     IWorkspaceMutationService mutations,
     IWorkspaceNavigationService navigation)
 {
-    [McpServerTool(Name = "kb_reindex")]
+    [McpServerTool(
+        Name = "kb_reindex",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(ReindexStartResponse))]
     [Description("Starts reindexing of the configured Markdown root in the background. Only one reindex can run at a time. Use kb_status to monitor progress and obtain the final result.")]
     public Task<ReindexStartResponse> ReindexAsync(
         ReindexToolRequest request,
@@ -34,7 +37,10 @@ public sealed class KnowledgeMcpTools(
                 new ReindexRequest(request.Scope, request.Force)));
     }
 
-    [McpServerTool(Name = "kb_status")]
+    [McpServerTool(
+        Name = "kb_status",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(StatusResponse))]
     [Description("Returns local vector search index status.")]
     public async Task<StatusResponse> StatusAsync(CancellationToken cancellationToken)
     {
@@ -305,7 +311,10 @@ public sealed class KnowledgeMcpTools(
         }
     }
 
-    [McpServerTool(Name = "kb_outline")]
+    [McpServerTool(
+        Name = "kb_outline",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(MarkdownOutline))]
     [Description("Returns a deterministic heading outline for one Markdown file.")]
     public async Task<CallToolResult> OutlineAsync(
         OutlineToolRequest request,
@@ -326,7 +335,10 @@ public sealed class KnowledgeMcpTools(
                             response,
                             JsonOptions.Default)
                     }
-                ]
+                ],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(
+                    response,
+                    JsonOptions.Default)
             };
         }
         catch (Exception exception) when (IsControlledToolException(exception))

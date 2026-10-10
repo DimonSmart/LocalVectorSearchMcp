@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
@@ -75,39 +75,18 @@ public interface IWorkspaceMutationService
     Task<MutationResponse> DeleteAsync(DeleteRequest request, CancellationToken cancellationToken);
 }
 
-[JsonConverter(typeof(WorkspaceFileKindJsonConverter))]
+[JsonConverter(typeof(Serialization.StrictJsonStringEnumConverter<WorkspaceFileKind>))]
 public enum WorkspaceFileKind
 {
+    [JsonStringEnumMemberName("markdown")]
     Markdown,
+
+    [JsonStringEnumMemberName("asset")]
     Asset
 }
 
-public sealed class WorkspaceFileKindJsonConverter : JsonConverter<WorkspaceFileKind>
-{
-    public override WorkspaceFileKind Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options)
-        => reader.GetString()?.ToLowerInvariant() switch
-        {
-            "markdown" => WorkspaceFileKind.Markdown,
-            "asset" => WorkspaceFileKind.Asset,
-            _ => throw new JsonException("Workspace file kind must be markdown or asset.")
-        };
-
-    public override void Write(
-        Utf8JsonWriter writer,
-        WorkspaceFileKind value,
-        JsonSerializerOptions options)
-        => writer.WriteStringValue(value switch
-        {
-            WorkspaceFileKind.Markdown => "markdown",
-            WorkspaceFileKind.Asset => "asset",
-            _ => throw new JsonException($"Unsupported workspace file kind '{value}'.")
-        });
-}
-
 public sealed record WorkspaceFile(
+    [property: Description("Portable path relative to the configured workspace root.")]
     string RelativePath,
     WorkspaceFileKind Kind,
     long Size,
