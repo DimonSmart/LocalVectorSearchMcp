@@ -125,6 +125,26 @@ internal static class MarkdownStructuralEditValidator
             }
         }
 
+        // A whole-table replacement must remain an atomic table in the full document,
+        // not merely when parsed as a detached replacement fragment.
+        foreach (var operation in operations.Where(operation =>
+            operation.Kind is PatchOperationKind.Replace or PatchOperationKind.ReplaceElement))
+        {
+            if (!originalElements.TryGetValue(operation.Pointer, out var target)
+                || target.Kind != MarkdownElementKind.Table)
+                continue;
+            var mapped = MapOrigin(target.SourceStart);
+            if (mapped is null)
+            {
+                var edit = orderedEdits.Single(item => item.Pointer == operation.Pointer);
+                var offset = orderedEdits.Where(item => item.Start < edit.Start)
+                    .Sum(item => item.Replacement.Length - item.Length);
+                mapped = edit.Start + offset;
+            }
+            if (afterElementsByStart[(mapped.Value, MarkdownElementKind.Table)].Count() != 1)
+                throw Conflict(operation.Pointer, "table replacement changed Markdown block ownership");
+        }
+
         // A list's own Span.Start is not stable. Match its surviving direct items
         // instead and require a bijection between original and resulting containers.
         var containerForward = new Dictionary<ListBlock, ListBlock>(
