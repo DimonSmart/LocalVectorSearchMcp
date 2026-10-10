@@ -195,7 +195,7 @@ The save result includes `path`, `mimeType`, `bytes`, lowercase `sha256`, and `m
 
 `kb_list_images(cursor?, pageSize?)` lists supported image extensions throughout the root, sorted case-insensitively with ordinal tie-breaking. Cursor pagination defaults to 50 items (range 1–200) and supports the last cursor item being deleted. `kb_load_image(path)` validates signature, extension and size; its MCP result contains a real `ImageContentBlock` first and a JSON metadata text block second, **without** `StructuredContent`.
 
-`kb_move_image` renames or moves **only one binary image**, anywhere under root. Input is `{sourcePath,targetPath,expectedSha256?,updateReferences?}`. `expectedSha256` is an optional 64-digit hex optimistic concurrency check; mismatches produce `CONFLICT`. The deprecated `updateReferences` may be omitted or set to `false`; `true` produces `INVALID_ARGUMENT`. The response is `{previousPath,path,sha256}` and contains no Markdown/index fields.
+`kb_move_image` renames or moves **only one binary image**, anywhere under root. Input is `{sourcePath,targetPath,expectedSha256?}`. `expectedSha256` is an optional 64-digit hex optimistic concurrency check; mismatches produce `CONFLICT`. Markdown links must be updated separately with `kb_read` and `kb_patch`. The response is `{previousPath,path,sha256}` and contains no Markdown/index fields.
 
 `kb_delete_image(path)` simply deletes the supported binary file, without scanning for Markdown references, checking if it is used, or removing its parent directories. Its result remains `{path,deleted:true}`. Both binary move and delete can leave broken Markdown links. Image operations never schedule indexing.
 

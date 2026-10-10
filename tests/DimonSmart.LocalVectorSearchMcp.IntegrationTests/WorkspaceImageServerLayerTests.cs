@@ -57,6 +57,21 @@ public sealed class WorkspaceImageServerLayerTests
     }
 
     [Fact]
+    public void MoveImageRequestExposesOnlySupportedParameters()
+    {
+        Assert.Equal(
+            [
+                nameof(MoveImageRequest.SourcePath),
+                nameof(MoveImageRequest.TargetPath),
+                nameof(MoveImageRequest.ExpectedSha256)
+            ],
+            typeof(MoveImageRequest)
+                .GetProperties()
+                .Select(property => property.Name)
+                .ToArray());
+    }
+
+    [Fact]
     public async Task LoadImageReturnsImageContentBeforeTextMetadata()
     {
         byte[] data =

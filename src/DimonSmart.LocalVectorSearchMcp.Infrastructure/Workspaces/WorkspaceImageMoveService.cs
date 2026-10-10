@@ -27,12 +27,6 @@ public sealed class WorkspaceImageMoveService(
                 "Workspace writes are disabled.", "PERMISSION_DENIED");
         }
 
-        if (request.UpdateReferences is true)
-        {
-            throw new WorkspaceImageException(
-                "updateReferences=true is no longer supported; update links using kb_patch.");
-        }
-
         if (request.ExpectedSha256 is not null
             && (request.ExpectedSha256.Length != 64
                 || !request.ExpectedSha256.All(Uri.IsHexDigit)))

@@ -42,10 +42,7 @@ public sealed record ImageDeleteResponse(
 public sealed record MoveImageRequest(
     string SourcePath,
     string TargetPath,
-    string? ExpectedSha256 = null,
-    [property: System.ComponentModel.Description(
-        "Deprecated. Omit or set false; true is rejected. Update Markdown links separately using kb_patch.")]
-    bool? UpdateReferences = null);
+    string? ExpectedSha256 = null);
 
 public sealed record ImageMoveResponse(
     string PreviousPath,
