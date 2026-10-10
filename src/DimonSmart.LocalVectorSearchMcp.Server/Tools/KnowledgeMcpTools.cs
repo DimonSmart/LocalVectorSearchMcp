@@ -43,7 +43,7 @@ public sealed class KnowledgeMcpTools(
     }
 
     [McpServerTool(Name = "kb_search", UseStructuredContent = true, OutputSchemaType = typeof(SearchResponse))]
-    [Description("Searches the derived Markdown index using lexical, semantic or hybrid search. Results belong to an indexed revision identified by indexedSourceHash and may temporarily lag behind the current source. Hybrid search falls back to lexical search when the embedding provider is unavailable.")]
+    [Description("Searches the derived Markdown index using lexical, semantic or hybrid search. Results belong to an indexed revision identified by indexedSourceHash and may temporarily lag behind the current source. Search pointers refer to the first element of a chunk, which may differ from the matching list item. Hybrid search falls back to lexical search when the embedding provider is unavailable.")]
     public async Task<CallToolResult> SearchAsync(
         SearchToolRequest request,
         CancellationToken cancellationToken)
@@ -109,7 +109,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_read",
         UseStructuredContent = true,
         OutputSchemaType = typeof(MarkdownSlice))]
-    [Description("Reads the current Markdown source starting at a semantic pointer or hashed semantic anchor. Reading is independent of embeddings and background indexing. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. Omit pointer or use \"document\" to read from the beginning of the document.")]
+    [Description("Reads the current Markdown source starting at a semantic pointer or hashed semantic anchor. Reading is independent of embeddings and background indexing. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. List items are liN addresses, nested within parent liN; BlockQuote is one opaque qN element. Omit pointer or use \"document\" to read from the beginning of the document.")]
     public async Task<CallToolResult> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
@@ -149,7 +149,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_patch",
         UseStructuredContent = true,
         OutputSchemaType = typeof(MutationResponse))]
-    [Description("Atomically edits Markdown using hashed semantic anchors, commits the source file, and schedules index reconciliation. Public concrete pointers use logical~selfHash~subtreeHash with 16-character lowercase hashes. replace_element, insert_before, insert_after, and delete validate only selfHash, so an unchanged element can survive independent descendant edits. replace is a deprecated alias of replace_element. delete removes exactly one Markdown element; for a heading, the section body is preserved. replace_section replaces a heading and its complete owned section subtree; delete_section removes a heading and its complete owned section subtree. Section operations run through the next heading with level <= the target level or end of document, require a canonical v2 heading pointer, and validate subtreeHash so stale body or raw-content edits cannot be overwritten or deleted. Relocation uses only exact element kind plus selfHash. Legacy logical~selfHash input remains accepted for Self operations but is rejected for replace_section and delete_section with a reread instruction. The document pointer remains unhashed and supports insert_before and insert_after at document boundaries. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
+    [Description("Atomically edits Markdown using hashed semantic anchors, commits the source file, and schedules index reconciliation. Public concrete pointers use logical~selfHash~subtreeHash with 16-character lowercase hashes. For list_item, delete and replace_element require both current hashes and target the full subtree; insert_before/insert_after insert one sibling and check only selfHash. Block quotes are opaque qN elements with no separately addressable children. Other self-scoped operations validate selfHash. replace is a deprecated alias of replace_element. delete removes exactly one Markdown element; for a heading, the section body is preserved. replace_section replaces a heading and its complete owned section subtree; delete_section removes a heading and its complete owned section subtree. Section operations run through the next heading with level <= the target level or end of document, require a canonical v2 heading pointer, and validate subtreeHash so stale body or raw-content edits cannot be overwritten or deleted. Relocation uses only exact element kind plus selfHash. Legacy logical~selfHash input remains accepted for Self operations but is rejected for replace_section and delete_section with a reread instruction. The document pointer remains unhashed and supports insert_before and insert_after at document boundaries. IndexSynchronized reports whether derived-index synchronization has already been confirmed.")]
     public Task<CallToolResult> PatchAsync(
         PatchToolRequest request,
         CancellationToken cancellationToken)

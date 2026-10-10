@@ -355,10 +355,10 @@ public sealed class ReadSliceTests
     }
 
     [Theory]
-    [InlineData("- first\n- second\n- third\n", "p2", "- second\n")]
-    [InlineData("1. first\n2. second\n3. third\n", "p2", "2. second\n")]
-    [InlineData("- one\n  - child\n  - child 2\n- two\n", "p2", "  - child\n")]
-    [InlineData("- [ ] first\n- [x] second\n", "p2", "- [x] second\n")]
+    [InlineData("- first\n- second\n- third\n", "li2", "- second\n")]
+    [InlineData("1. first\n2. second\n3. third\n", "li2", "2. second\n")]
+    [InlineData("- one\n  - child\n  - child 2\n- two\n", "li1.li1", "  - child\n")]
+    [InlineData("- [ ] first\n- [x] second\n", "li2", "- [x] second\n")]
     public async Task ReadSliceAsync_StartInsideContainerIncludesContainerSyntax(
         string source,
         string pointer,
@@ -437,7 +437,7 @@ public sealed class ReadSliceTests
 
         Assert.Equal("- one\n", slice.Markdown);
         Assert.Equal(6, Encoding.UTF8.GetByteCount(slice.Markdown));
-        Assert.Equal("p2", slice.NextPointer);
+        Assert.Equal("li2", slice.NextPointer);
         Assert.Single(slice.Elements);
     }
 

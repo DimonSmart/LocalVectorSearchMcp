@@ -37,10 +37,21 @@ public sealed class WorkspaceMutationService(
                 config.KnowledgeBase,
                 normalized,
                 cancellationToken);
-            var elements = parser.Parse(document);
+            MarkdownParseResult parseResult;
+            try
+            {
+                parseResult = parser.ParseDetailed(document);
+            }
+            catch (InvalidOperationException exception)
+            {
+                throw new WorkspaceMutationException(
+                    $"Unsupported Markdown source structure: {exception.Message}");
+            }
+            var elements = parseResult.Elements;
             var resolvedOperations = ResolvePatchOperations(
                 request.Operations,
-                elements);
+                elements,
+                parseResult.ReservedPointers);
             ValidateReplacementOperations(
                 document,
                 elements,
@@ -48,7 +59,35 @@ public sealed class WorkspaceMutationService(
             var resultingSource = MarkdownSourcePatcher.Apply(
                 document.Markdown,
                 elements,
-                resolvedOperations);
+                resolvedOperations,
+                out var plannedEdits);
+            var structuredTargets = elements
+                .Where(element => element.Kind is MarkdownElementKind.ListItem
+                    or MarkdownElementKind.BlockQuote)
+                .Select(element => element.Pointer.Value)
+                .ToHashSet(StringComparer.Ordinal);
+            if (resolvedOperations.Any(operation => structuredTargets.Contains(operation.Pointer)))
+            {
+                try
+                {
+                    var updatedElements = parser.Parse(document with
+                    {
+                        Markdown = resultingSource
+                    });
+                    MarkdownStructuralEditValidator.Validate(
+                        document.Markdown,
+                        resultingSource,
+                        elements,
+                        updatedElements,
+                        resolvedOperations,
+                        plannedEdits);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    throw new WorkspaceMutationException(
+                        $"Unsupported Markdown structure after patch: {exception.Message}");
+                }
+            }
 
             string updatedSourceHash;
             try
@@ -80,7 +119,8 @@ public sealed class WorkspaceMutationService(
 
     private static IReadOnlyList<PatchOperation> ResolvePatchOperations(
         IReadOnlyList<PatchOperation> operations,
-        IReadOnlyList<MarkdownElement> elements)
+        IReadOnlyList<MarkdownElement> elements,
+        IReadOnlySet<string> reservedPointers)
     {
         var candidates = elements
             .Where(element => element.SourceLength > 0)
@@ -108,7 +148,16 @@ public sealed class WorkspaceMutationService(
                     "A fingerprint is required when mutating a concrete semantic element.");
             }
 
-            var scope = operation.Kind.GetMutationScope();
+            if (reservedPointers.Contains(anchor.LogicalPointer.Value))
+            {
+                throw new SemanticAnchorConflictException(
+                    SemanticAnchorConflictReason.SemanticTargetNotFound,
+                    "The original pointer belongs to a now-atomic list or quote. " +
+                    "Read the document again and use its list_item or block_quote pointer.");
+            }
+
+            var resolved = SemanticAnchorResolver.ResolveCandidate(anchor, candidates);
+            var scope = operation.Kind.GetMutationScope(resolved.Kind);
             if (scope == MutationScope.Subtree && anchor.SubtreeHash is null)
             {
                 throw new SemanticAnchorConflictException(
@@ -117,7 +166,6 @@ public sealed class WorkspaceMutationService(
                     "Read the document again and use the current semantic pointer.");
             }
 
-            var resolved = SemanticAnchorResolver.ResolveCandidate(anchor, candidates);
             if (scope == MutationScope.Subtree
                 && !string.Equals(
                     anchor.SubtreeHash,
@@ -126,7 +174,7 @@ public sealed class WorkspaceMutationService(
             {
                 throw new SemanticAnchorConflictException(
                     SemanticAnchorConflictReason.SubtreeHashMismatch,
-                    "The target section changed after the pointer was created.");
+                    "The target subtree changed after the pointer was created. Read the document again.");
             }
 
             result.Add(operation with { Pointer = resolved.Pointer.Value });
@@ -181,7 +229,18 @@ public sealed class WorkspaceMutationService(
             {
                 case PatchOperationKind.Replace:
                 case PatchOperationKind.ReplaceElement:
-                    ValidateElementReplacement(document, target, operation.Markdown);
+                    if (target.Kind == MarkdownElementKind.ListItem)
+                        ValidateListFragment(document.Markdown, target, operation.Markdown);
+                    else
+                        ValidateElementReplacement(document, target, operation.Markdown);
+                    break;
+
+                case PatchOperationKind.InsertBefore:
+                case PatchOperationKind.InsertAfter:
+                    if (target.Kind == MarkdownElementKind.ListItem)
+                        ValidateListFragment(document.Markdown, target, operation.Markdown);
+                    else if (target.Kind == MarkdownElementKind.BlockQuote)
+                        ValidateQuoteFragment(document, operation.Markdown);
                     break;
 
                 case PatchOperationKind.ReplaceSection:
@@ -206,6 +265,12 @@ public sealed class WorkspaceMutationService(
         }
 
         var replacementElements = ParseReplacement(document, markdown);
+        if (target.Kind == MarkdownElementKind.BlockQuote)
+        {
+            ValidateQuoteFragment(document, markdown);
+            return;
+        }
+
         if (replacementElements.Count != 1
             || HasNonWhitespaceOutsideElement(
                 markdown,
@@ -224,6 +289,41 @@ public sealed class WorkspaceMutationService(
             throw new WorkspaceMutationException(
                 "replace_element cannot change a heading level or replace a heading with a non-heading element.");
         }
+    }
+
+    private void ValidateQuoteFragment(MarkdownSourceDocument document, string? markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            throw new WorkspaceMutationException("Invalid quote fragment: a complete block quote is required.");
+
+        var elements = ParseReplacement(document, markdown);
+        if (elements.Count != 1 || elements[0].Kind != MarkdownElementKind.BlockQuote
+            || HasNonWhitespaceOutsideElement(markdown, elements[0]))
+            throw new WorkspaceMutationException(
+                "Invalid quote fragment: exactly one root BlockQuote is required.");
+    }
+
+    private static void ValidateListFragment(string source, MarkdownElement target, string? markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            throw new WorkspaceMutationException(
+                "Invalid list fragment: exactly one item with the original indentation and marker style is required.");
+
+        var map = target.SourceMap ?? throw new WorkspaceMutationException(
+            "Unsupported list container: source ownership is unavailable.");
+        if (map.MarkerStyle is null || map.Indent < 0)
+            throw new WorkspaceMutationException("Unsupported list container: ambiguous marker or indentation.");
+
+        var originalLine = source[map.SubtreeRange.Start..]
+            .Split(['\r', '\n'], 2)[0];
+        var newLine = markdown.Split(['\r', '\n'], 2)[0];
+        if (!MarkdownListMarker.TryParse(newLine, out var marker)
+            || !MarkdownListMarker.TryParse(originalLine, out var originalMarker)
+            || marker.Indentation != originalMarker.Indentation
+            || marker.MarkerStyle != map.MarkerStyle)
+            throw new WorkspaceMutationException(
+                $"Invalid list fragment at '{target.Pointer.Value}': expected indent " +
+                $"'{originalMarker.Indentation}' and marker style '{map.MarkerStyle}'.");
     }
 
     private void ValidateSectionReplacement(

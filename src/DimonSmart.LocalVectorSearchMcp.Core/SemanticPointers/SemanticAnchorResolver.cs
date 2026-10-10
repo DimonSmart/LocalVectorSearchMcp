@@ -68,6 +68,8 @@ public static class SemanticAnchorResolver
             SemanticPointerKind.Section => MarkdownElementKind.Heading,
             SemanticPointerKind.Paragraph => MarkdownElementKind.Paragraph,
             SemanticPointerKind.CodeBlock => MarkdownElementKind.CodeBlock,
+            SemanticPointerKind.ListItem => MarkdownElementKind.ListItem,
+            SemanticPointerKind.BlockQuote => MarkdownElementKind.BlockQuote,
             _ => throw new SemanticPointerFormatException(
                 $"Invalid semantic pointer: {pointer.Value}")
         };

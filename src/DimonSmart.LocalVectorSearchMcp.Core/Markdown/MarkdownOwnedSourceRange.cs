@@ -7,6 +7,11 @@ public static class MarkdownOwnedSourceRange
         IReadOnlyList<MarkdownElement> elements,
         MarkdownElement element)
     {
+        if (element.Kind == MarkdownElementKind.ListItem && element.SourceMap is not null)
+        {
+            return element.SourceMap.SubtreeRange;
+        }
+
         if (element.Kind != MarkdownElementKind.Heading)
         {
             return new SourceRange(element.SourceStart, element.SourceLength);
