@@ -158,6 +158,77 @@ public sealed class MarkdownTableIntegrationTests
     }
 
     [Fact]
+    public async Task InsertThenDeleteLastRow_RestoresExactOriginalMarkdown()
+    {
+        const string original = "# Table\n\n| Product | Mass |\n| --- | ---: |\n| Chicken | 4 |\n\nFollowing paragraph.\n";
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "a.md");
+        await File.WriteAllTextAsync(path, original, TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+        var originalHash = await SourceHash(temp.Path);
+
+        var inserted = await service.EditTableAsync(new TableEditRequest(
+            "a.md", Pointer(original), TableEditAction.InsertRow,
+            Values: ["Temporary", "123"]), TestContext.Current.CancellationToken);
+        var deleted = await service.EditTableAsync(new TableEditRequest(
+            "a.md", inserted.Pointer, TableEditAction.DeleteRow,
+            Where: new TableWhere("Product", EqualsValue: "Temporary")),
+            TestContext.Current.CancellationToken);
+
+        var actual = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(original, actual);
+        Assert.Equal(originalHash, deleted.SourceHash);
+    }
+
+    [Fact]
+    public async Task RepeatedInsertDelete_DoesNotAccumulateWhitespace()
+    {
+        const string original = "| Product | Mass |\r\n| --- | ---: |\r\n| Chicken | 4 |\r\n\r\nFollowing paragraph.\r\n";
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "a.md");
+        await File.WriteAllTextAsync(path, original, TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+        var pointer = Pointer(original);
+        var originalHash = await SourceHash(temp.Path);
+
+        for (var cycle = 0; cycle < 100; cycle++)
+        {
+            var inserted = await service.EditTableAsync(new TableEditRequest(
+                "a.md", pointer, TableEditAction.InsertRow,
+                Values: ["Temporary", "123"]), TestContext.Current.CancellationToken);
+            var deleted = await service.EditTableAsync(new TableEditRequest(
+                "a.md", inserted.Pointer, TableEditAction.DeleteRow,
+                Where: new TableWhere("Product", EqualsValue: "Temporary")),
+                TestContext.Current.CancellationToken);
+            pointer = deleted.Pointer;
+            Assert.Equal(original, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+            Assert.Equal(originalHash, deleted.SourceHash);
+        }
+    }
+
+    [Fact]
+    public async Task InsertThenDeleteLastRow_WithoutFinalEol_RestoresExactMarkdown()
+    {
+        const string original = "| Product | Mass |\n| --- | ---: |\n| Chicken | 4 |";
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "a.md");
+        await File.WriteAllTextAsync(path, original, TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+        var originalHash = await SourceHash(temp.Path);
+
+        var inserted = await service.EditTableAsync(new TableEditRequest(
+            "a.md", Pointer(original), TableEditAction.InsertRow,
+            Values: ["Temporary", "123"]), TestContext.Current.CancellationToken);
+        var deleted = await service.EditTableAsync(new TableEditRequest(
+            "a.md", inserted.Pointer, TableEditAction.DeleteRow,
+            RowIndex: 1), TestContext.Current.CancellationToken);
+
+        Assert.Equal(original, await File.ReadAllTextAsync(path,
+            TestContext.Current.CancellationToken));
+        Assert.Equal(originalHash, deleted.SourceHash);
+    }
+
+    [Fact]
     public async Task InvalidBatch_DoesNotModifyFile()
     {
         using var temp = new TemporaryDirectory();
@@ -306,6 +377,11 @@ public sealed class MarkdownTableIntegrationTests
     private static string Pointer(string source)
         => SemanticAnchor.FromElement(Assert.Single(Parse(source).Elements,
             element => element.Kind == MarkdownElementKind.Table)).ToString();
+
+    private static async Task<string> SourceHash(string root)
+        => (await new MarkdownDocumentLoader().LoadFileAsync(
+            new KnowledgeBaseConfig { Root = root }, "a.md",
+            TestContext.Current.CancellationToken)).SourceHash;
 
     private static WorkspaceMutationService CreateService(string root)
     {
