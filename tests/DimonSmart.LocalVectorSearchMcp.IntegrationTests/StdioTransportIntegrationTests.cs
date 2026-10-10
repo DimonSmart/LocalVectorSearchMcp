@@ -1018,7 +1018,7 @@ public sealed class StdioTransportIntegrationTests
             temp.Path, cancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(temp.Path, "outline.md"),
-            "# First\\n\\n## Second\\n\\n### Third\\n",
+            "# First\n\n## Second\n\n### Third\n",
             cancellationToken);
 
         var transport = CreateTransport(
@@ -1066,9 +1066,9 @@ public sealed class StdioTransportIntegrationTests
             "semantic", "lexical", "hybrid");
         var searchOutput = search.ProtocolTool.OutputSchema!.Value;
         Assert.NotEqual(JsonValueKind.Undefined,
-            SchemaProperty(searchOutput, "results", "[]", "readHint"));
+            SchemaProperty(searchOutput, "results", "[]", "readHint").ValueKind);
         Assert.NotEqual(JsonValueKind.Undefined,
-            SchemaProperty(searchOutput, "results", "[]", "indexedSourceHash"));
+            SchemaProperty(searchOutput, "results", "[]", "indexedSourceHash").ValueKind);
         AssertStringEnum(
             SchemaProperty(searchOutput, "results", "[]", "searchMode"),
             searchOutput,
@@ -1080,9 +1080,9 @@ public sealed class StdioTransportIntegrationTests
             reindex.JsonSchema, "changed", "all");
         var reindexOutput = reindex.ProtocolTool.OutputSchema!.Value;
         Assert.NotEqual(JsonValueKind.Undefined,
-            SchemaProperty(reindexOutput, "current", "startedAtUtc"));
+            SchemaProperty(reindexOutput, "current", "startedAtUtc").ValueKind);
         Assert.NotEqual(JsonValueKind.Undefined,
-            SchemaProperty(reindexOutput, "current", "isDestructiveRebuild"));
+            SchemaProperty(reindexOutput, "current", "isDestructiveRebuild").ValueKind);
 
         var patch = Assert.Single(tools, tool => tool.Name == "kb_patch");
         AssertStringEnum(
@@ -1111,15 +1111,15 @@ public sealed class StdioTransportIntegrationTests
         AssertParameterlessToolSchema(status.JsonSchema);
         var statusOutput = status.ProtocolTool.OutputSchema!.Value;
         Assert.NotEqual(JsonValueKind.Undefined,
-            SchemaProperty(statusOutput, "indexing", "last", "outcome"));
+            SchemaProperty(statusOutput, "indexing", "last", "outcome").ValueKind);
         Assert.NotEqual(JsonValueKind.Undefined,
-            SchemaProperty(statusOutput, "compatibility", "isCompatible"));
+            SchemaProperty(statusOutput, "compatibility", "isCompatible").ValueKind);
 
         var outline = Assert.Single(tools, tool => tool.Name == "kb_outline");
         var outlineOutput = outline.ProtocolTool.OutputSchema!.Value;
         Assert.NotEqual(JsonValueKind.Undefined,
             SchemaProperty(outlineOutput,
-                "headings", "[]", "children", "[]", "children"));
+                "headings", "[]", "children", "[]", "children").ValueKind);
 
         var calls = new (string Name, IReadOnlyDictionary<string, object?> Args)[]
         {
@@ -1372,10 +1372,18 @@ public sealed class StdioTransportIntegrationTests
         schema = ResolveSchema(schema, document);
         if (schema.TryGetProperty("type", out var type))
         {
-            var allowed = type.ValueKind == JsonValueKind.Array
+            IEnumerable<string> allowed = type.ValueKind == JsonValueKind.Array
                 ? type.EnumerateArray().Select(element => element.GetString()!)
                 : [type.GetString()!];
-            Assert.Contains(JsonType(value), allowed);
+            var actualType = JsonType(value);
+            if (actualType == "integer")
+            {
+                Assert.True(allowed.Contains("integer") || allowed.Contains("number"));
+            }
+            else
+            {
+                Assert.Contains(actualType, allowed);
+            }
         }
 
         if (schema.TryGetProperty("enum", out var choices))
@@ -1422,7 +1430,7 @@ public sealed class StdioTransportIntegrationTests
             JsonValueKind.Object => "object",
             JsonValueKind.Array => "array",
             JsonValueKind.String => "string",
-            JsonValueKind.Number => "number",
+            JsonValueKind.Number => element.TryGetInt64(out _) ? "integer" : "number",
             JsonValueKind.True or JsonValueKind.False => "boolean",
             JsonValueKind.Null => "null",
             _ => throw new Xunit.Sdk.XunitException(
