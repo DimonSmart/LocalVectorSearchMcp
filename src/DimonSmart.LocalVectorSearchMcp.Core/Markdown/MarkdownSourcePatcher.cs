@@ -52,60 +52,60 @@ public static class MarkdownSourcePatcher
             var edit = element.Kind is MarkdownElementKind.ListItem or MarkdownElementKind.BlockQuote
                 ? CreateStructuredEdit(source, element, operation, markdown, eol)
                 : operation.Kind switch
-            {
-                PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
-                    when operation.Markdown is not null
-                    => new SourceEdit(
-                        element.SourceStart,
-                        element.SourceLength,
-                        markdown,
-                        operation.Pointer),
-                PatchOperationKind.ReplaceSection
-                    when operation.Markdown is not null
-                    => CreateSectionEdit(
-                        source,
-                        elements,
-                        element,
-                        markdown,
-                        operation.Pointer,
-                        eol,
-                        "replace_section",
-                        preserveBoundarySeparator: true),
-                PatchOperationKind.DeleteSection
-                    when operation.Markdown is null
-                    => CreateSectionEdit(
-                        source,
-                        elements,
-                        element,
-                        "",
-                        operation.Pointer,
-                        eol,
-                        "delete_section",
-                        preserveBoundarySeparator: false),
-                PatchOperationKind.DeleteSection
-                    => throw new WorkspaceMutationException(
-                        "delete_section does not accept markdown content."),
-                PatchOperationKind.InsertBefore when operation.Markdown is not null
-                    => new SourceEdit(
-                        element.SourceStart,
-                        0,
-                        markdown.TrimEnd('\r', '\n') + eol + eol,
-                        operation.Pointer),
-                PatchOperationKind.InsertAfter when operation.Markdown is not null
-                    => new SourceEdit(
-                        element.SourceStart + element.SourceLength,
-                        0,
-                        eol + eol + markdown.TrimStart('\r', '\n'),
-                        operation.Pointer),
-                PatchOperationKind.Delete
-                    => new SourceEdit(
-                        element.SourceStart,
-                        element.SourceLength,
-                        "",
-                        operation.Pointer),
-                _ => throw new WorkspaceMutationException(
-                    $"Patch operation '{operation.Kind}' requires markdown content.")
-            };
+                {
+                    PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
+                        when operation.Markdown is not null
+                        => new SourceEdit(
+                            element.SourceStart,
+                            element.SourceLength,
+                            markdown,
+                            operation.Pointer),
+                    PatchOperationKind.ReplaceSection
+                        when operation.Markdown is not null
+                        => CreateSectionEdit(
+                            source,
+                            elements,
+                            element,
+                            markdown,
+                            operation.Pointer,
+                            eol,
+                            "replace_section",
+                            preserveBoundarySeparator: true),
+                    PatchOperationKind.DeleteSection
+                        when operation.Markdown is null
+                        => CreateSectionEdit(
+                            source,
+                            elements,
+                            element,
+                            "",
+                            operation.Pointer,
+                            eol,
+                            "delete_section",
+                            preserveBoundarySeparator: false),
+                    PatchOperationKind.DeleteSection
+                        => throw new WorkspaceMutationException(
+                            "delete_section does not accept markdown content."),
+                    PatchOperationKind.InsertBefore when operation.Markdown is not null
+                        => new SourceEdit(
+                            element.SourceStart,
+                            0,
+                            markdown.TrimEnd('\r', '\n') + eol + eol,
+                            operation.Pointer),
+                    PatchOperationKind.InsertAfter when operation.Markdown is not null
+                        => new SourceEdit(
+                            element.SourceStart + element.SourceLength,
+                            0,
+                            eol + eol + markdown.TrimStart('\r', '\n'),
+                            operation.Pointer),
+                    PatchOperationKind.Delete
+                        => new SourceEdit(
+                            element.SourceStart,
+                            element.SourceLength,
+                            "",
+                            operation.Pointer),
+                    _ => throw new WorkspaceMutationException(
+                        $"Patch operation '{operation.Kind}' requires markdown content.")
+                };
             edits.Add(edit);
         }
 
