@@ -16,5 +16,4 @@ public sealed record MarkdownElement(
     int SourceLength = 0,
     string? SelfHash = null,
     string? SubtreeHash = null,
-    MarkdownElementSourceMap? SourceMap = null,
-    IReadOnlySet<string>? ReservedPointers = null);
+    MarkdownElementSourceMap? SourceMap = null);
