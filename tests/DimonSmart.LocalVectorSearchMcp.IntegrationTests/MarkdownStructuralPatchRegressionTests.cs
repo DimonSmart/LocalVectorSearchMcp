@@ -16,6 +16,8 @@ public sealed class MarkdownStructuralPatchRegressionTests
     [Theory]
     [InlineData("- Replacement\n\n<!-- detached -->")]
     [InlineData("- First\n- Second")]
+    [InlineData("- Replacement\n\n---")]
+    [InlineData("- Replacement\n\n[ref]: https://example.org")]
     public async Task ReplaceListItem_WithExtraRootBlock_LeavesFileByteIdentical(
         string replacement)
     {
@@ -55,6 +57,25 @@ public sealed class MarkdownStructuralPatchRegressionTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal("- Changed\n\n  <!-- nested -->\n- B\n",
+            await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceItem_AllowsIndentedFencedCodeInsideSubtree()
+    {
+        const string source = "- A\n- B\n";
+        const string replacement = "- Changed\n\n  ```text\n  inside\n  ```";
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(path, source, TestContext.Current.CancellationToken);
+        var target = Elements(source).Single(x => x.Pointer.Value == "li1");
+
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceElement,
+                SemanticAnchor.FromElement(target).ToString(), replacement)]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("- Changed\n\n  ```text\n  inside\n  ```\n- B\n",
             await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
