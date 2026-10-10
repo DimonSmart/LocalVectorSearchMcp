@@ -11,6 +11,11 @@ public static class SemanticElementHashing
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(elements);
 
+        var parentsWithChildren = elements
+            .Where(element => element.Kind == MarkdownElementKind.ListItem
+                && element.SourceMap?.ParentPointer is not null)
+            .Select(element => element.SourceMap!.ParentPointer!)
+            .ToHashSet(StringComparer.Ordinal);
         var result = new List<MarkdownElement>(elements.Count);
         foreach (var element in elements)
         {
@@ -33,9 +38,7 @@ public static class SemanticElementHashing
             var subtreeHash = element.Kind == MarkdownElementKind.BlockQuote
                 || (element.Kind == MarkdownElementKind.ListItem
                     && element.SourceMap is not null
-                    && !elements.Any(other =>
-                        other.Kind == MarkdownElementKind.ListItem
-                        && other.SourceMap?.ParentPointer == element.Pointer.Value))
+                    && !parentsWithChildren.Contains(element.Pointer.Value))
                 || (element.Kind != MarkdownElementKind.ListItem && subtreeRange == ownRange)
                     ? selfHash
                     : SemanticFingerprint.Compute(
