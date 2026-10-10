@@ -257,6 +257,41 @@ public sealed class MarkdownTableIntegrationTests
         Assert.Equal("Bold", MarkdownTableSource.Read(source, table).Data.Rows[1].Cells[0]);
     }
 
+    [Fact]
+    public async Task Patch_TableToTablePreservesNeighbors()
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "a.md");
+        await File.WriteAllTextAsync(path, Initial, TestContext.Current.CancellationToken);
+        var service = CreateService(temp.Path);
+        const string replacement = "| Product | Price |\n|---|---:|\n| Lamb | 35 |";
+        await service.PatchAsync(
+            new PatchRequest("a.md",
+                [new PatchOperation(PatchOperationKind.ReplaceElement,
+                    Pointer(Initial), replacement)]),
+            TestContext.Current.CancellationToken);
+        var updated = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        Assert.Contains(replacement, updated, StringComparison.Ordinal);
+        Assert.Contains("Before.\n\n", updated, StringComparison.Ordinal);
+        Assert.EndsWith("After.\n", updated, StringComparison.Ordinal);
+        var table = Assert.Single(Parse(updated).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        Assert.Equal(2, MarkdownTableSource.Read(updated, table).Data.ColumnCount);
+    }
+
+    [Fact]
+    public void DeleteColumnToOneColumnRetainsExplicitGfmPipes()
+    {
+        const string source = "Name | Price\n---|---:\nChicken | 25";
+        var table = Assert.Single(Parse(source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        var map = MarkdownTableSource.Read(source, table);
+        var plan = MarkdownTableEditor.Plan(source, map,
+            new TableEditRequest("a.md", SemanticAnchor.FromElement(table).ToString(),
+                TableEditAction.DeleteColumn, Column: "Price"));
+        var updated = Assert.Single(Parse(plan.Source).Elements.Where(e => e.Kind == MarkdownElementKind.Table));
+        MarkdownTableEditor.ValidateResult(plan, MarkdownTableSource.Read(plan.Source, updated));
+        Assert.Contains("| Name |", plan.Source, StringComparison.Ordinal);
+    }
+
     private static MarkdownSourceDocument Document(string source, bool bom = false)
         => new("a.md", "a.md", source, "", DateTimeOffset.UtcNow, bom);
 
