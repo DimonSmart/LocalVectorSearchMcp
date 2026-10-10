@@ -160,7 +160,7 @@ public sealed class WorkspaceMutationService(
                 out var plannedEdits);
             var structuredTargets = elements
                 .Where(element => element.Kind is MarkdownElementKind.ListItem
-                    or MarkdownElementKind.BlockQuote)
+                    or MarkdownElementKind.BlockQuote or MarkdownElementKind.Table)
                 .Select(element => element.Pointer.Value)
                 .ToHashSet(StringComparer.Ordinal);
             if (resolvedOperations.Any(operation => structuredTargets.Contains(operation.Pointer)))
@@ -177,7 +177,14 @@ public sealed class WorkspaceMutationService(
                         elements,
                         updatedElements,
                         resolvedOperations,
-                        plannedEdits);
+                        plannedEdits,
+                        resolvedOperations
+                            .Where(operation => operation.Kind is PatchOperationKind.Replace
+                                or PatchOperationKind.ReplaceElement or PatchOperationKind.Delete)
+                            .Select(operation => elements.FirstOrDefault(element =>
+                                element.Pointer.Value == operation.Pointer))
+                            .Where(element => element?.Kind == MarkdownElementKind.Table)
+                            .Select(element => element!.SourceStart).ToHashSet());
                 }
                 catch (InvalidOperationException exception)
                 {
