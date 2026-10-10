@@ -32,6 +32,8 @@ internal static class MarkdownStructuralEditValidator
         var afterBlocks = updated.ToLookup(block => (block.Start, block.Kind));
         var originalElements = before.ToDictionary(element => element.Pointer.Value,
             StringComparer.Ordinal);
+        var currentElements = after.ToDictionary(element => element.Pointer.Value,
+            StringComparer.Ordinal);
 
         int? MapOrigin(int position)
         {
@@ -76,9 +78,7 @@ internal static class MarkdownStructuralEditValidator
             }
 
             var originalParent = ParentPosition(old, originalElements, true);
-            var currentParent = ParentPosition(current,
-                after.ToDictionary(element => element.Pointer.Value, StringComparer.Ordinal),
-                false);
+            var currentParent = ParentPosition(current, currentElements, false);
             if (originalParent != currentParent)
                 throw Conflict(old.Pointer.Value, "surviving list item was reparented");
         }
@@ -176,8 +176,7 @@ internal static class MarkdownStructuralEditValidator
                 var mappedParent = existingParent is null ? null
                     : MapOrigin(existingParent.SourceStart);
                 int? actualParent = root.SourceMap.ParentPointer is null ? null
-                    : after.Single(element =>
-                        element.Pointer.Value == root.SourceMap.ParentPointer).SourceStart;
+                    : currentElements[root.SourceMap.ParentPointer].SourceStart;
                 if (mappedParent != actualParent)
                     throw Conflict(operation.Pointer, "new item has the wrong list parent");
 
