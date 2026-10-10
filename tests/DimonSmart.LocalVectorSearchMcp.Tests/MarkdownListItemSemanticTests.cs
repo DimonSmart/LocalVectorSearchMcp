@@ -100,4 +100,36 @@ public sealed class MarkdownListItemSemanticTests
         Assert.DoesNotContain(elements, x => x.Pointer.Value == "p2");
         Assert.Contains("p2", elements[0].ReservedPointers!);
     }
+
+    [Fact]
+    public void FencedCodeMarkers_DoNotCreateListItems()
+    {
+        const string source = "```text\n- not a list\n1. not a list\n```\n";
+        var elements = Parse(source);
+        Assert.Single(elements.Where(x => x.Kind == MarkdownElementKind.CodeBlock));
+        Assert.DoesNotContain(elements, x => x.Kind == MarkdownElementKind.ListItem);
+    }
+
+    [Fact]
+    public void QuoteInsideList_IsPartOfItemNotASeparateElement()
+    {
+        var elements = Parse("- Parent\n  > - Inside quote\n");
+        Assert.Single(elements.Where(x => x.Kind == MarkdownElementKind.ListItem));
+        Assert.DoesNotContain(elements, x => x.Kind == MarkdownElementKind.BlockQuote);
+    }
+
+    [Fact]
+    public void Chunker_IndexesEachChildAndQuoteExactlyOnce()
+    {
+        const string source = "# Title\n\n- Parent\n  - Child\n\n> - Quoted child\n";
+        var document = new MarkdownSourceDocument("a.md", "a.md", source, "",
+            DateTimeOffset.UtcNow);
+        var chunks = new MarkdownChunker(
+            new ChunkingConfig { MaxElements = 20, MaxChunkBytes = 10_000 },
+            new DimonSmart.LocalVectorSearchMcp.Core.Embeddings.EmbeddingTextBuilder())
+            .BuildChunks(document, Parse(source));
+        var indexed = string.Join("\n", chunks.Select(x => x.Text));
+        Assert.Equal(1, indexed.Split("- Child").Length - 1);
+        Assert.Equal(1, indexed.Split("> - Quoted child").Length - 1);
+    }
 }

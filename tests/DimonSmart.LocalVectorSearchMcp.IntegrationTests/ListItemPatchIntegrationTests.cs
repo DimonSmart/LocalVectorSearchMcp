@@ -20,6 +20,8 @@ public sealed class ListItemPatchIntegrationTests
     [InlineData("1) A\n2) B", "li1", "2) B")]
     [InlineData("- Parent\n  - Child\n  - Other\n", "li1.li1", "- Parent\n  - Other\n")]
     [InlineData("- Parent\n  - Child\n- Other\n", "li1", "- Other\n")]
+    [InlineData("- A\r\n- B\r\n", "li1", "- B\r\n")]
+    [InlineData("- A\n- B", "li2", "- A\n")]
     public async Task Delete_RemovesWholePhysicalItem(
         string source, string pointer, string expected)
     {
@@ -106,6 +108,75 @@ public sealed class ListItemPatchIntegrationTests
             await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
     }
 
+
+    [Fact]
+    public async Task MissingListSubtreeHash_IsRejectedAtomically()
+    {
+        const string source = "- Parent\n  - Child\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var item = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        var legacy = new SemanticAnchor(item.Pointer, item.SelfHash).ToString();
+        var error = await Assert.ThrowsAsync<SemanticAnchorConflictException>(() =>
+            CreateService(temp.Path).PatchAsync(
+                new PatchRequest("test.md", [new PatchOperation(PatchOperationKind.Delete, legacy)]),
+                TestContext.Current.CancellationToken));
+        Assert.Equal(SemanticAnchorConflictReason.MissingSubtreeHash, error.Reason);
+        Assert.Equal(source, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task InsertAfterParent_DoesNotRequireCurrentChildSubtreeHash()
+    {
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, "- Parent\n  - Child\n",
+            TestContext.Current.CancellationToken);
+        var parent = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        await File.WriteAllTextAsync(file, "- Parent\n  - Changed child\n",
+            TestContext.Current.CancellationToken);
+        await CreateService(temp.Path).PatchAsync(
+            new PatchRequest("test.md", [new PatchOperation(
+                PatchOperationKind.InsertAfter, SemanticAnchor.FromElement(parent).ToString(),
+                "- Sibling")]), TestContext.Current.CancellationToken);
+        Assert.Equal("- Parent\n  - Changed child\n- Sibling",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task MultipleSiblingRootsInFragment_AreRejectedWithoutWrite()
+    {
+        const string source = "- A\n- B\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var first = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        await Assert.ThrowsAsync<WorkspaceMutationException>(() =>
+            CreateService(temp.Path).PatchAsync(
+                new PatchRequest("test.md", [new PatchOperation(
+                    PatchOperationKind.ReplaceElement,
+                    SemanticAnchor.FromElement(first).ToString(), "- X\n- Y")]),
+                TestContext.Current.CancellationToken));
+        Assert.Equal(source, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task OldParagraphAnchorInList_IsReservedRatherThanRelocated()
+    {
+        const string source = "Same\n\n- Same\n\nSame\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var oldAnchor = new SemanticAnchor(new SemanticPointer("p2"),
+            SemanticFingerprint.Compute("Same")).ToString();
+        await Assert.ThrowsAsync<SemanticAnchorConflictException>(() =>
+            CreateService(temp.Path).PatchAsync(
+                new PatchRequest("test.md", [new PatchOperation(
+                    PatchOperationKind.Delete, oldAnchor)]),
+                TestContext.Current.CancellationToken));
+        Assert.Equal(source, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
     private static IReadOnlyList<MarkdownElement> Read(string root)
         => new MarkdownElementParser().Parse(
             new MarkdownSourceDocument("test.md", Path.Combine(root, "test.md"),
