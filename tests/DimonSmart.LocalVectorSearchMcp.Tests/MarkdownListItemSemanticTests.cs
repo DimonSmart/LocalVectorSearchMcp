@@ -98,7 +98,10 @@ public sealed class MarkdownListItemSemanticTests
         Assert.Contains(elements, x => x.Pointer.Value == "p1");
         Assert.Contains(elements, x => x.Pointer.Value == "p3");
         Assert.DoesNotContain(elements, x => x.Pointer.Value == "p2");
-        Assert.Contains("p2", elements[0].ReservedPointers!);
+        var result = new MarkdownElementParser().ParseDetailed(
+            new MarkdownSourceDocument("test.md", "test.md",
+                "First.\n\n- Inside\n\nSecond.\n", "", DateTimeOffset.UtcNow));
+        Assert.Contains("p2", result.ReservedPointers);
     }
 
     [Fact]
