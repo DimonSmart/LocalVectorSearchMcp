@@ -18,6 +18,7 @@ public sealed class StdioTransportIntegrationTests
         "kb_create",
         "kb_delete",
         "kb_delete_image",
+        "kb_edit_table",
         "kb_list_files",
         "kb_list_images",
         "kb_load_image",
@@ -186,6 +187,14 @@ public sealed class StdioTransportIntegrationTests
             HasOptionalSchemaProperty(
                 readTool.JsonSchema,
                 "pointer"));
+
+        var tableTool = Assert.Single(tools, tool => tool.Name == "kb_edit_table");
+        Assert.True(HasRequiredSchemaProperty(tableTool.JsonSchema, "path"));
+        Assert.True(HasRequiredSchemaProperty(tableTool.JsonSchema, "pointer"));
+        Assert.True(HasRequiredSchemaProperty(tableTool.JsonSchema, "action"));
+        Assert.True(HasOptionalSchemaProperty(tableTool.JsonSchema, "updates"));
+        Assert.True(HasOptionalSchemaProperty(tableTool.JsonSchema, "where"));
+        Assert.True(HasOptionalSchemaProperty(tableTool.JsonSchema, "rowIndex"));
 
         var patchTool = Assert.Single(
             tools,

@@ -168,11 +168,31 @@ public sealed class KnowledgeMcpTools(
         OutputSchemaType = typeof(TableEditResponse))]
     [Description("Edits one GFM pipe table without generating whole-table Markdown. First call kb_read on the table and pass its full hashed tN pointer. Supports update_cells, insert_row, delete_row, insert_column, delete_column, rename_column and set_alignment. Data rows have zero-based rowIndex; header is excluded. Prefer unique where {column,equals} selectors and column names; use numeric indexes if names or values are ambiguous. update_cells accepts several changes atomically. Use the returned pointer for subsequent edits; on CONFLICT call kb_read again. Use kb_patch to delete the entire table.")]
     public async Task<CallToolResult> EditTableAsync(
-        TableEditRequest request,
-        CancellationToken cancellationToken)
+        string path,
+        string pointer,
+        TableEditAction action,
+        CancellationToken cancellationToken,
+        IReadOnlyList<TableCellUpdate>? updates = null,
+        int? rowIndex = null,
+        TableWhere? where = null,
+        string? column = null,
+        int? columnIndex = null,
+        IReadOnlyList<string>? values = null,
+        IReadOnlyDictionary<string, string>? valuesByColumn = null,
+        int? beforeRowIndex = null,
+        string? beforeColumn = null,
+        int? beforeColumnIndex = null,
+        string? name = null,
+        string? newName = null,
+        string? defaultValue = null,
+        TableAlignment? alignment = null)
     {
         try
         {
+            var request = new TableEditRequest(path, pointer, action,
+                updates, rowIndex, where, column, columnIndex,
+                values, valuesByColumn, beforeRowIndex, beforeColumn,
+                beforeColumnIndex, name, newName, defaultValue, alignment);
             var response = await mutations.EditTableAsync(request, cancellationToken);
             return new CallToolResult
             {
