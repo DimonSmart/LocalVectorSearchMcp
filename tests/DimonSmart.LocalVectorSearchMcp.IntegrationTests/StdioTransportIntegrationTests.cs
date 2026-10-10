@@ -1249,10 +1249,19 @@ public sealed class StdioTransportIntegrationTests
         JsonElement schema, JsonElement document, params string[] expected)
     {
         schema = ResolveSchema(schema, document);
-        Assert.Equal("string",
-            schema.GetProperty("type").GetString());
+        var type = schema.GetProperty("type");
+        var types = type.ValueKind == JsonValueKind.Array
+            ? type.EnumerateArray().Select(item => item.GetString()!).ToArray()
+            : [type.GetString()!];
+        Assert.Contains("string", types);
+        Assert.All(types,
+            item => Assert.Contains(item, new[] { "string", "null" }));
+        var values = schema.GetProperty("enum").EnumerateArray().ToArray();
+        Assert.All(values,
+            item => Assert.True(item.ValueKind is JsonValueKind.String
+                or JsonValueKind.Null));
         Assert.Equal(expected,
-            schema.GetProperty("enum").EnumerateArray()
+            values.Where(item => item.ValueKind == JsonValueKind.String)
                 .Select(item => item.GetString()!).ToArray());
     }
 
