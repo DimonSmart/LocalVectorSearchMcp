@@ -12,6 +12,79 @@ namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 
 public sealed class ListItemPatchIntegrationTests
 {
+    [Fact]
+    public async Task ReplaceOwnText_OnNestedLeaf_PreservesItsContainerAndSiblings()
+    {
+        const string source = "- Parent\n  - Child\n    - Grandchild\n  - Leaf\n- Sibling\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var leaf = Read(temp.Path).Single(x => x.Pointer.Value == "li1.li2");
+
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceElement,
+                SemanticAnchor.FromElement(leaf).ToString(), "  - Renamed leaf")]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("- Parent\n  - Child\n    - Grandchild\n  - Renamed leaf\n- Sibling\n",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceSubtree_OnNestedItem_ReplacesOnlyThatSubtree()
+    {
+        const string source = "- Parent\n  - Child\n    - Grandchild\n  - Leaf\n- Sibling\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var child = Read(temp.Path).Single(x => x.Pointer.Value == "li1.li1");
+
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceSubtree,
+                SemanticAnchor.FromElement(child).ToString(),
+                "  - Renamed child\n    - New grandchild")]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("- Parent\n  - Renamed child\n    - New grandchild\n  - Leaf\n- Sibling\n",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceOwnText_OnNestedParent_PreservesDescendants()
+    {
+        const string source = "- Parent\n  - Child\n    - Grandchild\n  - Leaf\n- Sibling\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var child = Read(temp.Path).Single(x => x.Pointer.Value == "li1.li1");
+
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceElement,
+                SemanticAnchor.FromElement(child).ToString(), "  - Renamed child")]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("- Parent\n  - Renamed child\n    - Grandchild\n  - Leaf\n- Sibling\n",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task InsertAfter_OnNestedItem_CreatesOneSiblingInItsContainer()
+    {
+        const string source = "- Parent\n  - First\n  - Last\n- Sibling\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var first = Read(temp.Path).Single(x => x.Pointer.Value == "li1.li1");
+
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.InsertAfter,
+                SemanticAnchor.FromElement(first).ToString(), "  - Inserted")]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("- Parent\n  - First\n  - Inserted\n  - Last\n- Sibling\n",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
     [Theory]
     [InlineData("- A\n- B\n- C\n", "li2", "- A\n- C\n")]
     [InlineData("* A\n* B\n", "li1", "* B\n")]

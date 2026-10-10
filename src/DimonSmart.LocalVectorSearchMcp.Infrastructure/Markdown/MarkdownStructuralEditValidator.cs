@@ -115,8 +115,8 @@ internal static class MarkdownStructuralEditValidator
             var newText = afterSource.Substring(current.Range.Start, current.Range.Length);
             if (oldText != newText)
                 throw Conflict(old.Kind, "unmodified Markdown block text changed");
-            var originalParents = StructuralParents(old.Block);
-            var newParents = StructuralParents(current.Block);
+            var originalParents = StructuralParents(old.Block, beforeSource);
+            var newParents = StructuralParents(current.Block, afterSource);
             if (originalParents.Count != newParents.Count)
                 throw Conflict(old.Kind, "surviving block was absorbed by a container");
             for (var index = 0; index < originalParents.Count; index++)
@@ -197,23 +197,25 @@ internal static class MarkdownStructuralEditValidator
             var root = roots[0];
             var rootBlockType = target.Kind == MarkdownElementKind.ListItem
                 ? nameof(ListItemBlock) : nameof(QuoteBlock);
-            var astRoots = afterBlocks[(root.SourceStart, rootBlockType)].ToArray();
+            var astRoots = updated.Where(block => block.Kind == rootBlockType
+                && block.Range.Start == root.SourceStart).ToArray();
             if (astRoots.Length != 1)
                 throw Conflict(operation.Pointer, "structured root has ambiguous Markdig ownership");
             var rootBlock = astRoots[0].Block;
 
             if (target.Kind == MarkdownElementKind.ListItem)
             {
-                if (root.SourceMap?.MarkerStyle != target.SourceMap?.MarkerStyle
-                    || root.SourceMap?.Indent != target.SourceMap?.Indent)
+                if (root.SourceMap is not { } rootMap || target.SourceMap is not { } targetMap
+                    || rootMap.MarkerStyle != targetMap.MarkerStyle
+                    || rootMap.Indent != targetMap.Indent)
                     throw Conflict(operation.Pointer, "replacement list marker or indentation changed");
-                var expectedParent = target.SourceMap?.ParentPointer;
+                var expectedParent = targetMap.ParentPointer;
                 var existingParent = expectedParent is null ? null
                     : originalElements[expectedParent];
                 var mappedParent = existingParent is null ? null
                     : MapOrigin(existingParent.SourceStart);
-                int? actualParent = root.SourceMap.ParentPointer is null ? null
-                    : currentElements[root.SourceMap.ParentPointer].SourceStart;
+                int? actualParent = rootMap.ParentPointer is null ? null
+                    : currentElements[rootMap.ParentPointer].SourceStart;
                 if (mappedParent != actualParent)
                     throw Conflict(operation.Pointer, "new item has the wrong list parent");
 
@@ -221,7 +223,7 @@ internal static class MarkdownStructuralEditValidator
                 if (operation.Kind is PatchOperationKind.InsertBefore or PatchOperationKind.InsertAfter)
                 {
                     var sibling = updated.SingleOrDefault(block =>
-                        block.Block is ListItemBlock && block.AstStart == targetPosition);
+                        block.Block is ListItemBlock && block.Range.Start == targetPosition);
                     if (sibling?.Block.Parent is not ListBlock list
                         || !ReferenceEquals(rootBlock.Parent, list))
                         throw Conflict(operation.Pointer, "new sibling is in a different list container");
@@ -229,7 +231,7 @@ internal static class MarkdownStructuralEditValidator
                 else
                 {
                     var oldItem = original.SingleOrDefault(block =>
-                        block.Block is ListItemBlock && block.AstStart == target.SourceStart);
+                        block.Block is ListItemBlock && block.Range.Start == target.SourceStart);
                     if (oldItem?.Block.Parent is not ListBlock oldList)
                         throw Conflict(operation.Pointer, "original list container is ambiguous");
                     if (containerForward.TryGetValue(oldList, out var preservedList)
@@ -273,12 +275,14 @@ internal static class MarkdownStructuralEditValidator
         return false;
     }
 
-    private static IReadOnlyList<(string Kind, int Start)> StructuralParents(Block block)
+    private static IReadOnlyList<(string Kind, int Start)> StructuralParents(
+        Block block, string source)
     {
         var result = new List<(string Kind, int Start)>();
         for (var current = block.Parent; current is not null; current = current.Parent)
             if (current is ListItemBlock or QuoteBlock)
-                result.Add((current.GetType().Name, current.Span.Start));
+                result.Add((current.GetType().Name,
+                    MarkdownSourceMapBuilder.GetPhysicalRange(current, source).Start));
         result.Reverse();
         return result;
     }
