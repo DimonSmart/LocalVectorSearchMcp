@@ -15,6 +15,9 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
         .Build();
 
     public IReadOnlyList<MarkdownElement> Parse(MarkdownSourceDocument document)
+        => ParseDetailed(document).Elements;
+
+    public MarkdownParseResult ParseDetailed(MarkdownSourceDocument document)
     {
         var source = document.Markdown;
         var documentPointer = new SemanticPointer("document");
@@ -30,7 +33,7 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
         var listCounts = new Dictionary<string, int>();
         var quoteCounts = new Dictionary<string, int>();
         var itemPointers = new Dictionary<ListItemBlock, SemanticPointer>();
-        var listDetails = new Dictionary<string, ListDetail>(StringComparer.Ordinal);
+        var listDetails = new Dictionary<string, MarkdownSourceMapBuilder.ListDetail>(StringComparer.Ordinal);
         var suppressed = new HashSet<string>(StringComparer.Ordinal);
         var rootParagraph = 0;
         var rootCode = 0;
@@ -69,18 +72,17 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
                 }
 
                 itemPointers.Add(item, pointer);
-                var range = GetPhysicalRange(item, source);
+                var range = MarkdownSourceMapBuilder.GetPhysicalRange(item, source);
                 var line = source.AsSpan(range.Start, range.Length);
                 var firstLineEnd = line.IndexOfAny('\r', '\n');
                 var firstLine = (firstLineEnd < 0 ? line : line[..firstLineEnd]).ToString();
-                var markerMatch = ListMarkerRegex().Match(firstLine);
-                var indent = markerMatch.Success ? markerMatch.Groups["indent"].Length : -1;
-                var rawMarker = markerMatch.Success ? markerMatch.Groups["marker"].Value : "";
-                var style = rawMarker.Length == 0 ? null :
-                    char.IsDigit(rawMarker[0]) ? "ordered:" + rawMarker[^1] : rawMarker;
+                var hasMarker = MarkdownListMarker.TryParse(firstLine, out var marker);
+                var indent = hasMarker ? marker.Indentation.Length : -1;
+                var style = hasMarker ? marker.MarkerStyle : null;
                 var container = item.Parent as ListBlock;
-                var containerId = container is null ? null : container.Span.Start.ToString(CultureInfo.InvariantCulture);
-                listDetails.Add(pointer.Value, new ListDetail(
+                var containerId = container is null ? null
+                    : container.Span.Start.ToString(CultureInfo.InvariantCulture);
+                listDetails.Add(pointer.Value, new MarkdownSourceMapBuilder.ListDetail(
                     range, parentPointer, containerId, depth, indent, style));
                 elements.Add(new MarkdownElement(
                     document.RelativePath, pointer, MarkdownElementKind.ListItem,
@@ -93,9 +95,9 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
             {
                 if (isSuppressed || listAncestor is not null) continue;
                 var pointer = NextPointer(currentSection, quoteCounts, ref rootQuote, "q");
-                var range = GetPhysicalRange(quote, source);
+                var range = MarkdownSourceMapBuilder.GetPhysicalRange(quote, source);
                 var text = source.Substring(range.Start, range.Length);
-                var map = CreateAtomicMap(source, range);
+                var map = MarkdownSourceMapBuilder.CreateAtomicMap(source, range);
                 elements.Add(new MarkdownElement(
                     document.RelativePath, pointer, MarkdownElementKind.BlockQuote,
                     text, quote.Line + 1, quote.Line + CountLineBreaks(text),
@@ -165,39 +167,12 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
                 start, length));
         }
 
-        // Markdig's ListItemBlock span can end at its own paragraph, before nested
-        // items. Expand from deepest physical child ranges before computing ownership.
-        foreach (var (pointer, detail) in listDetails
-            .OrderByDescending(pair => pair.Value.Depth).ToArray())
-        {
-            var children = listDetails.Values.Where(x => x.ParentPointer == pointer).ToArray();
-            if (children.Length == 0) continue;
-            var end = Math.Max(detail.Range.End, children.Max(x => x.Range.End));
-            listDetails[pointer] = detail with
-            {
-                Range = new SourceRange(detail.Range.Start, end - detail.Range.Start)
-            };
-        }
-
-        var fullMaps = new Dictionary<string, MarkdownElementSourceMap>(StringComparer.Ordinal);
-        foreach (var (pointer, detail) in listDetails)
-        {
-            var children = listDetails.Values
-                .Where(x => x.ParentPointer == pointer)
-                .Select(x => x.Range)
-                .OrderBy(x => x.Start).ToArray();
-            var own = GetOwnSegments(source, detail.Range, children);
-            fullMaps.Add(pointer, new MarkdownElementSourceMap(
-                detail.Range, detail.Range, ExtendToLineEnding(source, detail.Range),
-                own, detail.Range.Start, ExtendToLineEnding(source, detail.Range).End,
-                detail.ParentPointer, detail.ContainerId, detail.Depth,
-                detail.Indent, detail.MarkerStyle));
-        }
+        var fullMaps = MarkdownSourceMapBuilder.Build(source, listDetails);
 
         var prepared = elements.Select(element =>
         {
             if (element.Kind == MarkdownElementKind.Document)
-                return element with { ReservedPointers = suppressed };
+                return element;
             if (element.Kind != MarkdownElementKind.ListItem)
                 return element;
             var map = fullMaps[element.Pointer.Value];
@@ -215,68 +190,7 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
           .ThenBy(element => element.Kind == MarkdownElementKind.Document ? 0 : 1)
           .ToList();
 
-        return SemanticElementHashing.Attach(source, prepared);
-    }
-
-    private static IReadOnlyList<SourceRange> GetOwnSegments(
-        string source, SourceRange subtree, IReadOnlyList<SourceRange> childRanges)
-    {
-        var result = new List<SourceRange>();
-        var position = subtree.Start;
-        foreach (var child in childRanges)
-        {
-            if (child.Start < position || child.End > subtree.End)
-                throw new InvalidOperationException("Overlapping Markdown list item spans.");
-            var end = child.Start;
-            // The newline joining the parent to the child is structural, not owned text.
-            if (end > position && source[end - 1] == '\n')
-            {
-                end--;
-                if (end > position && source[end - 1] == '\r') end--;
-            }
-            if (end > position) result.Add(new SourceRange(position, end - position));
-            position = child.End;
-            // A child boundary owns its terminal physical newline only for editing.
-            if (position < subtree.End && source[position] == '\r') position++;
-            if (position < subtree.End && source[position] == '\n') position++;
-        }
-        if (position < subtree.End)
-            result.Add(new SourceRange(position, subtree.End - position));
-        return result;
-    }
-
-    private static MarkdownElementSourceMap CreateAtomicMap(string source, SourceRange range)
-        => new(range, range, ExtendToLineEnding(source, range),
-            [range], range.Start, ExtendToLineEnding(source, range).End);
-
-    private static SourceRange GetPhysicalRange(Block block, string source)
-    {
-        var start = GetLineStart(source, Math.Clamp(block.Span.Start, 0, source.Length));
-        var lastSpan = block.Descendants().OfType<Block>()
-            .Select(child => child.Span.End)
-            .Append(block.Span.End)
-            .Max();
-        var last = Math.Clamp(lastSpan, start, Math.Max(start, source.Length - 1));
-        var end = last < source.Length
-            ? source.IndexOf('\n', last) is var newline && newline >= 0 ? newline : source.Length
-            : source.Length;
-        if (end > start && source[end - 1] == '\r') end--;
-        return new SourceRange(start, end - start);
-    }
-
-    private static SourceRange ExtendToLineEnding(string source, SourceRange range)
-    {
-        var end = range.End;
-        if (end < source.Length && source[end] == '\r') end++;
-        if (end < source.Length && source[end] == '\n') end++;
-        return new SourceRange(range.Start, end - range.Start);
-    }
-
-    private static int GetLineStart(string source, int position)
-    {
-        if (position == 0) return 0;
-        var previous = source.LastIndexOf('\n', position - 1);
-        return previous < 0 ? 0 : previous + 1;
+        return new MarkdownParseResult(SemanticElementHashing.Attach(source, prepared), suppressed);
     }
 
     private static T? GetAncestor<T>(Block block) where T : Block
@@ -326,9 +240,6 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
         return new SemanticPointer($"{section.Value}.{prefix}{counts[section.Value]}");
     }
 
-    private sealed record ListDetail(SourceRange Range, string? ParentPointer,
-        string? ContainerId, int Depth, int Indent, string? MarkerStyle);
-
     private sealed class HeadingContext(int level, SemanticPointer pointer, string title)
     {
         public int Level { get; } = level;
@@ -343,6 +254,4 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
     [GeneratedRegex(@"\s+#+\s*$")]
     private static partial Regex ClosingHashesRegex();
 
-    [GeneratedRegex(@"^(?<indent>[ \t]*)(?<marker>[-+*]|[0-9]+[.)])(?=[ \t]|$)")]
-    private static partial Regex ListMarkerRegex();
 }
