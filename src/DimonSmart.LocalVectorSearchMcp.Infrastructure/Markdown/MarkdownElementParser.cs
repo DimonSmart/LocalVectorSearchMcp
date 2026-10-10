@@ -165,6 +165,20 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
                 start, length));
         }
 
+        // Markdig's ListItemBlock span can end at its own paragraph, before nested
+        // items. Expand from deepest physical child ranges before computing ownership.
+        foreach (var (pointer, detail) in listDetails
+            .OrderByDescending(pair => pair.Value.Depth).ToArray())
+        {
+            var children = listDetails.Values.Where(x => x.ParentPointer == pointer).ToArray();
+            if (children.Length == 0) continue;
+            var end = Math.Max(detail.Range.End, children.Max(x => x.Range.End));
+            listDetails[pointer] = detail with
+            {
+                Range = new SourceRange(detail.Range.Start, end - detail.Range.Start)
+            };
+        }
+
         var fullMaps = new Dictionary<string, MarkdownElementSourceMap>(StringComparer.Ordinal);
         foreach (var (pointer, detail) in listDetails)
         {
@@ -189,7 +203,14 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
             var map = fullMaps[element.Pointer.Value];
             var ownText = string.Concat(map.OwnSegments.Select(range =>
                 source.Substring(range.Start, range.Length)));
-            return element with { SourceMap = map, Text = ownText };
+            return element with
+            {
+                SourceMap = map,
+                Text = ownText,
+                SourceLength = map.SubtreeRange.Length,
+                EndLine = element.StartLine + CountLineBreaks(
+                    source.AsSpan(map.SubtreeRange.Start, map.SubtreeRange.Length))
+            };
         }).OrderBy(element => element.SourceStart)
           .ThenBy(element => element.Kind == MarkdownElementKind.Document ? 0 : 1)
           .ToList();
