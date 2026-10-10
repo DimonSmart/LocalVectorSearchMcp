@@ -118,6 +118,19 @@ public sealed class MarkdownListItemSemanticTests
         Assert.DoesNotContain(elements, x => x.Kind == MarkdownElementKind.BlockQuote);
     }
 
+
+    [Fact]
+    public void ParentOwnParagraphAfterChild_RemainsOwnedByParent()
+    {
+        const string source = "- Parent\n\n  - Child\n\n  Own paragraph after the child.\n";
+        var items = Parse(source).Where(x => x.Kind == MarkdownElementKind.ListItem).ToArray();
+        Assert.Equal(2, items.Length);
+        Assert.Equal("li1.li1", items[1].Pointer.Value);
+        Assert.Contains("Own paragraph after the child.", items[0].Text);
+        Assert.DoesNotContain("Child", items[0].Text);
+        Assert.NotEqual(items[0].SelfHash, items[0].SubtreeHash);
+    }
+
     [Fact]
     public void Chunker_IndexesEachChildAndQuoteExactlyOnce()
     {
