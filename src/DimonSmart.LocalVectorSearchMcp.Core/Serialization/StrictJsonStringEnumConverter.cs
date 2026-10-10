@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace DimonSmart.LocalVectorSearchMcp.Core.Serialization;
@@ -12,7 +13,7 @@ public sealed class StrictJsonStringEnumConverter<TEnum>
     where TEnum : struct, Enum
 {
     public StrictJsonStringEnumConverter()
-        : base(namingPolicy: null, allowIntegerValues: false)
+        : base(namingPolicy: JsonNamingPolicy.CamelCase, allowIntegerValues: false)
     {
     }
 }
