@@ -27,6 +27,7 @@ public static partial class SemanticPointerParser
         if (segment.StartsWith("code", StringComparison.Ordinal)) return SemanticPointerKind.CodeBlock;
         if (segment.StartsWith('p')) return SemanticPointerKind.Paragraph;
         if (segment.StartsWith('q')) return SemanticPointerKind.BlockQuote;
+        if (segment.StartsWith('t')) return SemanticPointerKind.Table;
         return SemanticPointerKind.Section;
     }
 
@@ -59,6 +60,6 @@ public static partial class SemanticPointerParser
         return GetKind(prefix) == SemanticPointerKind.ListItem ? prefix : null;
     }
 
-    [GeneratedRegex(@"^(?:document|frontmatter|(?:[1-9]\d*(?:\.[1-9]\d*)*)(?:\.(?:p[1-9]\d*|code[1-9]\d*|q[1-9]\d*|li[1-9]\d*(?:\.li[1-9]\d*)*))?|p[1-9]\d*|code[1-9]\d*|q[1-9]\d*|li[1-9]\d*(?:\.li[1-9]\d*)*)$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^(?:document|frontmatter|(?:[1-9]\d*(?:\.[1-9]\d*)*)(?:\.(?:p[1-9]\d*|code[1-9]\d*|q[1-9]\d*|t[1-9]\d*|li[1-9]\d*(?:\.li[1-9]\d*)*))?|p[1-9]\d*|code[1-9]\d*|q[1-9]\d*|t[1-9]\d*|li[1-9]\d*(?:\.li[1-9]\d*)*)$", RegexOptions.Compiled)]
     private static partial Regex PointerRegex();
 }

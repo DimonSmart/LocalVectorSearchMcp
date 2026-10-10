@@ -1,7 +1,7 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using Markdig;
-using Markdig.Extensions.Yaml;
+
 using Markdig.Syntax;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
@@ -12,9 +12,6 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 /// </summary>
 internal static class MarkdownStructuralEditValidator
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseYamlFrontMatter().Build();
-
     public static void Validate(
         string beforeSource,
         string afterSource,
@@ -260,7 +257,7 @@ internal static class MarkdownStructuralEditValidator
 
     private static IReadOnlyList<BlockInfo> ReadBlocks(string source)
     {
-        var document = Markdig.Markdown.Parse(source, Pipeline);
+        var document = Markdig.Markdown.Parse(source, MarkdownPipelines.Tables);
         return document.Descendants().OfType<Block>()
             .Where(block => block.Span.Start >= 0)
             .Select(block => new BlockInfo(block,

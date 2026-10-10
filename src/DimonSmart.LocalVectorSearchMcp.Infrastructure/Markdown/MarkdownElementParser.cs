@@ -3,21 +3,60 @@ using System.Text.RegularExpressions;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
 using DimonSmart.LocalVectorSearchMcp.Core.SemanticPointers;
 using Markdig;
-using Markdig.Extensions.Yaml;
+using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown;
 
 public sealed partial class MarkdownElementParser : IMarkdownElementParser
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseYamlFrontMatter()
-        .Build();
-
-    public IReadOnlyList<MarkdownElement> Parse(MarkdownSourceDocument document)
+     public IReadOnlyList<MarkdownElement> Parse(MarkdownSourceDocument document)
         => ParseDetailed(document).Elements;
 
     public MarkdownParseResult ParseDetailed(MarkdownSourceDocument document)
+    {
+        var current = ParseWithPipeline(document, MarkdownPipelines.Tables);
+        if (!current.Elements.Any(element => element.Kind == MarkdownElementKind.Table))
+            return current;
+
+        // Match exact historical paragraph spans, not ordinal guesses: Markdig
+        // may previously have parsed the table together with adjacent prose.
+        var historical = ParseWithPipeline(document, MarkdownPipelines.Historical);
+        var historicalParagraphs = historical.Elements
+            .Where(element => element.Kind == MarkdownElementKind.Paragraph).ToArray();
+        var oldByRange = historicalParagraphs
+            .ToDictionary(element => (element.SourceStart, element.SourceLength));
+        var used = new HashSet<string>(current.ReservedPointers, StringComparer.Ordinal);
+        foreach (var old in historicalParagraphs)
+            used.Add(old.Pointer.Value);
+        var mapped = new HashSet<string>(StringComparer.Ordinal);
+        var remapped = current.Elements.Select(element =>
+        {
+            if (element.Kind != MarkdownElementKind.Paragraph)
+                return element;
+            if (oldByRange.TryGetValue((element.SourceStart, element.SourceLength), out var old))
+            {
+                mapped.Add(old.Pointer.Value);
+                return element with { Pointer = old.Pointer };
+            }
+            var section = element.SectionPointer.Value;
+            var prefix = section == "document" ? "p" : section + ".p";
+            var ordinal = 1;
+            while (used.Contains(prefix + ordinal.ToString(CultureInfo.InvariantCulture)))
+                ordinal++;
+            var pointer = new SemanticPointer(prefix + ordinal.ToString(CultureInfo.InvariantCulture));
+            used.Add(pointer.Value);
+            return element with { Pointer = pointer };
+        }).ToArray();
+        var reserved = current.ReservedPointers.ToHashSet(StringComparer.Ordinal);
+        foreach (var old in historicalParagraphs)
+            if (!mapped.Contains(old.Pointer.Value))
+                reserved.Add(old.Pointer.Value);
+        return new MarkdownParseResult(remapped, reserved);
+    }
+
+    private static MarkdownParseResult ParseWithPipeline(
+        MarkdownSourceDocument document, MarkdownPipeline pipeline)
     {
         var source = document.Markdown;
         var documentPointer = new SemanticPointer("document");
@@ -26,12 +65,13 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
             new(document.RelativePath, documentPointer, MarkdownElementKind.Document,
                 "", 1, 1, 0, null, documentPointer)
         };
-        var syntax = Markdig.Markdown.Parse(source, Pipeline);
+        var syntax = Markdig.Markdown.Parse(source, pipeline);
         var headingStack = new List<HeadingContext>();
         var paragraphCounts = new Dictionary<string, int>();
         var codeCounts = new Dictionary<string, int>();
         var listCounts = new Dictionary<string, int>();
         var quoteCounts = new Dictionary<string, int>();
+        var tableCounts = new Dictionary<string, int>();
         var itemPointers = new Dictionary<ListItemBlock, SemanticPointer>();
         var listDetails = new Dictionary<string, MarkdownSourceMapBuilder.ListDetail>(StringComparer.Ordinal);
         var suppressed = new HashSet<string>(StringComparer.Ordinal);
@@ -39,6 +79,7 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
         var rootCode = 0;
         var rootList = 0;
         var rootQuote = 0;
+        var rootTable = 0;
         var rootSectionCount = 0;
         var currentSection = documentPointer;
         string? headingPath = null;
@@ -106,6 +147,21 @@ public sealed partial class MarkdownElementParser : IMarkdownElementParser
                 continue;
             }
 
+            if (block is Table table)
+            {
+                if (isSuppressed || listAncestor is not null) continue;
+                var pointer = NextPointer(currentSection, tableCounts, ref rootTable, "t");
+                var range = MarkdownSourceMapBuilder.GetPhysicalRange(table, source);
+                var text = source.Substring(range.Start, range.Length);
+                elements.Add(new MarkdownElement(document.RelativePath, pointer,
+                    MarkdownElementKind.Table, text, table.Line + 1,
+                    table.Line + CountLineBreaks(text), 0, headingPath, currentSection,
+                    range.Start, range.Length));
+                continue;
+            }
+
+            // A table is atomic. Inline paragraph-like descendants are not independent elements.
+            if (GetAncestor<Table>(block) is not null) continue;
             if (block is not (HeadingBlock or ParagraphBlock or CodeBlock or YamlFrontMatterBlock))
                 continue;
 
