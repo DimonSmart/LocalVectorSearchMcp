@@ -34,6 +34,13 @@ internal static class MarkdownStructuralEditValidator
             StringComparer.Ordinal);
         var currentElements = after.ToDictionary(element => element.Pointer.Value,
             StringComparer.Ordinal);
+        var ownEditedListStarts = operations
+            .Where(operation => operation.Kind is PatchOperationKind.Replace
+                or PatchOperationKind.ReplaceElement)
+            .Select(operation => originalElements.GetValueOrDefault(operation.Pointer))
+            .Where(element => element?.Kind == MarkdownElementKind.ListItem)
+            .Select(element => element!.SourceStart)
+            .ToHashSet();
 
         int? MapOrigin(int position)
         {
@@ -41,7 +48,9 @@ internal static class MarkdownStructuralEditValidator
             foreach (var edit in orderedEdits)
             {
                 if (edit.Length > 0 && position >= edit.Start
-                    && position < edit.Start + edit.Length) return null;
+                    && position < edit.Start + edit.Length)
+                    return position == edit.Start && ownEditedListStarts.Contains(position)
+                        ? position + delta : null;
                 if (edit.Start + edit.Length <= position)
                     delta += edit.Replacement.Length - edit.Length;
             }
@@ -53,7 +62,7 @@ internal static class MarkdownStructuralEditValidator
             element.Kind != MarkdownElementKind.Document))
         {
             var position = MapOrigin(old.SourceStart);
-            if (position is null) continue;
+            if (position is null || ownEditedListStarts.Contains(old.SourceStart)) continue;
             var candidates = afterElementsByStart[(position.Value, old.Kind)].ToArray();
             if (candidates.Length != 1
                 || old.SelfHash != candidates[0].SelfHash

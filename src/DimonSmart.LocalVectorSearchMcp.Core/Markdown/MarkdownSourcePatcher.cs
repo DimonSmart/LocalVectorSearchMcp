@@ -162,6 +162,12 @@ public static class MarkdownSourcePatcher
                     "", operation.Pointer),
             PatchOperationKind.Delete => throw new WorkspaceMutationException(
                 "delete does not accept markdown content for list items or quotes."),
+            PatchOperationKind.ReplaceSubtree when !quote && operation.Markdown is not null
+                => new SourceEdit(map.ReplaceRange.Start, map.ReplaceRange.Length,
+                    fragment, operation.Pointer),
+            PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
+                when operation.Markdown is not null && !quote
+                => CreateListOwnEdit(map, fragment, operation.Pointer),
             PatchOperationKind.Replace or PatchOperationKind.ReplaceElement
                 when operation.Markdown is not null
                 => new SourceEdit(map.ReplaceRange.Start, map.ReplaceRange.Length,
@@ -178,6 +184,21 @@ public static class MarkdownSourcePatcher
             _ => throw new WorkspaceMutationException(
                 $"Patch operation '{operation.Kind}' requires markdown content.")
         };
+    }
+
+    private static SourceEdit CreateListOwnEdit(
+        MarkdownElementSourceMap map, string fragment, string pointer)
+    {
+        // OwnSegments excludes child item spans. Only the prefix before the first
+        // nested item is contiguous; edit that prefix and leave descendants and
+        // any parent-owned suffix after descendants byte-for-byte unchanged.
+        if (map.OwnSegments.Count == 0
+            || map.OwnSegments[0].Start != map.SubtreeRange.Start)
+            throw new WorkspaceMutationException(
+                $"Unsupported list container at '{pointer}': own source prefix is ambiguous.");
+
+        var prefix = map.OwnSegments[0];
+        return new SourceEdit(prefix.Start, prefix.Length, fragment, pointer);
     }
 
     private static string GetListInsertAfter(string source, int position,
@@ -314,6 +335,7 @@ public static class MarkdownSourcePatcher
         {
             PatchOperationKind.Replace => "replace",
             PatchOperationKind.ReplaceElement => "replace_element",
+            PatchOperationKind.ReplaceSubtree => "replace_subtree",
             PatchOperationKind.ReplaceSection => "replace_section",
             PatchOperationKind.DeleteSection => "delete_section",
             PatchOperationKind.InsertBefore => "insert_before",

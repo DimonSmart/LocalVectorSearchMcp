@@ -37,7 +37,7 @@ public sealed class ListItemPatchIntegrationTests
     }
 
     [Fact]
-    public async Task Replace_ExchangesCompleteNestedSubtree()
+    public async Task ReplaceSubtree_ExchangesCompleteNestedSubtree()
     {
         const string source = "- Vegetables\n  - Onion\n  - Tomato\n- Meat\n";
         using var temp = new TemporaryDirectory();
@@ -46,11 +46,141 @@ public sealed class ListItemPatchIntegrationTests
         var element = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
         await CreateService(temp.Path).PatchAsync(
             new PatchRequest("test.md", [new PatchOperation(
-                PatchOperationKind.ReplaceElement,
+                PatchOperationKind.ReplaceSubtree,
                 SemanticAnchor.FromElement(element).ToString(),
                 "- Fruits\n  - Apple\n  - Pear")]),
             TestContext.Current.CancellationToken);
         Assert.Equal("- Fruits\n  - Apple\n  - Pear\n- Meat\n",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(PatchOperationKind.ReplaceElement)]
+    [InlineData(PatchOperationKind.Replace)]
+    public async Task ReplaceOwnText_PreservesTwoNestedChildren(PatchOperationKind operation)
+    {
+        const string source = "# Шашлык\n\n## Ингредиенты\n\n- **Мясо:** свиная шея.\n- **Овощи:** сладкий перец, лук и грибы.\n  - Лук удобно нанизывать отдельно.\n  - Помидоры черри лучше готовить отдельно.\n- **Инвентарь:** шампуры и мангал.\n";
+        const string expected = "# Шашлык\n\n## Ингредиенты\n\n- **Мясо:** свиная шея.\n- **Овощи и зелень:** перец, лук, грибы и укроп.\n  - Лук удобно нанизывать отдельно.\n  - Помидоры черри лучше готовить отдельно.\n- **Инвентарь:** шампуры и мангал.\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var parent = Read(temp.Path).Single(x => x.Pointer.Value == "1.1.li2");
+        await CreateService(temp.Path).PatchAsync(
+            new PatchRequest("test.md", [new PatchOperation(operation,
+                SemanticAnchor.FromElement(parent).ToString(),
+                "- **Овощи и зелень:** перец, лук, грибы и укроп.")]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(expected, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+        var items = Read(temp.Path).Where(x => x.Kind == MarkdownElementKind.ListItem).ToArray();
+        Assert.Equal(["1.1.li1", "1.1.li2", "1.1.li2.li1", "1.1.li2.li2", "1.1.li3"],
+            items.Select(x => x.Pointer.Value));
+        Assert.Equal("1.1.li2", items[2].SourceMap?.ParentPointer);
+        Assert.Equal("1.1.li2", items[3].SourceMap?.ParentPointer);
+    }
+
+    [Fact]
+    public async Task ReplaceOwnText_AfterChildChanges_UsesCurrentChildren()
+    {
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, "- Parent\n  - Old child\n",
+            TestContext.Current.CancellationToken);
+        var oldParent = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        await File.WriteAllTextAsync(file, "- Parent\n  - Updated child\n",
+            TestContext.Current.CancellationToken);
+        await CreateService(temp.Path).PatchAsync(
+            new PatchRequest("test.md", [new PatchOperation(
+                PatchOperationKind.ReplaceElement,
+                SemanticAnchor.FromElement(oldParent).ToString(), "- Renamed parent")]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("- Renamed parent\n  - Updated child\n",
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("- Parent\n  - First\n    - Second\n      - Third\n- End\n",
+        "- New parent\n  - First\n    - Second\n      - Third\n- End\n")]
+    [InlineData("- [ ] Parent\n  - Child\n- End\n",
+        "- [x] Parent\n  - Child\n- End\n")]
+    [InlineData("12) Parent\n    - Child\n13) End\n",
+        "12) New parent\n    - Child\n13) End\n")]
+    [InlineData("- Parent\n\n  First paragraph.\n\n  - Child\n\n  Last paragraph.\n- End\n",
+        "- New parent\n\n  - Child\n\n  Last paragraph.\n- End\n")]
+    [InlineData("- Parent\n\n  ```text\n  code\n  ```\n\n  - Child\n- End\n",
+        "- New parent\n\n  - Child\n- End\n")]
+    public async Task ReplaceOwnText_PreservesNestedSubtreesAndOwnSuffix(
+        string source, string expected)
+    {
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var parent = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        var marker = source.Split(['\r', '\n'], 2)[0];
+        var replacement = marker.StartsWith("12)", StringComparison.Ordinal)
+            ? "12) New parent" : marker.StartsWith("- [ ]", StringComparison.Ordinal)
+                ? "- [x] Parent" : "- New parent";
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceElement,
+                SemanticAnchor.FromElement(parent).ToString(), replacement)]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(expected, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceOwnText_PreservesCrLfAndBom()
+    {
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        var bytes = new System.Text.UTF8Encoding(true).GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes("- Parent\r\n  - Child\r\n- Other\r\n"))
+            .ToArray();
+        await File.WriteAllBytesAsync(file, bytes, TestContext.Current.CancellationToken);
+        var parent = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceElement,
+                SemanticAnchor.FromElement(parent).ToString(), "- Updated")]),
+            TestContext.Current.CancellationToken);
+        var expected = new System.Text.UTF8Encoding(true).GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes("- Updated\r\n  - Child\r\n- Other\r\n"))
+            .ToArray();
+        Assert.Equal(expected, await File.ReadAllBytesAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceOwnText_RejectsAdditionalChildrenWithoutWriting()
+    {
+        const string source = "- Parent\n  - Child\n- Other\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var parent = Read(temp.Path).Single(x => x.Pointer.Value == "li1");
+        await Assert.ThrowsAsync<WorkspaceMutationException>(() =>
+            CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+                [new PatchOperation(PatchOperationKind.ReplaceElement,
+                    SemanticAnchor.FromElement(parent).ToString(),
+                    "- New parent\n  - Replacement child")]),
+                TestContext.Current.CancellationToken));
+        Assert.Equal(source, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReplaceOwnText_WithSiblingEdit_RemainsAtomic()
+    {
+        const string source = "- Parent\n  - Child\n- Other\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var items = Read(temp.Path);
+        var parent = items.Single(x => x.Pointer.Value == "li1");
+        var sibling = items.Single(x => x.Pointer.Value == "li2");
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [
+                new PatchOperation(PatchOperationKind.ReplaceElement,
+                    SemanticAnchor.FromElement(parent).ToString(), "- Updated"),
+                new PatchOperation(PatchOperationKind.ReplaceElement,
+                    SemanticAnchor.FromElement(sibling).ToString(), "- Renamed")
+            ]), TestContext.Current.CancellationToken);
+        Assert.Equal("- Updated\n  - Child\n- Renamed\n",
             await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
     }
 
