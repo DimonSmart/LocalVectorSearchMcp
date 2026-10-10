@@ -89,7 +89,7 @@ internal static class MarkdownTableEditor
                     var raw = values.Select(value => Format(value, TableValueFormat.Text)).ToArray();
                     var exemplar = table.Rows.Count > 0 ? table.Rows[0] : table.Header;
                     var newLine = RenderLine(exemplar, raw);
-                    var eol = DetectEol(source);
+                    var eol = TableEol(table);
                     if (position < table.Rows.Count)
                         Add(new SourceRange(table.Rows[position].Range.Start, 0), newLine + eol);
                     else
@@ -104,7 +104,7 @@ internal static class MarkdownTableEditor
                     var line = table.Rows[r];
                     var start = line.Range.Start;
                     var length = line.Range.Length + line.Ending.Length;
-                    if (line.Ending.Length == 0 && line.Range.End == source.Length)
+                    if (line.Ending.Length == 0 && r == table.Rows.Count - 1)
                     {
                         var previous = start >= 2 && source[start - 2] == '\r'
                             ? 2 : start >= 1 && source[start - 1] == '\n' ? 1 : 0;
@@ -324,8 +324,11 @@ internal static class MarkdownTableEditor
             (original.TrailingPipe || border ? " |" : "");
     }
 
-    private static string DetectEol(string source)
-        => source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+    private static string TableEol(MarkdownTableSource table)
+        => table.Rows.Select(line => line.Ending)
+            .Append(table.Separator.Ending)
+            .Append(table.Header.Ending)
+            .FirstOrDefault(ending => ending.Length > 0) ?? "\n";
 
     private static string AlignmentName(TableAlignment value)
         => value.ToString().ToLowerInvariant();
