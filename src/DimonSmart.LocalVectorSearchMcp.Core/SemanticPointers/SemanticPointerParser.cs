@@ -22,29 +22,43 @@ public static partial class SemanticPointerParser
         var value = pointer.Value;
         if (value == "document") return SemanticPointerKind.Document;
         if (value == "frontmatter") return SemanticPointerKind.FrontMatter;
-        if (value.Contains(".code", StringComparison.Ordinal) || value.StartsWith("code", StringComparison.Ordinal)) return SemanticPointerKind.CodeBlock;
-        if (value.Contains(".p", StringComparison.Ordinal) || value.StartsWith('p')) return SemanticPointerKind.Paragraph;
+        var segment = value[(value.LastIndexOf('.') + 1)..];
+        if (segment.StartsWith("li", StringComparison.Ordinal)) return SemanticPointerKind.ListItem;
+        if (segment.StartsWith("code", StringComparison.Ordinal)) return SemanticPointerKind.CodeBlock;
+        if (segment.StartsWith('p')) return SemanticPointerKind.Paragraph;
+        if (segment.StartsWith('q')) return SemanticPointerKind.BlockQuote;
         return SemanticPointerKind.Section;
     }
 
     public static SemanticPointer? GetContainingSectionPointer(SemanticPointer pointer)
     {
         var value = pointer.Value;
-        if (value is "document" or "frontmatter" || value.StartsWith('p') || value.StartsWith("code", StringComparison.Ordinal))
+        if (value is "document" or "frontmatter") return null;
+
+        var segments = value.Split('.');
+        var count = 0;
+        while (count < segments.Length && char.IsDigit(segments[count][0]))
         {
-            return null;
+            count++;
         }
 
-        var index = value.LastIndexOf('.');
-        if (index < 0)
-        {
-            return null;
-        }
-
-        var prefix = value[..index];
-        return char.IsDigit(prefix[^1]) ? new SemanticPointer(prefix) : null;
+        if (count == 0) return null;
+        if (count == segments.Length) count--;
+        return count == 0
+            ? null
+            : new SemanticPointer(string.Join(".", segments.Take(count)));
     }
 
-    [GeneratedRegex(@"^(document|frontmatter|(?:\d+(?:\.\d+)*)(?:\.(?:p|code)\d+)?|p\d+|code\d+)$", RegexOptions.Compiled)]
+    public static SemanticPointer? GetParentListItemPointer(SemanticPointer pointer)
+    {
+        if (GetKind(pointer) != SemanticPointerKind.ListItem) return null;
+        var value = pointer.Value;
+        var separator = value.LastIndexOf('.');
+        if (separator < 0) return null;
+        var prefix = new SemanticPointer(value[..separator]);
+        return GetKind(prefix) == SemanticPointerKind.ListItem ? prefix : null;
+    }
+
+    [GeneratedRegex(@"^(?:document|frontmatter|(?:[1-9]\d*(?:\.[1-9]\d*)*)(?:\.(?:p[1-9]\d*|code[1-9]\d*|q[1-9]\d*|li[1-9]\d*(?:\.li[1-9]\d*)*))?|p[1-9]\d*|code[1-9]\d*|q[1-9]\d*|li[1-9]\d*(?:\.li[1-9]\d*)*)$", RegexOptions.Compiled)]
     private static partial Regex PointerRegex();
 }
