@@ -173,7 +173,7 @@ public sealed class WorkspaceImageMcpTools(
         "Never updates Markdown references or the index, and never overwrites an existing target. Repair links separately with kb_patch.")]
     public async Task<CallToolResult> MoveImageAsync(
         [Description(
-            "Binary image move with root-relative sourcePath/targetPath, optional expectedSha256, deprecated updateReferences (omit or false only).")]
+            "Binary image move using root-relative sourcePath and targetPath; optional expectedSha256 checks for source changes.")]
         MoveImageRequest request,
         CancellationToken cancellationToken)
     {

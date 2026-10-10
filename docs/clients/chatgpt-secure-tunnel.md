@@ -150,7 +150,7 @@ Both list and load work when `knowledgeBase.allowWrites=false`.
 
 `kb_delete_image` deletes exactly one supported binary image file within `knowledgeBase.root` without searching or changing Markdown links and requires writes to be enabled. Nested paths created by external tools are supported. Parent directories are not removed automatically.
 
-`kb_move_image` requires writes to be enabled and can move a supported image between any safe source and target paths inside `knowledgeBase.root`. Paths outside that root are never allowed. It performs a binary-only move; omitted or false updateReferences works, true is rejected. Use separate kb_read/kb_patch calls to repair document-relative links, without multi-file transactions.
+`kb_move_image` requires writes to be enabled and can move a supported image between any safe source and target paths inside `knowledgeBase.root`. Paths outside that root are never allowed. It performs a binary-only move, accepting sourcePath, targetPath, and optional expectedSha256. Markdown references are not updated; use separate kb_read/kb_patch calls to repair document-relative links, without multi-file transactions.
 
 Images remain ordinary assets. They are visible in `kb_list_files` but are not indexed, embedded, or added to FTS/vector search.
 

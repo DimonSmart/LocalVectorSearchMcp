@@ -172,7 +172,7 @@ Also test root-level images, images in `chapters/`, and files under `.idd/`; lis
 
 With writes disabled, `kb_delete_image` must return a controlled error and leave the file untouched.
 
-Also verify `kb_move_image` in a writable disposable workspace: move an image between two different subdirectories under `knowledgeBase.root`, confirm the old path disappears and the new path has the same SHA-256, confirm Markdown remains byte-identical and no indexing is scheduled. Outside-root targets, reparse-point paths, format mismatches, stale expectedSha256, and occupied targets must fail. updateReferences=false is permitted; true fails with INVALID_ARGUMENT directing the client to kb_patch.
+Also verify `kb_move_image` in a writable disposable workspace: move an image between two different subdirectories under `knowledgeBase.root`, confirm the old path disappears and the new path has the same SHA-256, confirm Markdown remains byte-identical and no indexing is scheduled. Outside-root targets, reparse-point paths, format mismatches, stale expectedSha256, and occupied targets must fail. The request accepts only sourcePath, targetPath, and optional expectedSha256; repair Markdown links separately using kb_read/kb_patch.
 
 With writes enabled, delete a nested image path even when referenced from Markdown (including inline/reference-style/HTML) and confirm:
 

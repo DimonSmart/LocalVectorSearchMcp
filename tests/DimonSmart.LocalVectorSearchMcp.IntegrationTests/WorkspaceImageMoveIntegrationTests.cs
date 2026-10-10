@@ -47,34 +47,6 @@ public sealed class WorkspaceImageMoveIntegrationTests
     }
 
     [Fact]
-    public async Task RefusesDeprecatedAutomaticReferenceUpdate()
-    {
-        using var temp = new TemporaryDirectory();
-        var source = Write(temp.Path, "images/a.png", Png);
-        var service = CreateService(temp.Path);
-        var error = await Assert.ThrowsAsync<WorkspaceImageException>(
-            () => service.MoveAsync(
-                new MoveImageRequest("images/a.png", "assets/a.png",
-                    UpdateReferences: true),
-                TestContext.Current.CancellationToken));
-        Assert.Equal("INVALID_ARGUMENT", error.Code);
-        Assert.True(File.Exists(source));
-    }
-
-    [Fact]
-    public async Task UpdateReferencesFalseIsBackwardCompatible()
-    {
-        using var temp = new TemporaryDirectory();
-        Write(temp.Path, "images/a.png", Png);
-        var service = CreateService(temp.Path);
-        var result = await service.MoveAsync(
-            new MoveImageRequest("images/a.png", "assets/a.png",
-                UpdateReferences: false),
-            TestContext.Current.CancellationToken);
-        Assert.Equal("assets/a.png", result.Path);
-    }
-
-    [Fact]
     public async Task ExpectedSha256DetectsConflictAndMalformedValues()
     {
         using var temp = new TemporaryDirectory();
