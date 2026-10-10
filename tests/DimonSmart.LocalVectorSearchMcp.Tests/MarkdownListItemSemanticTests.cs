@@ -134,6 +134,49 @@ public sealed class MarkdownListItemSemanticTests
         Assert.NotEqual(items[0].SelfHash, items[0].SubtreeHash);
     }
 
+    [Theory]
+    [InlineData(2000)]
+    [InlineData(4000)]
+    public void LargeLists_HaveDeterministicSourceOwnership(int itemCount)
+    {
+        var source = string.Concat(Enumerable.Range(1, itemCount)
+            .Select(number => $"- Item {number}\\n")).Replace("\\n", "\n");
+        var result = new MarkdownElementParser().ParseDetailed(
+            new MarkdownSourceDocument("test.md", "test.md", source, "",
+                DateTimeOffset.UtcNow));
+        var items = result.Elements.Where(x => x.Kind == MarkdownElementKind.ListItem)
+            .ToArray();
+        Assert.Equal(itemCount, items.Length);
+        Assert.Equal(0, items[0].SourceMap!.SubtreeRange.Start);
+        Assert.Equal(source.Length - 1, items[^1].SourceMap!.SubtreeRange.End);
+        for (var index = 1; index < items.Length; index++)
+            Assert.True(items[index - 1].SourceMap!.DeleteRange.End
+                <= items[index].SourceMap!.SubtreeRange.Start);
+    }
+
+    [Fact]
+    public void DeeplyNestedItems_OwnNonOverlappingSourceSegments()
+    {
+        const string source =
+            "- Root\n  - Child\n    - Grandchild\n      - Level four\n        - Level five\n";
+        var items = Parse(source).Where(x => x.Kind == MarkdownElementKind.ListItem)
+            .ToArray();
+        Assert.Equal(5, items.Length);
+        Assert.Equal(Enumerable.Range(0, 5),
+            items.Select(x => x.SourceMap!.Depth));
+        foreach (var item in items)
+        {
+            var map = item.SourceMap!;
+            Assert.InRange(map.SubtreeRange.Start, 0, source.Length);
+            Assert.InRange(map.SubtreeRange.End, 0, source.Length);
+            Assert.All(map.OwnSegments, segment =>
+            {
+                Assert.True(segment.Start >= map.SubtreeRange.Start);
+                Assert.True(segment.End <= map.SubtreeRange.End);
+            });
+        }
+    }
+
     [Fact]
     public void Chunker_IndexesEachChildAndQuoteExactlyOnce()
     {
