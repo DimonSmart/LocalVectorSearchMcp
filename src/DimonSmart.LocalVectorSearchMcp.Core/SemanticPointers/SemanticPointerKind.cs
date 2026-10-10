@@ -6,5 +6,7 @@ public enum SemanticPointerKind
     Section,
     Paragraph,
     CodeBlock,
+    ListItem,
+    BlockQuote,
     FrontMatter
 }

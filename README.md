@@ -331,3 +331,18 @@ An unrelated edit elsewhere in the file does not invalidate a `Self` mutation wh
 The current version supports indexed local Markdown plus ordinary image assets. All five image tools use `knowledgeBase.root` as the boundary; saving defaults to `images/`. Remote access from ChatGPT is supported through OpenAI Secure MCP Tunnel, which externally launches and bridges the existing local stdio server.
 
 PDF/DOCX/OCR, arbitrary binary upload, image embeddings/search, image resizing/transcoding/thumbnails, automatic Markdown image insertion, a media database, a web UI, Git history indexing, direct remote HTTP MCP transport, application-level authentication, multi-user mode, CRDT, and automatic merge are outside the current scope.
+
+### Addressable Markdown list items and atomic quotes
+
+`kb_read` exposes individual list items as `list_item` using `li1`, `1.li2`, `1.li2.li1` plus the normal two-hash anchor suffix. Parent Text excludes nested item text. `delete` and `replace_element` remove/replace the **whole subtree** and require both current hashes. Adjacent insertions check self hash and accept one source-indented sibling with a compatible list marker; neither blank lines nor ordered numbers are silently normalized.
+
+A stand-alone Markdown quote is one opaque `block_quote` with `qN` or `1.qN`, regardless of internal Markdown (including `> - item`). It can only be read, searched, deleted, inserted around, or replaced as a whole. Older paragraph pointers suppressed inside lists/quotes must be re-read.
+
+List-item editing uses exact half-open source ranges: the subtree contains every descendant, whereas the parent's own text consists only of its non-child source segments. `replace_element` replaces the full subtree; `delete` consumes its terminating line ending when present; `insert_after` inserts after all descendants. No AST serialization or document-wide whitespace normalization is performed, and unmodified source bytes (including BOM and mixed EOL) are retained.
+
+A list insertion or replacement must supply **one** item with the target's physical indentation and compatible marker style (ordered marker numbers may differ). Nested items, code, HTML comments, and other Markdown blocks are permitted when Markdig places them inside that item. Independent blocks outside the new subtree are rejected. For example, `- Updated\n\n<!-- detached -->` cannot replace a top-level item when the comment splits its list; `- Updated\n\n  <!-- nested -->` is allowed if Markdig assigns the comment to the item. A quote fragment similarly must form exactly one opaque quote without absorbing its neighbors.
+
+The server re-parses the **entire proposed result** before writing: existing elements, non-addressable blocks, list-container ownership, parent relationships, and neighboring boundaries must survive. Ambiguous or overlapping edits (including multiple operations in one `kb_patch`) fail atomically with a structural error; the source file is left unchanged. Unsupported indentation, list splitting/merging, and quote-boundary ambiguity are intentionally rejected instead of being auto-formatted.
+
+
+Search pointer and read hint still identify the first *chunk* element, not necessarily the exact list-item match. Chunker v5 requires explicit derived-index rebuild: `kb_reindex(force=true)` or CLI `--reindex --force`. No Markdown migration is performed.

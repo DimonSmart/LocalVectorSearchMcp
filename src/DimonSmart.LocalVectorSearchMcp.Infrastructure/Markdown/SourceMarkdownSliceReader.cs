@@ -59,7 +59,8 @@ public sealed class SourceMarkdownSliceReader(
             normalized,
             cancellationToken);
 
-        var parsedElements = parser.Parse(document)
+        var parseResult = parser.ParseDetailed(document);
+        var parsedElements = parseResult.Elements
             .Where(element =>
                 element.Kind != MarkdownElementKind.Document
                 && element.SourceLength > 0)
@@ -68,6 +69,13 @@ public sealed class SourceMarkdownSliceReader(
         var resolvedPointer = anchor.LogicalPointer;
         if (includeFingerprints && anchor.Fingerprint is not null)
         {
+            if (parseResult.ReservedPointers.Contains(anchor.LogicalPointer.Value))
+            {
+                throw new SemanticAnchorConflictException(
+                    SemanticAnchorConflictReason.SemanticTargetNotFound,
+                    "The pointer belongs to an atomic list or quote. Read the document again.");
+            }
+
             var candidates = parsedElements
                 .Select(element => new SemanticAnchorCandidate(
                     element.Pointer,

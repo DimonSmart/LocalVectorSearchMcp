@@ -49,6 +49,40 @@ public sealed class ChunkingManifestCompatibilityTests
             "4096",
             "2048");
 
+
+    [Fact]
+    public async Task UpgradingChunkerVersionRequiresExplicitForce()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(temp.Path, "notes.md"), "- Parent\n  - Child\n",
+            cancellationToken);
+        var config = TestConfig(temp.Path);
+        await CreateIndexer(config, CreateRepository(config))
+            .ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken);
+
+        await using (var db = new SqliteConnectionFactory(config).Open())
+        {
+            var command = db.CreateCommand();
+            command.CommandText = "update index_manifest set value = '4' where key = 'chunker_version'";
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var exception = await Assert.ThrowsAsync<IndexCompatibilityException>(() =>
+            CreateIndexer(config, CreateRepository(config))
+                .ReindexAsync(new ReindexRequest(ReindexScope.Changed, false), cancellationToken));
+        Assert.Contains("force=true", exception.Message);
+        Assert.Contains("chunker_version", exception.Message);
+
+        var response = await CreateIndexer(config, CreateRepository(config))
+            .ReindexAsync(new ReindexRequest(ReindexScope.Changed, true), cancellationToken);
+        Assert.Equal(1, response.IndexedFiles);
+        var manifest = await ReadManifestAsync(config, cancellationToken);
+        Assert.Equal("5", manifest["chunker_version"]);
+        Assert.Equal("5", manifest["schema_version"]);
+    }
+
     [Fact]
     public async Task CurrentManifestContainsChunkingSettings()
     {

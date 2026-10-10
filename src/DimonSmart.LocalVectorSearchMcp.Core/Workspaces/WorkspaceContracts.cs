@@ -36,8 +36,12 @@ public enum MutationScope
 
 public static class PatchOperationKindExtensions
 {
-    public static MutationScope GetMutationScope(this PatchOperationKind kind)
-        => kind is PatchOperationKind.ReplaceSection
+    public static MutationScope GetMutationScope(
+        this PatchOperationKind kind,
+        Markdown.MarkdownElementKind? targetKind = null)
+        => (targetKind == Markdown.MarkdownElementKind.ListItem
+                && kind is PatchOperationKind.Delete or PatchOperationKind.Replace or PatchOperationKind.ReplaceElement)
+            || kind is PatchOperationKind.ReplaceSection
             or PatchOperationKind.DeleteSection
                 ? MutationScope.Subtree
                 : MutationScope.Self;
