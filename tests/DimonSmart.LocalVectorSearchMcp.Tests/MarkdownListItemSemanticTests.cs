@@ -106,7 +106,7 @@ public sealed class MarkdownListItemSemanticTests
     {
         const string source = "```text\n- not a list\n1. not a list\n```\n";
         var elements = Parse(source);
-        Assert.Single(elements.Where(x => x.Kind == MarkdownElementKind.CodeBlock));
+        Assert.Single(elements, x => x.Kind == MarkdownElementKind.CodeBlock);
         Assert.DoesNotContain(elements, x => x.Kind == MarkdownElementKind.ListItem);
     }
 
@@ -114,7 +114,7 @@ public sealed class MarkdownListItemSemanticTests
     public void QuoteInsideList_IsPartOfItemNotASeparateElement()
     {
         var elements = Parse("- Parent\n  > - Inside quote\n");
-        Assert.Single(elements.Where(x => x.Kind == MarkdownElementKind.ListItem));
+        Assert.Single(elements, x => x.Kind == MarkdownElementKind.ListItem);
         Assert.DoesNotContain(elements, x => x.Kind == MarkdownElementKind.BlockQuote);
     }
 
