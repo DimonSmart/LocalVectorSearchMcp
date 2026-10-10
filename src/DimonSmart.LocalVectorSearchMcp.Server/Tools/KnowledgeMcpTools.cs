@@ -109,7 +109,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_read",
         UseStructuredContent = true,
         OutputSchemaType = typeof(MarkdownSlice))]
-    [Description("Reads the current Markdown source starting at a semantic pointer or hashed semantic anchor. Reading is independent of embeddings and background indexing. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. List items are liN addresses, nested within parent liN; BlockQuote is one opaque qN element. Omit pointer or use \"document\" to read from the beginning of the document.")]
+    [Description("Reads the current Markdown source starting at a semantic pointer or hashed semantic anchor. Reading is independent of embeddings and background indexing. Public concrete pointers are returned as logical~selfHash~subtreeHash; legacy logical~selfHash input remains valid for navigation. List items are liN addresses, nested within parent liN; BlockQuote is one opaque qN element. GFM tables are standalone tN elements; address a table to receive structured columns and data rows. Omit pointer or use \"document\" to read from the beginning of the document.")]
     public async Task<CallToolResult> ReadAsync(
         ReadToolRequest request,
         CancellationToken cancellationToken)
@@ -161,6 +161,34 @@ public sealed class KnowledgeMcpTools(
                     operation.Pointer,
                     operation.Markdown)).ToList()),
             cancellationToken));
+
+    [McpServerTool(
+        Name = "kb_edit_table",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(TableEditResponse))]
+    [Description("Edits one GFM pipe table without generating whole-table Markdown. First call kb_read on the table and pass its full hashed tN pointer. Supports update_cells, insert_row, delete_row, insert_column, delete_column, rename_column and set_alignment. Data rows have zero-based rowIndex; header is excluded. Prefer unique where {column,equals} selectors and column names; use numeric indexes if names or values are ambiguous. update_cells accepts several changes atomically. Use the returned pointer for subsequent edits; on CONFLICT call kb_read again. Use kb_patch to delete the entire table.")]
+    public async Task<CallToolResult> EditTableAsync(
+        TableEditRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await mutations.EditTableAsync(request, cancellationToken);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock
+                {
+                    Text = System.Text.Json.JsonSerializer.Serialize(response, JsonOptions.Default)
+                }],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(
+                    response, JsonOptions.Default)
+            };
+        }
+        catch (Exception exception) when (IsControlledToolException(exception))
+        {
+            return ToolErrors.FromException(exception);
+        }
+    }
 
     [McpServerTool(
         Name = "kb_create",

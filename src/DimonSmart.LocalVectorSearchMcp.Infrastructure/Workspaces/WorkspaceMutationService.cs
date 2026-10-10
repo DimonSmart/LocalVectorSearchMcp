@@ -17,6 +17,103 @@ public sealed class WorkspaceMutationService(
 {
     private const int MaxPatchAttempts = 3;
 
+
+    public Task<TableEditResponse> EditTableAsync(
+        TableEditRequest request, CancellationToken cancellationToken)
+        => WorkspaceMutationGate.RunAsync(
+            () => EditTableCoreAsync(request, cancellationToken),
+            cancellationToken);
+
+    private async Task<TableEditResponse> EditTableCoreAsync(
+        TableEditRequest request, CancellationToken cancellationToken)
+    {
+        EnsureWritesEnabled();
+        var anchor = SemanticAnchorParser.Parse(request.Pointer);
+        if (SemanticPointerParser.GetKind(anchor.LogicalPointer) != SemanticPointerKind.Table
+            || anchor.SelfHash is null || anchor.SubtreeHash is null)
+            throw new WorkspaceMutationException(
+                "kb_edit_table requires a complete current tN~selfHash~subtreeHash table pointer from kb_read.");
+
+        var normalized = pathGuard.ValidateRelativePath(request.Path);
+        var absolute = pathGuard.ResolveMarkdownPath(normalized);
+        for (var attempt = 1; attempt <= MaxPatchAttempts; attempt++)
+        {
+            var document = await loader.LoadExistingAsync(
+                config.KnowledgeBase, normalized, cancellationToken);
+            var parsed = parser.ParseDetailed(document);
+            var candidates = parsed.Elements
+                .Where(element => element.Kind == MarkdownElementKind.Table)
+                .Select(element => new SemanticAnchorCandidate(
+                    element.Pointer, element.Kind, element.Text,
+                    element.SelfHash, element.SubtreeHash)).ToArray();
+            var resolved = SemanticAnchorResolver.ResolveCandidate(anchor, candidates);
+            if (!string.Equals(anchor.SubtreeHash, resolved.SubtreeHash,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new SemanticAnchorConflictException(
+                    SemanticAnchorConflictReason.SubtreeHashMismatch,
+                    "Table content changed. Call kb_read again and use the updated pointer.");
+            var target = parsed.Elements.Single(element =>
+                element.Pointer.Value == resolved.Pointer.Value
+                && element.Kind == MarkdownElementKind.Table);
+            var sourceMap = MarkdownTableSource.Read(document.Markdown, target);
+            var plan = MarkdownTableEditor.Plan(document.Markdown, sourceMap, request);
+
+            // No-op still performs an exact file revision check, including any relocation.
+            if (plan.Edits.Count == 0)
+            {
+                try
+                {
+                    await EnsureFileHashAsync(absolute, normalized, document.SourceHash, cancellationToken);
+                }
+                catch (DocumentConflictException) when (attempt < MaxPatchAttempts) { continue; }
+                return new TableEditResponse(normalized,
+                    SemanticAnchor.FromElement(target).ToString(), document.SourceHash, false);
+            }
+
+            IReadOnlyList<MarkdownElement> updated;
+            MarkdownElement updatedTarget;
+            try
+            {
+                updated = parser.Parse(document with { Markdown = plan.Source });
+                updatedTarget = updated.Single(element => element.Kind == MarkdownElementKind.Table
+                    && element.SourceStart == target.SourceStart);
+                var resulting = MarkdownTableSource.Read(plan.Source, updatedTarget);
+                MarkdownTableEditor.ValidateResult(plan, resulting);
+                MarkdownStructuralEditValidator.Validate(
+                    document.Markdown, plan.Source, parsed.Elements, updated,
+                    [], plan.Edits, new HashSet<int> { target.SourceStart });
+            }
+            catch (Exception exception) when (exception is InvalidOperationException
+                or WorkspaceMutationException)
+            {
+                throw new WorkspaceMutationException(
+                    "The table edit could not preserve the expected Markdown structure: " +
+                    exception.Message);
+            }
+
+            string updatedHash;
+            try
+            {
+                updatedHash = await WriteAtomicallyAsync(
+                    absolute, normalized, plan.Source, document.HasUtf8Bom,
+                    document.SourceHash, cancellationToken);
+            }
+            catch (DocumentConflictException) when (attempt < MaxPatchAttempts) { continue; }
+            catch (DocumentConflictException)
+            {
+                throw new DocumentConflictException(
+                    "The document kept changing while the table edit was being applied.");
+            }
+
+            var response = ScheduleSynchronization(normalized, updatedHash, null);
+            return new TableEditResponse(normalized,
+                SemanticAnchor.FromElement(updatedTarget).ToString(),
+                updatedHash, response.IndexSynchronized, response.IndexError);
+        }
+        throw new DocumentConflictException(
+            "The document kept changing while the table edit was being applied.");
+    }
+
     public Task<MutationResponse> PatchAsync(
         PatchRequest request,
         CancellationToken cancellationToken)

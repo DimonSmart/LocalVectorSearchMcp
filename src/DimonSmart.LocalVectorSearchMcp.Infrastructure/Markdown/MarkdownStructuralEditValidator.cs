@@ -18,7 +18,8 @@ internal static class MarkdownStructuralEditValidator
         IReadOnlyList<MarkdownElement> before,
         IReadOnlyList<MarkdownElement> after,
         IReadOnlyList<PatchOperation> operations,
-        IReadOnlyList<MarkdownSourceEdit> edits)
+        IReadOnlyList<MarkdownSourceEdit> edits,
+        IReadOnlySet<int>? modifiedTableStarts = null)
     {
         var orderedEdits = edits.OrderBy(edit => edit.Start).ToArray();
         var original = ReadBlocks(beforeSource);
@@ -58,6 +59,8 @@ internal static class MarkdownStructuralEditValidator
         foreach (var old in before.Where(element =>
             element.Kind != MarkdownElementKind.Document))
         {
+            if (old.Kind == MarkdownElementKind.Table
+                && modifiedTableStarts?.Contains(old.SourceStart) == true) continue;
             var position = MapOrigin(old.SourceStart);
             if (position is null || ownEditedListStarts.Contains(old.SourceStart)) continue;
             var candidates = afterElementsByStart[(position.Value, old.Kind)].ToArray();
@@ -93,6 +96,12 @@ internal static class MarkdownStructuralEditValidator
         // thematic breaks, paragraphs hidden within list items, etc.
         foreach (var old in original.Where(block => block.Block is not ContainerBlock))
         {
+            // Table paragraphs are owned by the edited table rather than global elements.
+            if (modifiedTableStarts is not null
+                && original.Any(parent => parent.Block is Markdig.Extensions.Tables.Table
+                    && modifiedTableStarts.Contains(parent.Start)
+                    && (ReferenceEquals(parent.Block, old.Block)
+                        || IsDescendantOf(old.Block, parent.Block)))) continue;
             if (orderedEdits.Any(edit => Intersects(old.Range, edit))) continue;
             var position = MapOrigin(old.Start);
             if (position is null) continue;
