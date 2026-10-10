@@ -26,7 +26,7 @@ public static class SemanticFingerprint
             writer.Write(segments.Count);
             foreach (var range in segments)
             {
-                var bytes = Encoding.UTF8.GetBytes(source.AsSpan(range.Start, range.Length));
+                var bytes = Encoding.UTF8.GetBytes(source.Substring(range.Start, range.Length));
                 writer.Write(bytes.Length);
                 writer.Write(bytes);
             }
