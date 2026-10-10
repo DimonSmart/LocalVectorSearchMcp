@@ -12,6 +12,9 @@ public enum PatchOperationKind
     [JsonStringEnumMemberName("replace_element")]
     ReplaceElement,
 
+    [JsonStringEnumMemberName("replace_subtree")]
+    ReplaceSubtree,
+
     [JsonStringEnumMemberName("replace_section")]
     ReplaceSection,
 
@@ -40,7 +43,7 @@ public static class PatchOperationKindExtensions
         this PatchOperationKind kind,
         Markdown.MarkdownElementKind? targetKind = null)
         => (targetKind == Markdown.MarkdownElementKind.ListItem
-                && kind is PatchOperationKind.Delete or PatchOperationKind.Replace or PatchOperationKind.ReplaceElement)
+                && kind is PatchOperationKind.Delete or PatchOperationKind.ReplaceSubtree)
             || kind is PatchOperationKind.ReplaceSection
             or PatchOperationKind.DeleteSection
                 ? MutationScope.Subtree

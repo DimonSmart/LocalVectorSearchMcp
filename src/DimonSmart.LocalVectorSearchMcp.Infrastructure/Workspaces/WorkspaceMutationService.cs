@@ -230,9 +230,19 @@ public sealed class WorkspaceMutationService(
                 case PatchOperationKind.Replace:
                 case PatchOperationKind.ReplaceElement:
                     if (target.Kind == MarkdownElementKind.ListItem)
+                    {
                         ValidateListFragment(document.Markdown, target, operation.Markdown);
+                        ValidateOwnListFragment(document, operation.Markdown);
+                    }
                     else
                         ValidateElementReplacement(document, target, operation.Markdown);
+                    break;
+
+                case PatchOperationKind.ReplaceSubtree:
+                    if (target.Kind != MarkdownElementKind.ListItem)
+                        throw new WorkspaceMutationException(
+                            "replace_subtree requires a list_item pointer.");
+                    ValidateListFragment(document.Markdown, target, operation.Markdown);
                     break;
 
                 case PatchOperationKind.InsertBefore:
@@ -301,6 +311,18 @@ public sealed class WorkspaceMutationService(
             || HasNonWhitespaceOutsideElement(markdown, elements[0]))
             throw new WorkspaceMutationException(
                 "Invalid quote fragment: exactly one root BlockQuote is required.");
+    }
+
+    private void ValidateOwnListFragment(
+        MarkdownSourceDocument document, string? markdown)
+    {
+        if (markdown is null) return;
+        var items = ParseReplacement(document, markdown)
+            .Count(element => element.Kind == MarkdownElementKind.ListItem);
+        if (items != 1)
+            throw new WorkspaceMutationException(
+                "replace_element expects exactly one list item without child items. " +
+                "Use replace_subtree to replace the entire list subtree.");
     }
 
     private static void ValidateListFragment(string source, MarkdownElement target, string? markdown)
