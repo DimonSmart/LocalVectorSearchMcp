@@ -48,7 +48,17 @@ public sealed class WorkspaceMutationService(
             var resultingSource = MarkdownSourcePatcher.Apply(
                 document.Markdown,
                 elements,
-                resolvedOperations);
+                resolvedOperations,
+                out var plannedEdits);
+            if (resolvedOperations.Any(operation => operation.Pointer != "document"
+                && elements.Any(element => element.Pointer.Value == operation.Pointer
+                    && element.Kind is MarkdownElementKind.ListItem or MarkdownElementKind.BlockQuote)))
+            {
+                ValidateStructuredPatch(elements, parser.Parse(document with
+                {
+                    Markdown = resultingSource
+                }), resolvedOperations, plannedEdits);
+            }
 
             string updatedSourceHash;
             try
@@ -189,7 +199,18 @@ public sealed class WorkspaceMutationService(
             {
                 case PatchOperationKind.Replace:
                 case PatchOperationKind.ReplaceElement:
-                    ValidateElementReplacement(document, target, operation.Markdown);
+                    if (target.Kind == MarkdownElementKind.ListItem)
+                        ValidateListFragment(document.Markdown, target, operation.Markdown);
+                    else
+                        ValidateElementReplacement(document, target, operation.Markdown);
+                    break;
+
+                case PatchOperationKind.InsertBefore:
+                case PatchOperationKind.InsertAfter:
+                    if (target.Kind == MarkdownElementKind.ListItem)
+                        ValidateListFragment(document.Markdown, target, operation.Markdown);
+                    else if (target.Kind == MarkdownElementKind.BlockQuote)
+                        ValidateQuoteFragment(document, operation.Markdown);
                     break;
 
                 case PatchOperationKind.ReplaceSection:
@@ -214,6 +235,12 @@ public sealed class WorkspaceMutationService(
         }
 
         var replacementElements = ParseReplacement(document, markdown);
+        if (target.Kind == MarkdownElementKind.BlockQuote)
+        {
+            ValidateQuoteFragment(document, markdown);
+            return;
+        }
+
         if (replacementElements.Count != 1
             || HasNonWhitespaceOutsideElement(
                 markdown,
@@ -231,6 +258,145 @@ public sealed class WorkspaceMutationService(
         {
             throw new WorkspaceMutationException(
                 "replace_element cannot change a heading level or replace a heading with a non-heading element.");
+        }
+    }
+
+    private void ValidateQuoteFragment(MarkdownSourceDocument document, string? markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            throw new WorkspaceMutationException("Invalid quote fragment: a complete block quote is required.");
+
+        var elements = ParseReplacement(document, markdown);
+        if (elements.Count != 1 || elements[0].Kind != MarkdownElementKind.BlockQuote
+            || HasNonWhitespaceOutsideElement(markdown, elements[0]))
+            throw new WorkspaceMutationException(
+                "Invalid quote fragment: exactly one root BlockQuote is required.");
+    }
+
+    private static void ValidateListFragment(string source, MarkdownElement target, string? markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            throw new WorkspaceMutationException(
+                "Invalid list fragment: exactly one item with the original indentation and marker style is required.");
+
+        var map = target.SourceMap ?? throw new WorkspaceMutationException(
+            "Unsupported list container: source ownership is unavailable.");
+        if (map.MarkerStyle is null || map.Indent < 0)
+            throw new WorkspaceMutationException("Unsupported list container: ambiguous marker or indentation.");
+
+        var marker = System.Text.RegularExpressions.Regex.Match(
+            markdown.Split(['\r', '\n'], 2)[0],
+            @"^(?<indent>[ \t]*)(?<marker>[-+*]|[0-9]+[.)])(?=[ \t]|$)");
+        var originalLine = source[map.SubtreeRange.Start..]
+            .Split(['\r', '\n'], 2)[0];
+        var originalMarker = System.Text.RegularExpressions.Regex.Match(
+            originalLine, @"^(?<indent>[ \t]*)(?<marker>[-+*]|[0-9]+[.)])(?=[ \t]|$)");
+        if (!marker.Success || !originalMarker.Success
+            || marker.Groups["indent"].Value != originalMarker.Groups["indent"].Value
+            || GetMarkerStyle(marker.Groups["marker"].Value) != map.MarkerStyle)
+            throw new WorkspaceMutationException(
+                $"Invalid list fragment at '{target.Pointer.Value}': expected indent " +
+                $"'{originalMarker.Groups["indent"].Value}' and marker style '{map.MarkerStyle}'.");
+    }
+
+    private static string GetMarkerStyle(string marker)
+        => char.IsDigit(marker[0]) ? "ordered:" + marker[^1] : marker;
+
+    /// <summary>Maps existing source origins through edits; never trusts shifted li ordinals.</summary>
+    private static void ValidateStructuredPatch(
+        IReadOnlyList<MarkdownElement> before,
+        IReadOnlyList<MarkdownElement> after,
+        IReadOnlyList<PatchOperation> operations,
+        IReadOnlyList<MarkdownSourceEdit> edits)
+    {
+        var oldByPointer = before.ToDictionary(x => x.Pointer.Value, StringComparer.Ordinal);
+        var newByStart = after
+            .Where(x => x.Kind != MarkdownElementKind.Document)
+            .ToDictionary(x => x.SourceStart);
+        var orderedEdits = edits.OrderBy(x => x.Start).ToArray();
+
+        int? MapOrigin(int position)
+        {
+            var delta = 0;
+            foreach (var edit in orderedEdits)
+            {
+                if (edit.Length > 0 && position >= edit.Start
+                    && position < edit.Start + edit.Length)
+                    return null;
+                if (edit.Start + edit.Length <= position)
+                    delta += edit.Replacement.Length - edit.Length;
+            }
+            return position + delta;
+        }
+
+        foreach (var old in before.Where(x => x.Kind != MarkdownElementKind.Document))
+        {
+            var newStart = MapOrigin(old.SourceStart);
+            if (newStart is null) continue;
+            if (!newByStart.TryGetValue(newStart.Value, out var current)
+                || current.Kind != old.Kind || current.SelfHash != old.SelfHash)
+                throw new WorkspaceMutationException(
+                    $"Unsupported list container: patch would alter surviving element '{old.Pointer.Value}'.");
+
+            if (old.Kind != MarkdownElementKind.ListItem) continue;
+            if (old.SourceMap is null || current.SourceMap is null
+                || old.SourceMap.Depth != current.SourceMap.Depth
+                || old.SourceMap.MarkerStyle != current.SourceMap.MarkerStyle)
+                throw new WorkspaceMutationException(
+                    $"Unsupported list container: patch would change the depth or marker of '{old.Pointer.Value}'.");
+
+            var oldParent = old.SourceMap.ParentPointer is null
+                ? null : oldByPointer[old.SourceMap.ParentPointer];
+            var expectedParentStart = oldParent is null
+                ? null : MapOrigin(oldParent.SourceStart);
+            var actualParentStart = current.SourceMap.ParentPointer is null
+                ? (int?)null
+                : after.First(x => x.Pointer.Value == current.SourceMap.ParentPointer).SourceStart;
+            if (expectedParentStart != actualParentStart)
+                throw new WorkspaceMutationException(
+                    $"Unsupported list container: patch would reparent '{old.Pointer.Value}'.");
+        }
+
+        foreach (var operation in operations)
+        {
+            if (!oldByPointer.TryGetValue(operation.Pointer, out var target)
+                || target.Kind is not (MarkdownElementKind.ListItem or MarkdownElementKind.BlockQuote)
+                || operation.Kind == PatchOperationKind.Delete)
+                continue;
+
+            var edit = edits.Single(x => x.Pointer == operation.Pointer);
+            var start = edit.Start + orderedEdits
+                .Where(x => x.Start < edit.Start)
+                .Sum(x => x.Replacement.Length - x.Length);
+            var end = start + edit.Replacement.Length;
+            var newItems = after.Where(x => x.SourceStart >= start && x.SourceStart < end
+                && x.Kind == target.Kind).ToArray();
+
+            if (target.Kind == MarkdownElementKind.BlockQuote)
+            {
+                if (newItems.Length != 1)
+                    throw new WorkspaceMutationException(
+                        "Invalid quote fragment: exactly one opaque quote must be created.");
+                continue;
+            }
+
+            var root = newItems.FirstOrDefault(x => x.SourceMap is not null
+                && x.SourceMap.Depth == target.SourceMap!.Depth
+                && x.SourceMap.MarkerStyle == target.SourceMap.MarkerStyle);
+            if (root is null || newItems.Count(x => x.SourceMap!.Depth == target.SourceMap!.Depth) != 1)
+                throw new WorkspaceMutationException(
+                    "Invalid list fragment: exactly one sibling item at the original level is required.");
+
+            foreach (var child in after.Where(x => x.Kind == MarkdownElementKind.ListItem
+                && x.SourceStart >= start && x.SourceStart < end && x != root))
+            {
+                var ancestor = child.SourceMap?.ParentPointer;
+                while (ancestor is not null && ancestor != root.Pointer.Value)
+                    ancestor = after.First(x => x.Pointer.Value == ancestor).SourceMap?.ParentPointer;
+                if (ancestor != root.Pointer.Value)
+                    throw new WorkspaceMutationException(
+                        "Invalid list fragment: an additional sibling or unrelated list item was introduced.");
+            }
         }
     }
 
