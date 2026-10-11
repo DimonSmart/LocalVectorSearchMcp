@@ -27,6 +27,7 @@ public sealed class ServerLayerTests
         Assert.Equal(
             [
                 "kb_create",
+                "kb_create_pdf_book",
                 "kb_delete",
                 "kb_edit_table",
                 "kb_list_files",
@@ -88,7 +89,7 @@ public sealed class ServerLayerTests
     public async Task KnowledgeMcpTools_ReadDefaultsMissingPointerToDocument()
     {
         var reader = new EchoSemanticPointerReader();
-        var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!);
+        var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!, null!);
 
         var implicitResult = await tools.ReadAsync(
             new ReadToolRequest("book.md"),
@@ -109,7 +110,7 @@ public sealed class ServerLayerTests
     public async Task KnowledgeMcpTools_ReadReturnsControlledErrorForWhitespacePointer()
     {
         var reader = new EchoSemanticPointerReader();
-        var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!);
+        var tools = new KnowledgeMcpTools(null!, null!, null!, null!, reader, null!, null!, null!);
 
         var result = await tools.ReadAsync(
             new ReadToolRequest("book.md", "   "),
@@ -153,6 +154,7 @@ public sealed class ServerLayerTests
             null!,
             new ThrowingMutationService(
                 new WorkspaceMutationException("expected failure")),
+            null!,
             null!);
 
         var result = await tools.CreateAsync(
@@ -176,7 +178,8 @@ public sealed class ServerLayerTests
             null!,
             null!,
             new ThrowingNavigationService(
-                new DocumentNotFoundException("missing.md")));
+                new DocumentNotFoundException("missing.md")),
+            null!);
 
         var result = await tools.OutlineAsync(
             new OutlineToolRequest("missing.md"),
@@ -205,6 +208,7 @@ public sealed class ServerLayerTests
             null!,
             new ThrowingMutationService(
                 new InvalidOperationException("unexpected failure")),
+            null!,
             null!);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -231,6 +235,7 @@ public sealed class ServerLayerTests
             null!,
             null!,
             new FixedMutationService(expected),
+            null!,
             null!);
 
         var result = await tools.CreateAsync(

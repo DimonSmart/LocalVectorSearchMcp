@@ -109,6 +109,44 @@ public interface IWorkspaceNavigationService
     Task<MarkdownOutline> GetOutlineAsync(string path, CancellationToken cancellationToken);
 }
 
+[JsonConverter(typeof(Serialization.StrictJsonStringEnumConverter<PdfBookPageFormat>))]
+public enum PdfBookPageFormat
+{
+    A4,
+    A5,
+    A6,
+    B5,
+    Letter
+}
+
+[JsonConverter(typeof(Serialization.StrictJsonStringEnumConverter<PdfBookStyle>))]
+public enum PdfBookStyle
+{
+    Compact,
+    Classic,
+    Modern,
+    Technical,
+    Academic
+}
+
+public sealed record CreatePdfBookRequest(
+    string Path,
+    string? OutputPath = null,
+    PdfBookPageFormat PageFormat = PdfBookPageFormat.A5,
+    PdfBookStyle Style = PdfBookStyle.Compact);
+
+public sealed record CreatePdfBookResponse(
+    string Path,
+    long Bytes,
+    IReadOnlyList<string> Warnings);
+
+public interface IPdfBookService
+{
+    Task<CreatePdfBookResponse> CreateAsync(
+        CreatePdfBookRequest request,
+        CancellationToken cancellationToken);
+}
+
 public interface IWorkspaceIndexSynchronizer
 {
     Task<bool> ReconcileAsync(string relativePath, CancellationToken cancellationToken);

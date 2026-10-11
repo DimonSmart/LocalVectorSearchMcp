@@ -48,3 +48,10 @@ public sealed record ListFilesToolRequest(
     string? IncludeGlob = null);
 
 public sealed record OutlineToolRequest(string Path);
+
+public sealed record CreatePdfBookToolRequest(
+    string Path,
+    [property: Description("Optional root-relative .pdf destination. Omitted uses the Markdown source name with a .pdf extension.")]
+    string? OutputPath = null,
+    PdfBookPageFormat PageFormat = PdfBookPageFormat.A5,
+    PdfBookStyle Style = PdfBookStyle.Compact);
