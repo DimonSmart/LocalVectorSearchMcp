@@ -28,6 +28,8 @@ deliberately retained; flattening the outline would lose its tree semantics.
 | `kb_move` | typed request/result | Concrete schema, including source-hash guard. |
 | `kb_delete` | typed request/result | Concrete schema, including source-hash guard. |
 | `kb_list_files` | typed filter/result | File kind is a closed enum. |
+| `kb_create_pdf_book` | typed export request/result | Page format and style are closed enums; the response is structured. |
+| `kb_download_file` | binary embedded resource plus JSON metadata text | Deliberately no JSON output schema; this is an MCP binary-resource result. |
 | `kb_save_image` | OpenAI file parameter/result | File metadata schema and `openai/fileParams` metadata are published. |
 | `kb_list_images` | typed paging/result | Concrete cursor and image metadata schema. |
 | `kb_load_image` | image block plus JSON metadata text | Deliberately no JSON output schema; this is an MCP multimodal result. |
@@ -72,16 +74,40 @@ fields. No client-specific custom schema was introduced.
 
 `kb_save_image` requires a client-supported OpenAI file reference with
 `download_url` and `file_id`. Base64 strings and data URIs are not a supported
-fallback. Server-side missing metadata returns the controlled
-`INVALID_ARGUMENT` error. Failures before invocation belong to the client file
-adapter and cannot be improved by the server. `kb_load_image` correctly returns
-an image content block followed by JSON metadata; a client may reasonably show
-the overall multimodal result as `unknown`.
+fallback. The stdio transport test confirms that missing server-received
+metadata reaches the tool and returns controlled `INVALID_ARGUMENT`; the direct
+server-layer test confirms the image service is not invoked. A string, Base64,
+or data URI rejected while a client adapts tool arguments never enters
+`SaveImageAsync`, so a `catch` in that method cannot improve that client-side
+message. The input schema and `openai/fileParams` metadata are published and
+the supported hand-off is documented as upload/select an image in the client.
+
+`kb_load_image` correctly returns an image content block followed by JSON
+metadata; a client may reasonably show the overall multimodal result as
+`unknown`. `kb_download_file` similarly returns an embedded binary resource
+followed by metadata text. Neither operation has a JSON output schema because
+such a schema would misleadingly describe only the metadata and not the
+primary binary content.
+
+### `kb_list_files`
+
+`pathPrefix` is intentionally a root-relative directory path or an exact file
+path: it uses path-segment matching, so `books` does not also match
+`books-old`, and `books/chapter` does not imply `books/chapter.md`. During the
+audit, a trailing directory separator was found to be normalized after path
+validation, which incorrectly rejected `books/`; normalization now occurs
+before validation. The input schema, tool description, README examples, and
+navigation regression tests describe and verify the behavior. `includeGlob` is
+the filename-pattern mechanism; when present with `pathPrefix`, both filters
+apply.
 
 ## Regression coverage
 
 `PublishedMcpSchemasDescribeEveryToolAndMatchStructuredResults` verifies all
-16 tools through stdio, resolves every local reference in input and output
+18 tools through stdio, resolves every local reference in input and output
 schemas, checks required enum paths, validates structured responses, exercises
 the recursive outline, and reads a real formatted table. It also confirms that
-`kb_load_image` has no output schema by design.
+`kb_load_image` and `kb_download_file` have no output schema by design. An
+optional `MCP_TOOLS_LIST_SNAPSHOT` path makes that test write the actual
+`tools/list` payload for contract comparisons without a hand-maintained
+snapshot.

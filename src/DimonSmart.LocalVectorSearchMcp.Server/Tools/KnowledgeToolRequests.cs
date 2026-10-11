@@ -42,9 +42,15 @@ public sealed record MoveToolRequest(string SourcePath, string TargetPath, strin
 public sealed record DeleteToolRequest(string Path, string ExpectedSourceHash);
 
 public sealed record ListFilesToolRequest(
-    [property: Description("Optional root-relative path prefix.")]
+    [property: Description(
+        "Optional root-relative directory path or exact file path. " +
+        "A directory includes files beneath it. This is not a partial filename prefix; " +
+        "use includeGlob for filename pattern matching.")]
     string? PathPrefix = null,
-    [property: Description("Optional glob filter for the listed files.")]
+    [property: Description(
+        "Optional glob pattern matched against root-relative file paths. " +
+        "Use patterns such as '*.md', '**/*.md', or 'qa-*.md' to filter filenames. " +
+        "When pathPrefix is also specified, both filters must match.")]
     string? IncludeGlob = null);
 
 public sealed record OutlineToolRequest(string Path);
