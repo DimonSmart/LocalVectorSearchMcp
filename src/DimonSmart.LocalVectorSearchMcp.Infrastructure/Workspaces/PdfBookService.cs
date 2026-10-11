@@ -322,12 +322,17 @@ public sealed class PdfBookService(
     {
         public static PdfFonts Load(BookFontFamily family)
         {
-            var body = family == BookFontFamily.Serif ? new[] { "times.ttf", "DejaVuSerif.ttf" } : new[] { "arial.ttf", "DejaVuSans.ttf" };
-            return new(Create(body[0], body[1]), Create(family == BookFontFamily.Serif ? "timesbd.ttf" : "arialbd.ttf", family == BookFontFamily.Serif ? "DejaVuSerif-Bold.ttf" : "DejaVuSans-Bold.ttf"), Create(family == BookFontFamily.Serif ? "timesi.ttf" : "ariali.ttf", family == BookFontFamily.Serif ? "DejaVuSerif-Italic.ttf" : "DejaVuSans-Oblique.ttf"), Create(family == BookFontFamily.Serif ? "timesbi.ttf" : "arialbi.ttf", family == BookFontFamily.Serif ? "DejaVuSerif-BoldItalic.ttf" : "DejaVuSans-BoldOblique.ttf"), Create("consola.ttf", "DejaVuSansMono.ttf"));
+            var serif = family == BookFontFamily.Serif;
+            return new(
+                Create(serif ? "times.ttf" : "arial.ttf", serif ? "DejaVuSerif.ttf" : "DejaVuSans.ttf", serif ? "Times New Roman.ttf" : "Arial.ttf"),
+                Create(serif ? "timesbd.ttf" : "arialbd.ttf", serif ? "DejaVuSerif-Bold.ttf" : "DejaVuSans-Bold.ttf", serif ? "Times New Roman Bold.ttf" : "Arial Bold.ttf"),
+                Create(serif ? "timesi.ttf" : "ariali.ttf", serif ? "DejaVuSerif-Italic.ttf" : "DejaVuSans-Oblique.ttf", serif ? "Times New Roman Italic.ttf" : "Arial Italic.ttf"),
+                Create(serif ? "timesbi.ttf" : "arialbi.ttf", serif ? "DejaVuSerif-BoldItalic.ttf" : "DejaVuSans-BoldOblique.ttf", serif ? "Times New Roman Bold Italic.ttf" : "Arial Bold Italic.ttf"),
+                Create("consola.ttf", "DejaVuSansMono.ttf", "Courier New.ttf"));
         }
         private static PdfFont Create(params string[] names)
         {
-            foreach (var name in names) foreach (var root in new[] { Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "/usr/share/fonts/truetype/dejavu", "/usr/local/share/fonts" })
+            foreach (var name in names) foreach (var root in new[] { Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "/usr/share/fonts/truetype/dejavu", "/usr/local/share/fonts", "/System/Library/Fonts/Supplemental", "/Library/Fonts" })
             {
                 var candidate = Path.Combine(root, name);
                 if (File.Exists(candidate)) return PdfFontFactory.CreateFont(candidate, PdfEncodings.IDENTITY_H, PdfFontFactory.EmbeddingStrategy.FORCE_EMBEDDED);
