@@ -17,8 +17,10 @@ using iText.Layout.Properties;
 using Markdig;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
+using Markdig.Extensions.Yaml;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using YamlDotNet.Serialization;
 using MarkdownTable = Markdig.Extensions.Tables.Table;
 using Text = iText.Layout.Element.Text;
 
@@ -30,7 +32,10 @@ public sealed class PdfBookService(
 {
     private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
+        .UseYamlFrontMatter()
         .Build();
+
+    private static readonly IDeserializer FrontMatterDeserializer = new DeserializerBuilder().Build();
 
     public Task<CreatePdfBookResponse> CreateAsync(
         CreatePdfBookRequest request,
@@ -83,10 +88,12 @@ public sealed class PdfBookService(
         var fonts = PdfFonts.Load(presentation.FontFamily);
         var resources = new LocalImageResolver(sourcePath, pathGuard);
         var source = File.ReadAllText(sourcePath);
-        foreach (var block in Markdig.Markdown.Parse(source, MarkdownPipeline))
+        var markdown = Markdig.Markdown.Parse(source, MarkdownPipeline);
+        SetDocumentMetadata(pdf, markdown);
+        foreach (var block in markdown)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AddBlock(document, block, presentation, fonts, resources, warnings);
+            RenderBlock(block, element => document.Add(element), presentation, fonts, resources, warnings, 0);
         }
         return warnings;
     }
@@ -109,42 +116,50 @@ public sealed class PdfBookService(
                 "Workspace writes are disabled. Set knowledgeBase.allowWrites to true to enable PDF export.");
     }
 
-    private static void AddBlock(Document document, Block block, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings)
+    private static void RenderBlock(Block block, Action<IBlockElement> add, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings, int quoteDepth)
     {
         switch (block)
         {
+            case YamlFrontMatterBlock:
+                break;
             case HeadingBlock heading:
                 var level = Math.Clamp(heading.Level, 1, 6);
-                document.Add(CreateParagraph(heading.Inline, presentation, fonts, presentation.HeadingSizes[level - 1], true, resources, warnings)
+                add(CreateParagraph(heading.Inline, presentation, fonts, presentation.HeadingSizes[level - 1], true, resources, warnings)
                     .SetMarginTop(level == 1 ? presentation.ParagraphSpacing * 3 : presentation.ParagraphSpacing * 2)
                     .SetKeepWithNext(true));
                 break;
             case ParagraphBlock paragraph:
-                document.Add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.BodySize, false, resources, warnings));
+                add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.BodySize, false, resources, warnings));
                 break;
             case FencedCodeBlock fencedCode:
-                document.Add(CreateCodeParagraph(fencedCode, presentation, fonts).SetBackgroundColor(new DeviceRgb(245, 245, 245)).SetPadding(5));
+                add(CreateCodeParagraph(fencedCode, presentation, fonts).SetBackgroundColor(new DeviceRgb(245, 245, 245)).SetPadding(5));
                 break;
             case CodeBlock code:
-                document.Add(CreateCodeParagraph(code, presentation, fonts).SetBackgroundColor(new DeviceRgb(245, 245, 245)).SetPadding(5));
+                add(CreateCodeParagraph(code, presentation, fonts).SetBackgroundColor(new DeviceRgb(245, 245, 245)).SetPadding(5));
                 break;
             case ListBlock list:
-                document.Add(CreateList(list, presentation, fonts, resources, warnings));
+                add(CreateList(list, presentation, fonts, resources, warnings, quoteDepth));
                 break;
             case QuoteBlock quote:
-                foreach (var quotedParagraph in quote.OfType<ParagraphBlock>())
-                    document.Add(CreateParagraph(quotedParagraph.Inline, presentation, fonts, presentation.BodySize, false, resources, warnings)
-                        .SetMarginLeft(presentation.QuoteIndent)
-                        .SetBorderLeft(new SolidBorder(new DeviceRgb(120, 120, 120), 1))
-                        .SetPaddingLeft(8));
+                var quoteContainer = new Div()
+                    .SetMarginLeft(quoteDepth < 4 ? presentation.QuoteIndent : 0)
+                    .SetBorderLeft(new SolidBorder(new DeviceRgb(120, 120, 120), 1))
+                    .SetPaddingLeft(8);
+                foreach (var child in quote)
+                    RenderBlock(child, element => quoteContainer.Add(element), presentation, fonts, resources, warnings, quoteDepth + 1);
+                add(quoteContainer);
                 break;
             case ThematicBreakBlock:
-                document.Add(new Div().SetBorderBottom(new SolidBorder(.75f))
+                add(new Div().SetBorderBottom(new SolidBorder(.75f))
                     .SetMarginTop(presentation.ParagraphSpacing)
                     .SetMarginBottom(presentation.ParagraphSpacing));
                 break;
             case MarkdownTable table:
-                AddTable(document, table, presentation, fonts, resources, warnings);
+                var renderedTable = CreateTable(table, presentation, fonts, resources, warnings);
+                if (renderedTable is not null) add(renderedTable);
+                break;
+            default:
+                warnings.Add($"Unsupported Markdown block '{block.GetType().Name}' was not rendered.");
                 break;
         }
     }
@@ -222,7 +237,7 @@ public sealed class PdfBookService(
     private static string InlineText(ContainerInline inline) => string.Concat(inline.Descendants().OfType<LiteralInline>().Select(literal => literal.Content.ToString()));
     private static Paragraph CreateCodeParagraph(CodeBlock source, BookPresentation presentation, PdfFonts fonts) => new Paragraph(string.Join("\n", source.Lines.Lines.Select(line => line.Slice.ToString()))).SetFont(fonts.Monospace).SetFontSize(presentation.CodeSize).SetMultipliedLeading(1).SetMarginBottom(presentation.ParagraphSpacing);
 
-    private static iText.Layout.Element.List CreateList(ListBlock source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings)
+    private static iText.Layout.Element.List CreateList(ListBlock source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings, int quoteDepth)
     {
         var list = source.IsOrdered ? new iText.Layout.Element.List(ListNumberingType.DECIMAL) : new iText.Layout.Element.List();
         if (source.IsOrdered && int.TryParse(source.OrderedStart, out var start)) list.SetItemStartIndex(start);
@@ -231,20 +246,16 @@ public sealed class PdfBookService(
         {
             var result = new ListItem();
             foreach (var block in item)
-            {
-                if (block is ParagraphBlock paragraph) result.Add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.BodySize, false, resources, warnings));
-                else if (block is ListBlock nested) result.Add(CreateList(nested, presentation, fonts, resources, warnings));
-                else if (block is CodeBlock code) result.Add(CreateCodeParagraph(code, presentation, fonts));
-            }
+                RenderBlock(block, element => result.Add(element), presentation, fonts, resources, warnings, quoteDepth);
             list.Add(result);
         }
         return list;
     }
 
-    private static void AddTable(Document document, MarkdownTable source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings)
+    private static iText.Layout.Element.Table? CreateTable(MarkdownTable source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings)
     {
         var count = source.OfType<TableRow>().Select(row => row.OfType<TableCell>().Sum(cell => Math.Max(1, cell.ColumnSpan))).DefaultIfEmpty().Max();
-        if (count == 0) return;
+        if (count == 0) return null;
         var table = new iText.Layout.Element.Table(count).UseAllAvailableWidth().SetMarginBottom(presentation.ParagraphSpacing);
         foreach (var row in source.OfType<TableRow>())
         {
@@ -262,7 +273,28 @@ public sealed class PdfBookService(
                 column += span;
             }
         }
-        document.Add(table);
+        return table;
+    }
+
+    private static void SetDocumentMetadata(PdfDocument pdf, MarkdownDocument markdown)
+    {
+        var frontMatter = markdown.OfType<YamlFrontMatterBlock>().FirstOrDefault();
+        if (frontMatter is null) return;
+
+        Dictionary<string, string>? metadata;
+        try
+        {
+            metadata = FrontMatterDeserializer.Deserialize<Dictionary<string, string>>(string.Join("\n", frontMatter.Lines.Lines.Select(line => line.Slice.ToString())));
+        }
+        catch
+        {
+            return;
+        }
+
+        if (metadata is null) return;
+        if (metadata.TryGetValue("title", out var title) && !string.IsNullOrWhiteSpace(title)) pdf.GetDocumentInfo().SetTitle(title);
+        if (metadata.TryGetValue("author", out var author) && !string.IsNullOrWhiteSpace(author)) pdf.GetDocumentInfo().SetAuthor(author);
+        if (metadata.TryGetValue("language", out var language) && !string.IsNullOrWhiteSpace(language)) pdf.GetCatalog().SetLang(new PdfString(language));
     }
 
     private sealed record InlineStyle(bool Bold, bool Italic, bool Strike, bool Code);
