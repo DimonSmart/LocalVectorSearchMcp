@@ -5,6 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <PackageReference Include="Markdig" Version="1.4.0" />
     <PackageReference Include="itext" Version="9.8.0" />
     <PackageReference Include="itext.bouncy-castle-adapter" Version="9.8.0" />

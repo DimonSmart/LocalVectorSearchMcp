@@ -226,7 +226,23 @@ apply when supplied.
 
 ## PDF book export
 
-`kb_create_pdf_book(path, outputPath?, pageFormat?, style?)` creates a PDF from a root-relative Markdown file. It renders headings, emphasis, code, lists, quotes, links, GFM tables, and local images. The default output is the source name with a `.pdf` extension; it must remain under `knowledgeBase.root`. As a derived reading artifact, an existing PDF at that path is atomically replaced on the next export. Export requires `knowledgeBase.allowWrites: true`, does not alter Markdown, assets, or the search index, and returns `{path,bytes,warnings}`. Unavailable images are represented by a PDF placeholder and included in `warnings`; remote and absolute image URLs are not fetched. Formats: `a4`, `a5` (default), `a6`, `b5`, `letter`; styles: `compact` (default), `classic`, `modern`, `technical`, `academic`.
+`kb_create_pdf_book(path, outputPath?, pageFormat?, style?, profile?)` creates a PDF from a root-relative Markdown file. It renders headings, emphasis, code, lists, quotes, links, GFM tables, and local images. The default output is the source name with a `.pdf` extension; it must remain under `knowledgeBase.root`. As a derived reading artifact, an existing PDF at that path is atomically replaced on the next export. Export requires `knowledgeBase.allowWrites: true`, does not alter Markdown, assets, or the search index, and returns `{path,bytes,warnings}`. Unavailable images are represented by a PDF placeholder and included in `warnings`; remote and absolute image URLs are not fetched. Formats: `a4`, `a5` (default), `a6`, `b5`, `letter`; styles: `compact` (default), `classic`, `modern`, `technical`, `academic`.
+
+Profiles (application-defined presets): `screen` = 96 DPI / JPEG quality 65, `standard` = 150 DPI / JPEG quality 82 (**default**), `print` = 300 DPI / JPEG quality 95. All profiles use PDF full compression, preserve Unicode text and the layout/physical size of images, and share identical embedded image resources. High-resolution JPEGs and PNGs may be downsampled; unchanged or already efficient files stay in their original encoding. JPEG with EXIF/ICC/Adobe metadata and PNG with explicit color metadata are preserved rather than risk altering orientation or colors; unsupported GIF/WebP retain the renderer's prior behavior. Output size is not guaranteed to fit `kb_download_file`'s unchanged 25 MiB limit. Print is for ordinary printing, **not PDF/X**, CMYK production, or press-ready preflight. Image processing may take longer than before; the default profile may change the raster quality/size of previously exported PDFs.
+
+Examples (all calls use the existing nested `request`):
+
+```json
+{"request":{"path":"book.md","outputPath":"exports/screen.pdf","profile":"screen"}}
+```
+
+```json
+{"request":{"path":"book.md","outputPath":"exports/standard.pdf"}}
+```
+
+```json
+{"request":{"path":"book.md","outputPath":"exports/print.pdf","pageFormat":"a4","style":"classic","profile":"print"}}
+```
 
 ## Workspace file download
 

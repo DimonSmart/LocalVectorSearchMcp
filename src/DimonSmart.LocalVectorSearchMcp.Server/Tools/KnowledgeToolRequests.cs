@@ -60,4 +60,6 @@ public sealed record CreatePdfBookToolRequest(
     [property: Description("Optional root-relative .pdf destination. Omitted uses the Markdown source name with a .pdf extension.")]
     string? OutputPath = null,
     PdfBookPageFormat PageFormat = PdfBookPageFormat.A5,
-    PdfBookStyle Style = PdfBookStyle.Compact);
+    PdfBookStyle Style = PdfBookStyle.Compact,
+    [property: Description("Image optimization: screen (96 DPI, JPEG 65), standard (150 DPI, JPEG 82; default), print (300 DPI, JPEG 95). Print is not PDF/X; original images may be retained.")]
+    PdfExportProfile Profile = PdfExportProfile.Standard);

@@ -129,11 +129,20 @@ public enum PdfBookStyle
     Academic
 }
 
+[JsonConverter(typeof(Serialization.StrictJsonStringEnumConverter<PdfExportProfile>))]
+public enum PdfExportProfile
+{
+    Screen,
+    Standard,
+    Print
+}
+
 public sealed record CreatePdfBookRequest(
     string Path,
     string? OutputPath = null,
     PdfBookPageFormat PageFormat = PdfBookPageFormat.A5,
-    PdfBookStyle Style = PdfBookStyle.Compact);
+    PdfBookStyle Style = PdfBookStyle.Compact,
+    PdfExportProfile Profile = PdfExportProfile.Standard);
 
 public sealed record CreatePdfBookResponse(
     string Path,

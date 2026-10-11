@@ -403,7 +403,7 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_create_pdf_book",
         UseStructuredContent = true,
         OutputSchemaType = typeof(CreatePdfBookResponse))]
-    [Description("Creates a formatted PDF book from one Markdown document. Supports headings, formatting, code, lists, quotes, links, GFM tables and local images. Requires knowledgeBase.allowWrites=true; output is root-relative, ends in .pdf and replaces an existing PDF atomically. Local images outside the workspace or unavailable images become visible placeholders and rendering warnings. Markdown, image assets and the search index are not modified.")]
+    [Description("Creates a formatted PDF book from one Markdown document. Supports headings, formatting, code, lists, quotes, links, GFM tables and local images. Requires knowledgeBase.allowWrites=true; output is root-relative, ends in .pdf and replaces an existing PDF atomically. Local images outside the workspace or unavailable images become visible placeholders and rendering warnings. Optional profile screen, standard (default), or print controls image DPI and JPEG quality; print is not PDF/X. Markdown, image assets and the search index are not modified.")]
     public async Task<CallToolResult> CreatePdfBookAsync(
         CreatePdfBookToolRequest request,
         CancellationToken cancellationToken)
@@ -415,7 +415,8 @@ public sealed class KnowledgeMcpTools(
                     request.Path,
                     request.OutputPath,
                     request.PageFormat,
-                    request.Style),
+                    request.Style,
+                    request.Profile),
                 cancellationToken);
             return new CallToolResult
             {
@@ -427,7 +428,7 @@ public sealed class KnowledgeMcpTools(
             };
         }
         catch (Exception exception) when (IsControlledToolException(exception)
-            || exception is IOException or UnauthorizedAccessException)
+            || exception is IOException or UnauthorizedAccessException or ArgumentOutOfRangeException)
         {
             return ToolErrors.FromException(exception);
         }

@@ -4,7 +4,6 @@ using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using iText.IO.Font;
-using iText.IO.Image;
 using iText.Kernel.Colors;
 using iText.Kernel.Font;
 using PageSize = iText.Kernel.Geom.PageSize;
@@ -42,6 +41,7 @@ public sealed class PdfBookService(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var settings = PdfExportSettings.For(request.Profile);
         EnsureWritesEnabled();
         var sourcePath = pathGuard.ValidateRelativePath(request.Path);
         var sourceAbsolute = pathGuard.ResolveMarkdownPath(sourcePath);
@@ -59,7 +59,7 @@ public sealed class PdfBookService(
             $".{Path.GetFileName(outputAbsolute)}.{Guid.NewGuid():N}.tmp");
         try
         {
-            var warnings = Render(sourceAbsolute, temporaryPath, request, cancellationToken);
+            var warnings = Render(sourceAbsolute, temporaryPath, request, settings, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             File.Move(temporaryPath, outputAbsolute, true);
             return Task.FromResult(new CreatePdfBookResponse(
@@ -77,23 +77,27 @@ public sealed class PdfBookService(
         string sourcePath,
         string outputPath,
         CreatePdfBookRequest request,
+        PdfExportSettings settings,
         CancellationToken cancellationToken)
     {
         var presentation = BookPresentation.Get(request.PageFormat, request.Style);
         var warnings = new List<string>();
-        using var writer = new PdfWriter(outputPath);
+        using var writer = new PdfWriter(outputPath, new WriterProperties()
+            .SetCompressionLevel(CompressionConstants.BEST_COMPRESSION)
+            .SetFullCompressionMode(true));
         using var pdf = new PdfDocument(writer);
         using var document = new Document(pdf, presentation.PageSize);
         document.SetMargins(presentation.Margin, presentation.Margin, presentation.Margin, presentation.Margin);
         var fonts = PdfFonts.Load(presentation.FontFamily);
         var resources = new LocalImageResolver(sourcePath, pathGuard);
+        var imageResources = new PdfImageResources(settings, warnings, cancellationToken);
         var source = File.ReadAllText(sourcePath);
         var markdown = Markdig.Markdown.Parse(source, MarkdownPipeline);
         SetDocumentMetadata(pdf, markdown);
         foreach (var block in markdown)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            RenderBlock(block, element => document.Add(element), presentation, fonts, resources, warnings, 0);
+            RenderBlock(block, element => document.Add(element), presentation, fonts, resources, imageResources, warnings, 0);
         }
         return warnings;
     }
@@ -116,7 +120,7 @@ public sealed class PdfBookService(
                 "Workspace writes are disabled. Set knowledgeBase.allowWrites to true to enable PDF export.");
     }
 
-    private static void RenderBlock(Block block, Action<IBlockElement> add, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings, int quoteDepth)
+    private static void RenderBlock(Block block, Action<IBlockElement> add, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, PdfImageResources imageResources, List<string> warnings, int quoteDepth)
     {
         switch (block)
         {
@@ -124,12 +128,12 @@ public sealed class PdfBookService(
                 break;
             case HeadingBlock heading:
                 var level = Math.Clamp(heading.Level, 1, 6);
-                add(CreateParagraph(heading.Inline, presentation, fonts, presentation.HeadingSizes[level - 1], true, resources, warnings)
+                add(CreateParagraph(heading.Inline, presentation, fonts, presentation.HeadingSizes[level - 1], true, resources, imageResources, warnings)
                     .SetMarginTop(level == 1 ? presentation.ParagraphSpacing * 3 : presentation.ParagraphSpacing * 2)
                     .SetKeepWithNext(true));
                 break;
             case ParagraphBlock paragraph:
-                add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.BodySize, false, resources, warnings));
+                add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.BodySize, false, resources, imageResources, warnings));
                 break;
             case FencedCodeBlock fencedCode:
                 add(CreateCodeParagraph(fencedCode, presentation, fonts).SetBackgroundColor(new DeviceRgb(245, 245, 245)).SetPadding(5));
@@ -138,7 +142,7 @@ public sealed class PdfBookService(
                 add(CreateCodeParagraph(code, presentation, fonts).SetBackgroundColor(new DeviceRgb(245, 245, 245)).SetPadding(5));
                 break;
             case ListBlock list:
-                add(CreateList(list, presentation, fonts, resources, warnings, quoteDepth));
+                add(CreateList(list, presentation, fonts, resources, imageResources, warnings, quoteDepth));
                 break;
             case QuoteBlock quote:
                 var quoteContainer = new Div()
@@ -146,7 +150,7 @@ public sealed class PdfBookService(
                     .SetBorderLeft(new SolidBorder(new DeviceRgb(120, 120, 120), 1))
                     .SetPaddingLeft(8);
                 foreach (var child in quote)
-                    RenderBlock(child, element => quoteContainer.Add(element), presentation, fonts, resources, warnings, quoteDepth + 1);
+                    RenderBlock(child, element => quoteContainer.Add(element), presentation, fonts, resources, imageResources, warnings, quoteDepth + 1);
                 add(quoteContainer);
                 break;
             case ThematicBreakBlock:
@@ -155,7 +159,7 @@ public sealed class PdfBookService(
                     .SetMarginBottom(presentation.ParagraphSpacing));
                 break;
             case MarkdownTable table:
-                var renderedTable = CreateTable(table, presentation, fonts, resources, warnings);
+                var renderedTable = CreateTable(table, presentation, fonts, resources, imageResources, warnings);
                 if (renderedTable is not null) add(renderedTable);
                 break;
             default:
@@ -164,15 +168,15 @@ public sealed class PdfBookService(
         }
     }
 
-    private static Paragraph CreateParagraph(ContainerInline? inline, BookPresentation presentation, PdfFonts fonts, float size, bool bold, LocalImageResolver resources, List<string> warnings)
+    private static Paragraph CreateParagraph(ContainerInline? inline, BookPresentation presentation, PdfFonts fonts, float size, bool bold, LocalImageResolver resources, PdfImageResources imageResources, List<string> warnings)
     {
         var paragraph = new Paragraph().SetFont(bold ? fonts.Bold : fonts.Regular)
             .SetFontSize(size).SetMultipliedLeading(presentation.LeadingMultiplier);
-        AddInlines(paragraph, inline, presentation, fonts, new InlineStyle(bold, false, false, false), size, resources, warnings);
+        AddInlines(paragraph, inline, presentation, fonts, new InlineStyle(bold, false, false, false), size, resources, imageResources, warnings);
         return paragraph.SetMarginBottom(presentation.ParagraphSpacing);
     }
 
-    private static void AddInlines(Paragraph paragraph, ContainerInline? inline, BookPresentation presentation, PdfFonts fonts, InlineStyle style, float size, LocalImageResolver resources, List<string> warnings)
+    private static void AddInlines(Paragraph paragraph, ContainerInline? inline, BookPresentation presentation, PdfFonts fonts, InlineStyle style, float size, LocalImageResolver resources, PdfImageResources imageResources, List<string> warnings)
     {
         if (inline is null) return;
         for (var node = inline.FirstChild; node is not null; node = node.NextSibling)
@@ -188,13 +192,13 @@ public sealed class PdfBookService(
                         Bold = style.Bold || emphasis.DelimiterCount >= 2,
                         Italic = style.Italic || (emphasis.DelimiterCount == 1 && emphasis.DelimiterChar != '~'),
                         Strike = style.Strike || emphasis.DelimiterChar == '~'
-                    }, size, resources, warnings);
+                    }, size, resources, imageResources, warnings);
                     break;
                 case TaskList task: AddText(paragraph, task.Checked ? "☑ " : "☐ ", presentation, fonts, style, size); break;
                 case AutolinkInline autolink: AddLink(paragraph, autolink.Url, autolink.IsEmail ? $"mailto:{autolink.Url}" : autolink.Url, presentation, fonts, style, size); break;
-                case LinkInline image when image.IsImage: AddImage(paragraph, image, presentation, resources, warnings); break;
+                case LinkInline image when image.IsImage: AddImage(paragraph, image, presentation, resources, imageResources, warnings); break;
                 case LinkInline link: AddLink(paragraph, InlineText(link), link.Url, presentation, fonts, style, size); break;
-                case ContainerInline container: AddInlines(paragraph, container, presentation, fonts, style, size, resources, warnings); break;
+                case ContainerInline container: AddInlines(paragraph, container, presentation, fonts, style, size, resources, imageResources, warnings); break;
             }
         }
     }
@@ -209,17 +213,20 @@ public sealed class PdfBookService(
         paragraph.Add(link);
     }
 
-    private static void AddImage(Paragraph paragraph, LinkInline image, BookPresentation presentation, LocalImageResolver resources, List<string> warnings)
+    private static void AddImage(Paragraph paragraph, LinkInline image, BookPresentation presentation, LocalImageResolver resources, PdfImageResources imageResources, List<string> warnings)
     {
         var source = image.Url ?? string.Empty;
         var description = string.IsNullOrWhiteSpace(InlineText(image)) ? source : InlineText(image);
         try
         {
-            var rendered = new Image(ImageDataFactory.Create(resources.ReadImage(source)));
-            rendered.ScaleToFit(presentation.PageSize.GetWidth() - 2 * presentation.Margin, presentation.PageSize.GetHeight() - 2 * presentation.Margin);
+            var rendered = imageResources.Create(resources.ReadImage(source), source,
+                presentation.PageSize.GetWidth() - 2 * presentation.Margin,
+                presentation.PageSize.GetHeight() - 2 * presentation.Margin);
             paragraph.Add(rendered);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not OperationCanceledException
+            and not OutOfMemoryException and not StackOverflowException
+            and not KnowledgeBaseAccessException)
         {
             warnings.Add($"Image '{source}' could not be loaded: {exception.Message}");
             paragraph.Add(new Text($"[Image unavailable: {description}]").SetFontColor(ColorConstants.RED));
@@ -237,7 +244,7 @@ public sealed class PdfBookService(
     private static string InlineText(ContainerInline inline) => string.Concat(inline.Descendants().OfType<LiteralInline>().Select(literal => literal.Content.ToString()));
     private static Paragraph CreateCodeParagraph(CodeBlock source, BookPresentation presentation, PdfFonts fonts) => new Paragraph(string.Join("\n", source.Lines.Lines.Select(line => line.Slice.ToString()))).SetFont(fonts.Monospace).SetFontSize(presentation.CodeSize).SetMultipliedLeading(1).SetMarginBottom(presentation.ParagraphSpacing);
 
-    private static iText.Layout.Element.List CreateList(ListBlock source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings, int quoteDepth)
+    private static iText.Layout.Element.List CreateList(ListBlock source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, PdfImageResources imageResources, List<string> warnings, int quoteDepth)
     {
         var list = source.IsOrdered ? new iText.Layout.Element.List(ListNumberingType.DECIMAL) : new iText.Layout.Element.List();
         if (source.IsOrdered && int.TryParse(source.OrderedStart, out var start)) list.SetItemStartIndex(start);
@@ -246,13 +253,13 @@ public sealed class PdfBookService(
         {
             var result = new ListItem();
             foreach (var block in item)
-                RenderBlock(block, element => result.Add(element), presentation, fonts, resources, warnings, quoteDepth);
+                RenderBlock(block, element => result.Add(element), presentation, fonts, resources, imageResources, warnings, quoteDepth);
             list.Add(result);
         }
         return list;
     }
 
-    private static iText.Layout.Element.Table? CreateTable(MarkdownTable source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, List<string> warnings)
+    private static iText.Layout.Element.Table? CreateTable(MarkdownTable source, BookPresentation presentation, PdfFonts fonts, LocalImageResolver resources, PdfImageResources imageResources, List<string> warnings)
     {
         var count = source.OfType<TableRow>().Select(row => row.OfType<TableCell>().Sum(cell => Math.Max(1, cell.ColumnSpan))).DefaultIfEmpty().Max();
         if (count == 0) return null;
@@ -268,7 +275,7 @@ public sealed class PdfBookService(
                 if (alignment == TableColumnAlign.Left) cell.SetTextAlignment(TextAlignment.LEFT);
                 if (alignment == TableColumnAlign.Center) cell.SetTextAlignment(TextAlignment.CENTER);
                 if (alignment == TableColumnAlign.Right) cell.SetTextAlignment(TextAlignment.RIGHT);
-                foreach (var paragraph in cellSource.OfType<ParagraphBlock>()) cell.Add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.TableSize, row.IsHeader, resources, warnings));
+                foreach (var paragraph in cellSource.OfType<ParagraphBlock>()) cell.Add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.TableSize, row.IsHeader, resources, imageResources, warnings));
                 if (row.IsHeader) table.AddHeaderCell(cell); else table.AddCell(cell);
                 column += span;
             }
