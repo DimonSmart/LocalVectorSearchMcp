@@ -147,6 +147,23 @@ public interface IPdfBookService
         CancellationToken cancellationToken);
 }
 
+public sealed record DownloadedWorkspaceFile(
+    string Path,
+    string MimeType,
+    long Bytes,
+    string Sha256,
+    byte[] Data);
+
+public interface IWorkspaceFileDownloadService
+{
+    Task<DownloadedWorkspaceFile> DownloadAsync(
+        string path,
+        CancellationToken cancellationToken);
+}
+
+public sealed class WorkspaceFileNotFoundException(string path)
+    : Exception($"Workspace file '{path}' was not found.");
+
 public interface IWorkspaceIndexSynchronizer
 {
     Task<bool> ReconcileAsync(string relativePath, CancellationToken cancellationToken);

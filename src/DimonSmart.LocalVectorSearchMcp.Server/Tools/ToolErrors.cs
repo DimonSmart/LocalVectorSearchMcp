@@ -22,6 +22,8 @@ internal static class ToolErrors
                 "INVALID_PATH", "The requested path is not permitted."),
             DocumentNotFoundException => (
                 "NOT_FOUND", "The requested Markdown file was not found."),
+            WorkspaceFileNotFoundException => (
+                "NOT_FOUND", "The requested workspace file was not found."),
             DocumentConflictException => (
                 "CONFLICT", "Source content changed; reread before retrying."),
             SemanticAnchorConflictException conflict => ("CONFLICT", conflict.Message),

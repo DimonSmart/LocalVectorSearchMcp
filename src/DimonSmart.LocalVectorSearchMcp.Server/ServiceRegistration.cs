@@ -81,6 +81,7 @@ public static class ServiceRegistration
         services.AddSingleton<ISemanticPointerReader, SemanticPointerReader>();
         services.AddSingleton<IWorkspaceMutationService, WorkspaceMutationService>();
         services.AddSingleton<IWorkspaceNavigationService, WorkspaceNavigationService>();
+        services.AddSingleton<IWorkspaceFileDownloadService, WorkspaceFileDownloadService>();
         services.AddSingleton<IPdfBookService, PdfBookService>();
         services.AddTransient<IWorkspaceImageService, WorkspaceImageService>();
         services.AddTransient<IWorkspaceImageMoveService, WorkspaceImageMoveService>();
