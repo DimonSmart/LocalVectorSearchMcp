@@ -32,6 +32,15 @@ jobs:
           - windows-latest
           - macos-14
           - macos-15-intel
+        include:
+          - os: ubuntu-latest
+            runtime: linux-x64
+          - os: windows-latest
+            runtime: win-x64
+          - os: macos-14
+            runtime: osx-arm64
+          - os: macos-15-intel
+            runtime: osx-x64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,3 +61,29 @@ jobs:
 
       - name: Test
         run: dotnet test DimonSmart.LocalVectorSearchMcp.sln --configuration Release --no-build --verbosity normal
+      
+      - name: Installed .NET tool JPEG PDF export smoke
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "pdf-tool-package"
+          dotnet pack src/DimonSmart.LocalVectorSearchMcp.Server/DimonSmart.LocalVectorSearchMcp.Server.csproj --configuration Release --output $packageDir --no-build
+          if ($LASTEXITCODE -ne 0) { throw "Tool pack failed" }
+          $toolDir = Join-Path $env:RUNNER_TEMP "pdf-tool"
+          dotnet tool install DimonSmart.LocalVectorSearchMcp --tool-path $toolDir --add-source $packageDir --version 0.1.0
+          if ($LASTEXITCODE -ne 0) { throw "Local tool installation failed" }
+          $toolName = if ($IsWindows) { "local-vector-search-mcp.exe" } else { "local-vector-search-mcp" }
+          $env:PDF_EXPORT_SMOKE_EXECUTABLE = Join-Path $toolDir $toolName
+          dotnet test tests/DimonSmart.LocalVectorSearchMcp.IntegrationTests/DimonSmart.LocalVectorSearchMcp.IntegrationTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~PackagedExecutable_PdfExportSmoke"
+          if ($LASTEXITCODE -ne 0) { throw "Installed tool PDF export failed" }
+
+      - name: Single-file executable JPEG PDF export smoke
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP "pdf-single-file"
+          dotnet publish src/DimonSmart.LocalVectorSearchMcp.Server/DimonSmart.LocalVectorSearchMcp.Server.csproj --configuration Release --runtime "${{ matrix.runtime }}" --self-contained true --output $publishDir /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
+          if ($LASTEXITCODE -ne 0) { throw "Single-file publish failed" }
+          $fileName = if ($IsWindows) { "DimonSmart.LocalVectorSearchMcp.Server.exe" } else { "DimonSmart.LocalVectorSearchMcp.Server" }
+          $env:PDF_EXPORT_SMOKE_EXECUTABLE = Join-Path $publishDir $fileName
+          dotnet test tests/DimonSmart.LocalVectorSearchMcp.IntegrationTests/DimonSmart.LocalVectorSearchMcp.IntegrationTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~PackagedExecutable_PdfExportSmoke"
+          if ($LASTEXITCODE -ne 0) { throw "Single-file PDF export failed" }
+
