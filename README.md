@@ -157,7 +157,7 @@ Return the Markdown image reference.
 | Clients | Claude Code, Codex, ChatGPT via OpenAI Secure MCP Tunnel |
 | Default embeddings | Local Ollama-compatible endpoint; use `embedding.provider: none` for offline FTS5-only mode |
 
-The MCP server exposes seventeen tools. MCP reindexing is asynchronous: `kb_reindex` starts or joins the single active reindex and returns immediately, while `kb_status.indexing` reports progress and the last outcome. The CLI `--reindex` command remains synchronous and exits only after indexing finishes.
+The MCP server exposes eighteen tools. MCP reindexing is asynchronous: `kb_reindex` starts or joins the single active reindex and returns immediately, while `kb_status.indexing` reports progress and the last outcome. The CLI `--reindex` command remains synchronous and exits only after indexing finishes.
 
 
 - `kb_status` — inspect the current index.
@@ -170,6 +170,7 @@ The MCP server exposes seventeen tools. MCP reindexing is asynchronous: `kb_rein
 - `kb_list_files` — list Markdown files and non-indexed assets.
 - `kb_outline` — return a deterministic heading tree.
 - `kb_create_pdf_book` — render a Markdown document as a formatted PDF book.
+- `kb_download_file` — return any permitted workspace file as a downloadable binary resource.
 - `kb_save_image` — save an image supplied through the OpenAI file parameter (optional `targetPath`).
 - `kb_list_images` — list supported image assets recursively with cursor pagination.
 - `kb_load_image` — return an existing image as a real MCP image content block.
@@ -190,6 +191,10 @@ Clients should not rely on omitting the argument object; `{}` is the interoperab
 ## PDF book export
 
 `kb_create_pdf_book(path, outputPath?, pageFormat?, style?)` creates a PDF from a root-relative Markdown file. It renders headings, emphasis, code, lists, quotes, links, GFM tables, and local images. The default output is the source name with a `.pdf` extension; it must remain under `knowledgeBase.root`. As a derived reading artifact, an existing PDF at that path is atomically replaced on the next export. Export requires `knowledgeBase.allowWrites: true`, does not alter Markdown, assets, or the search index, and returns `{path,bytes,warnings}`. Unavailable images are represented by a PDF placeholder and included in `warnings`; remote and absolute image URLs are not fetched. Formats: `a4`, `a5` (default), `a6`, `b5`, `letter`; styles: `compact` (default), `classic`, `modern`, `technical`, `academic`.
+
+## Workspace file download
+
+`kb_download_file(path)` returns the original bytes of one root-relative workspace file as an embedded MCP binary resource, followed by `{path,mimeType,bytes,sha256}` metadata. It works without write permission and supports any regular file up to 25 MiB; unknown extensions use `application/octet-stream`. Absolute/traversal paths, `.git`, internal index files, and symlink/junction/reparse-point paths are rejected. Use `kb_load_image` instead when an image preview or GIF-to-PNG conversion is needed.
 
 ## Image assets
 

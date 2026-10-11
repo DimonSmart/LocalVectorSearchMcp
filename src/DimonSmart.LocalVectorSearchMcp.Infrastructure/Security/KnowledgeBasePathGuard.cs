@@ -114,6 +114,35 @@ public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
     public string ResolveWorkspaceImagePath(string path)
         => ResolveImagePath(path);
 
+    public string ValidateDownloadPath(string path)
+    {
+        var normalized = ValidateRelativePath(path);
+        if (normalized.Split('/').Any(component =>
+                component.Equals(".git", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new KnowledgeBaseAccessException(
+                "File downloads cannot access Git metadata.");
+        }
+
+        var absolute = Path.GetFullPath(Path.Combine(
+            config.KnowledgeBase.Root,
+            normalized.Replace('/', Path.DirectorySeparatorChar)));
+        var storage = Path.GetFullPath(config.Storage.Path);
+        var comparison = PathComparison();
+        if (absolute.Equals(storage, comparison)
+            || absolute.StartsWith(storage + "-", comparison)
+            || absolute.StartsWith(storage + ".", comparison))
+        {
+            throw new KnowledgeBaseAccessException(
+                "File downloads cannot access internal index files.");
+        }
+
+        return normalized;
+    }
+
+    public string ResolveDownloadPath(string path)
+        => ResolveWorkspacePath(ValidateDownloadPath(path));
+
     public IReadOnlyList<string> CreateImageParentDirectories(string path)
     {
         var normalized = ValidateImagePath(path);

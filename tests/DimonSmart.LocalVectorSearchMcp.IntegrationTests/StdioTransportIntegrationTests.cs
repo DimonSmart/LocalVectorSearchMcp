@@ -21,6 +21,7 @@ public sealed class StdioTransportIntegrationTests
         "kb_create_pdf_book",
         "kb_delete",
         "kb_delete_image",
+        "kb_download_file",
         "kb_edit_table",
         "kb_list_files",
         "kb_list_images",
