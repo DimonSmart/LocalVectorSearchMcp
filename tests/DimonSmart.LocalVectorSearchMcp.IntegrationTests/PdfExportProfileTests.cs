@@ -39,13 +39,13 @@ public sealed class PdfExportProfileTests
     public async Task CreateAsync_RejectsInvalidEnumBeforeReplacingExistingPdf()
     {
         using var directory = new TemporaryDirectory();
-        await File.WriteAllTextAsync(Path.Combine(directory.Path, "book.md"), "# Test");
+        await File.WriteAllTextAsync(Path.Combine(directory.Path, "book.md"), "# Test", TestContext.Current.CancellationToken);
         var pdfPath = Path.Combine(directory.Path, "book.pdf");
-        await File.WriteAllBytesAsync(pdfPath, [1, 2, 3, 4]);
+        await File.WriteAllBytesAsync(pdfPath, [1, 2, 3, 4], TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             MakeService(directory).CreateAsync(new CreatePdfBookRequest("book.md",
                 Profile: (PdfExportProfile)123), TestContext.Current.CancellationToken));
-        Assert.Equal(new byte[] { 1, 2, 3, 4 }, await File.ReadAllBytesAsync(pdfPath));
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, await File.ReadAllBytesAsync(pdfPath, TestContext.Current.CancellationToken));
         Assert.Single(Directory.GetFiles(directory.Path, "*.pdf"));
     }
 
@@ -56,9 +56,9 @@ public sealed class PdfExportProfileTests
         const int sourceWidth = 2400;
         const int sourceHeight = 1800;
         await File.WriteAllBytesAsync(Path.Combine(directory.Path, "photo.jpg"),
-            MakeJpeg(sourceWidth, sourceHeight));
+            MakeJpeg(sourceWidth, sourceHeight), TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(Path.Combine(directory.Path, "book.md"),
-            "# Photo\n\n![first](photo.jpg)\n\n![again](photo.jpg)\n");
+            "# Photo\n\n![first](photo.jpg)\n\n![again](photo.jpg)\n", TestContext.Current.CancellationToken);
         var service = MakeService(directory);
 
         var screen = await service.CreateAsync(new CreatePdfBookRequest("book.md",
