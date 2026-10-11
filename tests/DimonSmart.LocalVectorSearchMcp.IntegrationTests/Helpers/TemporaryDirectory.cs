@@ -10,7 +10,20 @@ internal sealed class TemporaryDirectory : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-        Directory.Delete(Path, true);
+        // Windows may keep SQLite file handles briefly after clearing connection pools.
+        // Retry only transient IO failures; persistent locks still fail the test.
+        for (var attempt = 0; ; attempt++)
+        {
+            SqliteConnection.ClearAllPools();
+            try
+            {
+                Directory.Delete(Path, true);
+                return;
+            }
+            catch (IOException) when (OperatingSystem.IsWindows() && attempt < 20)
+            {
+                Thread.Sleep(100);
+            }
+        }
     }
 }
