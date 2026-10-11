@@ -5,8 +5,7 @@ on:
     tags:
       - "v*.*.*"
 
-permissions:
-  contents: write
+permissions: {}
 
 env:
   HUSKY: 0
@@ -14,6 +13,8 @@ env:
 jobs:
   build-test:
     name: Build and test
+    permissions:
+      contents: read
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -62,6 +63,8 @@ jobs:
 
   publish-binaries:
     name: Publish ${{ matrix.runtime }}
+    permissions:
+      contents: read
     needs: build-test
     runs-on: ${{ matrix.os }}
     strategy:
@@ -284,6 +287,8 @@ jobs:
 
   release:
     name: Create GitHub Release
+    permissions:
+      contents: write
     needs:
       - publish-binaries
       - pack-nuget
