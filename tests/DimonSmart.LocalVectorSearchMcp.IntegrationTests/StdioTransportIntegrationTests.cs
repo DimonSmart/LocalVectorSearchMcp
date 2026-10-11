@@ -1245,6 +1245,12 @@ public sealed class StdioTransportIntegrationTests
             AssertSchemaRefsResolve(output);
         }
 
+        var pdfTool = Assert.Single(tools, tool => tool.Name == "kb_create_pdf_book");
+        AssertStringEnum(
+            SchemaProperty(pdfTool.JsonSchema, "request", "profile"),
+            pdfTool.JsonSchema,
+            "screen", "standard", "print");
+
         var search = Assert.Single(tools, tool => tool.Name == "kb_search");
         AssertStringEnum(
             SchemaProperty(search.JsonSchema, "request", "mode"),
