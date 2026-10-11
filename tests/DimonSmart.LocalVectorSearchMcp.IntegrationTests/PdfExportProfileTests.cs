@@ -1,11 +1,12 @@
 using System.Text.Json;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
+using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 using DimonSmart.LocalVectorSearchMcp.Core.Storage;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using DimonSmart.LocalVectorSearchMcp.IntegrationTests.Helpers;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 using DimonSmart.LocalVectorSearchMcp.Infrastructure.Workspaces;
-using iText.Kernel.Geom;
+using Matrix = iText.Kernel.Geom.Matrix;
 using iText.Kernel.Pdf;
 using iText.Kernel.Pdf.Canvas.Parser;
 using iText.Kernel.Pdf.Canvas.Parser.Data;
