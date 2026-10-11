@@ -12,6 +12,7 @@ using iText.Kernel.Pdf.Canvas.Parser;
 using iText.Kernel.Pdf.Canvas.Parser.Data;
 using iText.Kernel.Pdf.Canvas.Parser.Listener;
 using SkiaSharp;
+using ModelContextProtocol.Client;
 
 namespace DimonSmart.LocalVectorSearchMcp.IntegrationTests;
 
@@ -95,6 +96,42 @@ public sealed class PdfExportProfileTests
             Assert.InRange(Math.Abs(screenImages[i].WidthPt - standardImages[i].WidthPt), 0, 0.2);
             Assert.InRange(Math.Abs(screenImages[i].HeightPt - standardImages[i].HeightPt), 0, 0.2);
         }
+    }
+
+    [Fact]
+    public async Task PackagedExecutable_PdfExportSmoke()
+    {
+        var executable = Environment.GetEnvironmentVariable("PDF_EXPORT_SMOKE_EXECUTABLE");
+        if (string.IsNullOrWhiteSpace(executable)) return;
+
+        using var directory = new TemporaryDirectory();
+        var token = TestContext.Current.CancellationToken;
+        await File.WriteAllBytesAsync(Path.Combine(directory.Path, "photo.jpg"),
+            MakeJpeg(1600, 1200), token);
+        await File.WriteAllTextAsync(Path.Combine(directory.Path, "book.md"),
+            "# Packaged PDF smoke\\n\\n![photo](photo.jpg)\\n", token);
+        var configPath = Path.Combine(directory.Path, "config.yml");
+        var root = directory.Path.Replace('\\\\', '/');
+        var yaml = $"knowledgeBase:\\n  root: \\"{root}\\"\\n  allowWrites: true\\n  watchFiles: false\\nstorage:\\n  path: \\"{root}/index.db\\"\\n";
+        await File.WriteAllTextAsync(configPath, yaml, token);
+
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "packaged-pdf-export",
+            Command = executable,
+            Arguments = ["--config", configPath],
+            WorkingDirectory = directory.Path
+        });
+        await using var client = await McpClient.CreateAsync(transport, cancellationToken: token);
+        var response = await client.CallToolAsync("kb_create_pdf_book",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "book.md", profile = "screen" }
+            }, cancellationToken: token);
+        Assert.False(response.IsError is true);
+        var images = ReadImages(Path.Combine(directory.Path, "book.pdf"));
+        Assert.Single(images);
+        Assert.True(images[0].PixelsWide < 1600);
     }
 
     private static PdfBookService MakeService(TemporaryDirectory directory)
