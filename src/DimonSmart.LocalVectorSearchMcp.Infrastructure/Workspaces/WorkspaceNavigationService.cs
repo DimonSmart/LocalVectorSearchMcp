@@ -22,7 +22,7 @@ public sealed partial class WorkspaceNavigationService(
     {
         var normalizedPrefix = string.IsNullOrWhiteSpace(pathPrefix)
             ? null
-            : pathGuard.ValidateRelativePath(pathPrefix).TrimEnd('/');
+            : pathGuard.ValidateRelativePath(pathPrefix.TrimEnd('/', '\\'));
         var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
         matcher.AddInclude(string.IsNullOrWhiteSpace(includeGlob) ? "**/*" : includeGlob);
         var storagePath = Path.GetFullPath(config.Storage.Path);

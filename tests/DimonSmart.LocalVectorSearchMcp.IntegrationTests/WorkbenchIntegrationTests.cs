@@ -387,6 +387,55 @@ public sealed class WorkbenchIntegrationTests
     }
 
     [Fact]
+    public async Task Navigation_ListFilesUsesDirectoryOrExactFilePathPrefixAndCombinesGlob()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(temp.Path, "books"));
+        Directory.CreateDirectory(Path.Combine(temp.Path, "books-old"));
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "qa-shashlyk-001.md"), "one", cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "qa-shashlyk-002.md"), "two", cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "books", "chapter1.md"), "one", cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "books", "chapter2.md"), "two", cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, "books-old", "archive.md"), "old", cancellationToken);
+        var services = CreateServices(temp.Path);
+
+        static string[] Paths(WorkspaceFileList list) => list.Files
+            .Select(file => file.RelativePath)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            ["books-old/archive.md", "books/chapter1.md", "books/chapter2.md", "qa-shashlyk-001.md", "qa-shashlyk-002.md"],
+            Paths(await services.Navigation.ListFilesAsync(null, null, cancellationToken)));
+        Assert.Equal(
+            ["books/chapter1.md", "books/chapter2.md"],
+            Paths(await services.Navigation.ListFilesAsync("books", null, cancellationToken)));
+        Assert.Equal(
+            ["books/chapter1.md", "books/chapter2.md"],
+            Paths(await services.Navigation.ListFilesAsync("books/", null, cancellationToken)));
+        Assert.Equal(
+            ["books/chapter1.md"],
+            Paths(await services.Navigation.ListFilesAsync("books\\chapter1.md", null, cancellationToken)));
+        Assert.Empty(Paths(await services.Navigation.ListFilesAsync("books/chapter1", null, cancellationToken)));
+        Assert.Equal(
+            ["books-old/archive.md"],
+            Paths(await services.Navigation.ListFilesAsync("books-old", null, cancellationToken)));
+        Assert.Equal(
+            ["qa-shashlyk-001.md", "qa-shashlyk-002.md"],
+            Paths(await services.Navigation.ListFilesAsync(null, "qa-*.md", cancellationToken)));
+        Assert.Equal(
+            ["books-old/archive.md", "books/chapter1.md", "books/chapter2.md", "qa-shashlyk-001.md", "qa-shashlyk-002.md"],
+            Paths(await services.Navigation.ListFilesAsync(null, "**/*.md", cancellationToken)));
+        Assert.Empty(Paths(await services.Navigation.ListFilesAsync("books", "*.md", cancellationToken)));
+        Assert.Equal(
+            ["books/chapter1.md", "books/chapter2.md"],
+            Paths(await services.Navigation.ListFilesAsync("books", "**/*.md", cancellationToken)));
+        await Assert.ThrowsAsync<KnowledgeBaseAccessException>(
+            () => services.Navigation.ListFilesAsync("../", null, cancellationToken));
+    }
+
+    [Fact]
     public async Task Watcher_ReconcilesExternalCreateRenameAndDelete()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

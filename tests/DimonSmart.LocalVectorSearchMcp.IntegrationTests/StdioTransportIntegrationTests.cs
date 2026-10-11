@@ -258,6 +258,10 @@ public sealed class StdioTransportIntegrationTests
         var saveTool = Assert.Single(
             tools,
             tool => tool.Name == "kb_save_image");
+        Assert.Contains(
+            "raw Base64",
+            saveTool.ProtocolTool.Description ?? "",
+            StringComparison.Ordinal);
         Assert.Equal(
             """["file"]""",
             saveTool.ProtocolTool.Meta?["openai/fileParams"]
@@ -422,6 +426,14 @@ public sealed class StdioTransportIntegrationTests
             },
             cancellationToken: cancellationToken);
         Assert.True(malformedSave.IsError is true);
+        using (var malformedJson = JsonDocument.Parse(ResultText(malformedSave)))
+        {
+            Assert.Equal("INVALID_ARGUMENT",
+                malformedJson.RootElement.GetProperty("code").GetString());
+            Assert.Contains("download_url",
+                malformedJson.RootElement.GetProperty("message").GetString(),
+                StringComparison.Ordinal);
+        }
         Assert.DoesNotContain(
             stderr,
             line => line.Contains(
@@ -1222,7 +1234,7 @@ public sealed class StdioTransportIntegrationTests
         foreach (var tool in tools)
         {
             AssertSchemaRefsResolve(tool.JsonSchema);
-            if (tool.Name == "kb_load_image")
+            if (tool.Name is "kb_load_image" or "kb_download_file")
             {
                 Assert.Null(tool.ProtocolTool.OutputSchema);
                 continue;

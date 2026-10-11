@@ -167,7 +167,7 @@ The MCP server exposes eighteen tools. MCP reindexing is asynchronous: `kb_reind
 - `kb_patch` — atomically replace/delete individual semantic elements or complete heading sections, and insert before/after elements.
 - `kb_edit_table` — source-aware editing of GFM table cells, rows, columns and alignment through a hashed table pointer.
 - `kb_create`, `kb_move`, `kb_delete` — manage Markdown source files.
-- `kb_list_files` — list Markdown files and non-indexed assets.
+- `kb_list_files` — list Markdown files and non-indexed assets; use `pathPrefix` for a directory or exact file, and `includeGlob` for filename patterns.
 - `kb_outline` — return a deterministic heading tree.
 - `kb_create_pdf_book` — render a Markdown document as a formatted PDF book.
 - `kb_download_file` — return any permitted workspace file as a downloadable binary resource.
@@ -188,6 +188,21 @@ For low-level MCP or connector calls, a tool with no user arguments still uses a
 
 Clients should not rely on omitting the argument object; `{}` is the interoperable contract for parameterless tools.
 
+### File-list filters
+
+`kb_list_files.pathPrefix` is a root-relative directory path or an exact file
+path, not a partial filename prefix. `books` and `books/` include files below
+`books/`; `books/chapter.md` selects that exact file; `books/chapter` does not
+match `books/chapter.md`. Use `includeGlob` for filename matching. Both filters
+apply when supplied.
+
+| Goal | Arguments |
+|---|---|
+| List a directory | `{ "request": { "pathPrefix": "books" } }` |
+| Select one file | `{ "request": { "pathPrefix": "books/chapter.md" } }` |
+| Find matching names | `{ "request": { "includeGlob": "qa-*.md" } }` |
+| Limit a pattern to a directory | `{ "request": { "pathPrefix": "books", "includeGlob": "**/*.md" } }` |
+
 ## PDF book export
 
 `kb_create_pdf_book(path, outputPath?, pageFormat?, style?)` creates a PDF from a root-relative Markdown file. It renders headings, emphasis, code, lists, quotes, links, GFM tables, and local images. The default output is the source name with a `.pdf` extension; it must remain under `knowledgeBase.root`. As a derived reading artifact, an existing PDF at that path is atomically replaced on the next export. Export requires `knowledgeBase.allowWrites: true`, does not alter Markdown, assets, or the search index, and returns `{path,bytes,warnings}`. Unavailable images are represented by a PDF placeholder and included in `warnings`; remote and absolute image URLs are not fetched. Formats: `a4`, `a5` (default), `a6`, `b5`, `letter`; styles: `compact` (default), `classic`, `modern`, `technical`, `academic`.
@@ -200,7 +215,7 @@ Clients should not rely on omitting the argument object; `{}` is the interoperab
 
 All five image tools work with PNG, JPEG, WebP and GIF files **anywhere under `knowledgeBase.root`**. Paths are root-relative; `.git/`, internal SQLite files, traversal and symlink/junction/reparse-point paths are forbidden. `images/` is the recommended default folder, not an API restriction. Images are ordinary assets and are never indexed or embedded.
 
-`kb_save_image(file, fileName?, altText?, targetPath?)` requires `allowWrites=true` and preserves the OpenAI `openai/fileParams` metadata. Downloads remain HTTPS-only with SSRF/redirect protection, a 25 MiB streaming limit, MIME/signature checks and SHA-256. Without `targetPath`, saves default to `images/`, using `fileName` or source basename and numeric suffixes for collisions (`cover.png`, `cover-2.png`). Explicit `targetPath` includes the final file name and extension, may create intermediate safe directories, and **never renames or overwrites** an occupied destination (`ALREADY_EXISTS`). Combining `targetPath` and `fileName` is invalid.
+`kb_save_image(file, fileName?, altText?, targetPath?)` requires `allowWrites=true` and preserves the OpenAI `openai/fileParams` metadata. Upload or select an actual image in the client and pass the resulting file reference. Arbitrary text, raw Base64, and data URIs are not valid `file` values; if a client rejects them before invoking the tool, that client-side validation cannot be normalized by the server. Downloads remain HTTPS-only with SSRF/redirect protection, a 25 MiB streaming limit, MIME/signature checks and SHA-256. Without `targetPath`, saves default to `images/`, using `fileName` or source basename and numeric suffixes for collisions (`cover.png`, `cover-2.png`). Explicit `targetPath` includes the final file name and extension, may create intermediate safe directories, and **never renames or overwrites** an occupied destination (`ALREADY_EXISTS`). Combining `targetPath` and `fileName` is invalid.
 
 The save result includes `path`, `mimeType`, `bytes`, lowercase `sha256`, and `markdown`. The generated Markdown destination is relative to the **workspace root**. For a document in `chapters/`, the caller must recompute and escape the relative destination from that document.
 

@@ -248,8 +248,10 @@ public sealed class WorkspaceImageServerLayerTests
 
         Assert.True(result.IsError is true);
         Assert.Equal(0, service.SaveCalls);
-        Assert.IsType<TextContentBlock>(
-            Assert.Single(result.Content));
+        var error = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
+        using var json = JsonDocument.Parse(error.Text);
+        Assert.Equal("INVALID_ARGUMENT", json.RootElement.GetProperty("code").GetString());
+        Assert.Contains("download_url", json.RootElement.GetProperty("message").GetString());
     }
 
     private sealed class RecordingImageMoveService :
