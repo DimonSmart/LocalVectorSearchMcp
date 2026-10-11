@@ -126,8 +126,6 @@ internal sealed class PdfImageResources(
             Warn(source, "bitmap exceeds the resampling memory limit");
             return original;
         }
-        if (info.Width != (jpeg || png ? GetSourceWidth(original, jpeg) : info.Width))
-            return original;
 
         cancellationToken.ThrowIfCancellationRequested();
         using var decoded = SKBitmap.Decode(codec);
@@ -156,15 +154,6 @@ internal sealed class PdfImageResources(
             warnings.Add($"Image '{source}' was not optimized: {reason}.");
     }
 
-    private static int GetSourceWidth(byte[] data, bool jpeg)
-    {
-        // No alternate geometric interpretation for JPEG's EXIF rotation or PNG.
-        // The decoder and iText dimensions are checked by the caller.
-        if (!jpeg && data.Length >= 24)
-            return (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(16, 4));
-        return -1;
-    }
-
     private static bool HasUnsafeJpegMetadata(byte[] bytes)
     {
         for (var offset = 2; offset + 4 < bytes.Length;)
@@ -176,7 +165,7 @@ internal sealed class PdfImageResources(
             var length = bytes[offset + 2] * 256 + bytes[offset + 3];
             if (length < 2 || offset + 2 + length > bytes.Length) return true;
             // CMYK JPEG has four components; never silently change its color space.
-            if (marker is 0xc0 or 0xc1 or 0xc2 or 0xc3
+            if ((marker is 0xc0 or 0xc1 or 0xc2 or 0xc3)
                 && length >= 8 && bytes[offset + 9] != 3) return true;
             offset += 2 + length;
         }
