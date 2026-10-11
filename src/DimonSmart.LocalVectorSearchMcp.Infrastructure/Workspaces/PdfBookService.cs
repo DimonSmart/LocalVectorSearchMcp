@@ -128,12 +128,12 @@ public sealed class PdfBookService(
                 break;
             case HeadingBlock heading:
                 var level = Math.Clamp(heading.Level, 1, 6);
-                add(CreateParagraph(heading.Inline, presentation, fonts, presentation.HeadingSizes[level - 1], true, resources, warnings)
+                add(CreateParagraph(heading.Inline, presentation, fonts, presentation.HeadingSizes[level - 1], true, resources, imageResources, warnings)
                     .SetMarginTop(level == 1 ? presentation.ParagraphSpacing * 3 : presentation.ParagraphSpacing * 2)
                     .SetKeepWithNext(true));
                 break;
             case ParagraphBlock paragraph:
-                add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.BodySize, false, resources, warnings));
+                add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.BodySize, false, resources, imageResources, warnings));
                 break;
             case FencedCodeBlock fencedCode:
                 add(CreateCodeParagraph(fencedCode, presentation, fonts).SetBackgroundColor(new DeviceRgb(245, 245, 245)).SetPadding(5));
@@ -275,7 +275,7 @@ public sealed class PdfBookService(
                 if (alignment == TableColumnAlign.Left) cell.SetTextAlignment(TextAlignment.LEFT);
                 if (alignment == TableColumnAlign.Center) cell.SetTextAlignment(TextAlignment.CENTER);
                 if (alignment == TableColumnAlign.Right) cell.SetTextAlignment(TextAlignment.RIGHT);
-                foreach (var paragraph in cellSource.OfType<ParagraphBlock>()) cell.Add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.TableSize, row.IsHeader, resources, warnings));
+                foreach (var paragraph in cellSource.OfType<ParagraphBlock>()) cell.Add(CreateParagraph(paragraph.Inline, presentation, fonts, presentation.TableSize, row.IsHeader, resources, imageResources, warnings));
                 if (row.IsHeader) table.AddHeaderCell(cell); else table.AddCell(cell);
                 column += span;
             }
