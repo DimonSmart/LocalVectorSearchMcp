@@ -324,7 +324,10 @@ public sealed class KnowledgeMcpTools(
         Name = "kb_list_files",
         UseStructuredContent = true,
         OutputSchemaType = typeof(WorkspaceFileList))]
-    [Description("Lists Markdown and asset files under the configured workspace root.")]
+    [Description(
+        "Lists Markdown and other permitted asset files under the configured workspace root. " +
+        "pathPrefix limits the search area to one directory or one exact file; " +
+        "use includeGlob to match filename patterns.")]
     public async Task<CallToolResult> ListFilesAsync(
         ListFilesToolRequest request,
         CancellationToken cancellationToken)
