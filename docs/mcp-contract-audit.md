@@ -28,13 +28,23 @@ deliberately retained; flattening the outline would lose its tree semantics.
 | `kb_move` | typed request/result | Concrete schema, including source-hash guard. |
 | `kb_delete` | typed request/result | Concrete schema, including source-hash guard. |
 | `kb_list_files` | typed filter/result | File kind is a closed enum. |
-| `kb_create_pdf_book` | typed export request/result | Page format and style are closed enums; the response is structured. |
+| `kb_create_pdf_book` | typed export request/result | Page format, style and compression profile are closed enums; standard is default; the response is unchanged and structured. |
 | `kb_download_file` | binary embedded resource plus JSON metadata text | Deliberately no JSON output schema; this is an MCP binary-resource result. |
 | `kb_save_image` | OpenAI file parameter/result | File metadata schema and `openai/fileParams` metadata are published. |
 | `kb_list_images` | typed paging/result | Concrete cursor and image metadata schema. |
 | `kb_load_image` | image block plus JSON metadata text | Deliberately no JSON output schema; this is an MCP multimodal result. |
 | `kb_move_image` | typed request/result | Concrete path/SHA request and result schema. |
 | `kb_delete_image` | typed request/result | Concrete deleted-result schema. |
+
+## PDF export profile
+
+`kb_create_pdf_book` retains one nested `request` argument and a
+`CreatePdfBookResponse(path,bytes,warnings)` with `structuredContent`. The new
+optional `profile` is the `PdfExportProfile` string enum (`screen`,
+`standard`, `print`), defaulting to `standard`. Integer JSON and unknown
+values are rejected by the enum converter; invalid programmatic enum values are
+rejected in `PdfBookService` and returned as `INVALID_ARGUMENT` when they
+reach the handler. Export does not add any tools to the existing set of 18.
 
 ## Findings and decisions
 
