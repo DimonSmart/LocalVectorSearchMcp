@@ -114,6 +114,16 @@ public sealed class MarkdownListItemSemanticTests
     }
 
     [Fact]
+    public void DeepListMarker_RequiresParentListContext()
+    {
+        var standalone = Parse("    - Grandchild\n");
+        var nested = Parse("- Parent\n  - Child\n    - Grandchild\n");
+
+        Assert.DoesNotContain(standalone, element => element.Kind == MarkdownElementKind.ListItem);
+        Assert.Single(nested, element => element.Pointer.Value == "li1.li1.li1");
+    }
+
+    [Fact]
     public void QuoteInsideList_IsPartOfItemNotASeparateElement()
     {
         var elements = Parse("- Parent\n  > - Inside quote\n");
