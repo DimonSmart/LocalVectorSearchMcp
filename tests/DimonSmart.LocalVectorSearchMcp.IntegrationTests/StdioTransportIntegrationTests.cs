@@ -18,6 +18,7 @@ public sealed class StdioTransportIntegrationTests
     private static readonly string[] ExpectedTools =
     [
         "kb_create",
+        "kb_create_pdf_book",
         "kb_delete",
         "kb_delete_image",
         "kb_edit_table",

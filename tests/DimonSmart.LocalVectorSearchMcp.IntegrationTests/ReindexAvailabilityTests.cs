@@ -27,6 +27,7 @@ public sealed class ReindexAvailabilityTests
             null!,
             new FixedSemanticPointerReader(),
             null!,
+            null!,
             null!);
 
         var read = await tools.ReadAsync(

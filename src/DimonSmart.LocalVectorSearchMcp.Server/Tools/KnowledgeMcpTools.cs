@@ -20,7 +20,8 @@ public sealed class KnowledgeMcpTools(
     IKnowledgeSearchService searchService,
     ISemanticPointerReader reader,
     IWorkspaceMutationService mutations,
-    IWorkspaceNavigationService navigation)
+    IWorkspaceNavigationService navigation,
+    IPdfBookService pdfBooks)
 {
     [McpServerTool(
         Name = "kb_reindex",
@@ -390,6 +391,40 @@ public sealed class KnowledgeMcpTools(
             };
         }
         catch (Exception exception) when (IsControlledToolException(exception))
+        {
+            return ToolErrors.FromException(exception);
+        }
+    }
+
+    [McpServerTool(
+        Name = "kb_create_pdf_book",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(CreatePdfBookResponse))]
+    [Description("Creates a formatted PDF book from one Markdown document. Supports headings, formatting, code, lists, quotes, links, GFM tables and local images. Requires knowledgeBase.allowWrites=true; output is root-relative, ends in .pdf and replaces an existing PDF atomically. Local images outside the workspace or unavailable images become visible placeholders and rendering warnings. Markdown, image assets and the search index are not modified.")]
+    public async Task<CallToolResult> CreatePdfBookAsync(
+        CreatePdfBookToolRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await pdfBooks.CreateAsync(
+                new CreatePdfBookRequest(
+                    request.Path,
+                    request.OutputPath,
+                    request.PageFormat,
+                    request.Style),
+                cancellationToken);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock
+                {
+                    Text = System.Text.Json.JsonSerializer.Serialize(response, JsonOptions.Default)
+                }],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(response, JsonOptions.Default)
+            };
+        }
+        catch (Exception exception) when (IsControlledToolException(exception)
+            || exception is IOException or UnauthorizedAccessException)
         {
             return ToolErrors.FromException(exception);
         }
