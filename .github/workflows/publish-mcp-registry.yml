@@ -3,23 +3,62 @@ name: Publish MCP Registry metadata
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Already published NuGet package version (e.g. 0.2.0)"
-        required: true
+      release_tag:
+        description: "Existing release tag vMAJOR.MINOR.PATCH; blank selects newest published NuGet version"
+        required: false
         type: string
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 jobs:
   publish:
     name: Retry Registry publication without rebuilding NuGet
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Checkout
+      - name: Checkout main and release tags
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select verified release tag
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          tag="$INPUT_TAG"
+          if [[ -z "$tag" ]]; then
+            while IFS= read -r candidate; do
+              [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+              git merge-base --is-ancestor "refs/tags/$candidate^{commit}" refs/remotes/origin/main || continue
+              version="${candidate#v}"
+              id="dimonsmart.localvectorsearchmcp"
+              package_url="https://api.nuget.org/v3-flatcontainer/$id/$version/$id.$version.nupkg"
+              if curl --fail --location --silent --show-error --head "$package_url" >/dev/null 2>&1; then
+                tag="$candidate"
+                break
+              fi
+            done < <(git tag --list 'v*.*.*' --sort=-v:refname)
+          fi
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::No published NuGet release tag found; supply an existing vMAJOR.MINOR.PATCH tag."
+            exit 1
+          }
+          git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null || {
+            echo "::error::Unknown release tag: $tag"
+            exit 1
+          }
+          git merge-base --is-ancestor "refs/tags/$tag^{commit}" refs/remotes/origin/main || {
+            echo "::error::Release tag $tag does not belong to main."
+            exit 1
+          }
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+          echo "Selected release tag $tag"
 
       - name: Validate, publish and verify
         shell: bash
-        run: bash scripts/publish-mcp-registry.sh "${{ inputs.version }}"
+        run: bash scripts/publish-mcp-registry.sh "$VERSION"

@@ -19,7 +19,7 @@ jobs:
 
       - name: Validate server.json
         shell: bash
-        run: bash scripts/publish-mcp-registry.sh 0.1.0 --validate-only
+        run: bash scripts/publish-mcp-registry.sh "$(jq -r .version .mcp/server.json)" --validate-only
 
   build-test:
     name: Build and test on ${{ matrix.os }}
