@@ -1,6 +1,6 @@
 # LocalVectorSearchMcp
 
-<!-- mcp-name: io.github.dimonsmart/local-vector-search-mcp -->
+<!-- mcp-name: io.github.DimonSmart/local-vector-search-mcp -->
 
 **Give Codex, Claude Code, and ChatGPT a local, editable, project-aware Markdown workbench.**
 
@@ -51,6 +51,27 @@ Install the .NET tool (requires .NET 10):
 ```bash
 dotnet tool install --global DimonSmart.LocalVectorSearchMcp
 ```
+
+Alternatively, run a pinned published version directly with `dnx` (requires the .NET 10 SDK; no global tool install):
+
+```bash
+dnx DimonSmart.LocalVectorSearchMcp@<version> --yes -- \
+  --project-root "$PWD" --embedding-provider none --search-mode lexical --status
+```
+
+The [official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.DimonSmart%2Flocal-vector-search-mcp) uses the canonical name `io.github.DimonSmart/local-vector-search-mcp`. A listing is available only after a matching NuGet release has been successfully registered.
+
+To register the server using `dnx` without a global install:
+
+```bash
+codex mcp add local-vector-search -- dnx DimonSmart.LocalVectorSearchMcp@<version> --yes -- \
+  --project-root "$PWD" --embedding-provider none --search-mode lexical --watch-files
+
+claude mcp add --transport stdio local-vector-search -- dnx DimonSmart.LocalVectorSearchMcp@<version> --yes -- \
+  --project-root "$PWD" --embedding-provider none --search-mode lexical --watch-files
+```
+
+Replace `<version>` with a version published on NuGet.org, and run the commands from the Markdown project's root. The server uses stdio and offline lexical mode here; no Ollama endpoint or API key is required.
 
 From the project you want to index, run the following. This needs no Ollama server,
 no remote embedding endpoint and no API key:

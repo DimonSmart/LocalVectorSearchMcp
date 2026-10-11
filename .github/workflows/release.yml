@@ -14,19 +14,29 @@ env:
 jobs:
   build-test:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14, macos-15-intel]
     steps:
-      - name: Validate version tag
+      - name: Checkout with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag belongs to main
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Invalid release tag: $GITHUB_REF_NAME"
             exit 1
-          fi
-
-      - name: Checkout
-        uses: actions/checkout@v4
+          }
+          git merge-base --is-ancestor "refs/tags/$GITHUB_REF_NAME^{commit}" refs/remotes/origin/main || {
+            echo "::error::Release tag is not part of main: $GITHUB_REF_NAME"
+            exit 1
+          }
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -34,6 +44,7 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Validate MCP Registry metadata
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: bash scripts/publish-mcp-registry.sh "${GITHUB_REF_NAME#v}" --validate-only
 
@@ -211,8 +222,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          server_name="$(jq -r .name .mcp/server.json)"
           unzip -p "$PACKAGE_PATH" README.md |
-            grep -F '<!-- mcp-name: io.github.dimonsmart/local-vector-search-mcp -->'
+            grep -Fxq -- "<!-- mcp-name: $server_name -->"
 
       - name: Verify project-local tool and dnx
         shell: bash
