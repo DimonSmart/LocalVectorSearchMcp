@@ -336,7 +336,7 @@ public sealed class WorkspaceMutationService(
                     if (target.Kind == MarkdownElementKind.ListItem)
                     {
                         ValidateListFragment(document.Markdown, target, operation.Markdown);
-                        ValidateOwnListFragment(document, operation.Markdown);
+                        ValidateOwnListFragment(document, target, operation.Markdown);
                     }
                     else
                         ValidateElementReplacement(document, target, operation.Markdown);
@@ -425,15 +425,88 @@ public sealed class WorkspaceMutationService(
     }
 
     private void ValidateOwnListFragment(
-        MarkdownSourceDocument document, string? markdown)
+        MarkdownSourceDocument document,
+        MarkdownElement target,
+        string? markdown)
     {
-        if (markdown is null) return;
-        var items = ParseReplacement(document, markdown)
-            .Count(element => element.Kind == MarkdownElementKind.ListItem);
-        if (items != 1)
+        if (markdown is null)
+        {
+            return;
+        }
+
+        var map = target.SourceMap ?? throw new WorkspaceMutationException(
+            "Unsupported list container: source ownership is unavailable.");
+        var normalized = NormalizeListFragment(markdown, map.Indent);
+        var items = ParseReplacement(document, normalized)
+            .Where(element => element.Kind == MarkdownElementKind.ListItem)
+            .ToArray();
+        if (items.Length != 1
+            || HasNonWhitespaceOutsideElement(normalized, items.SingleOrDefault()))
             throw new WorkspaceMutationException(
-                "replace_element expects exactly one list item without child items. " +
+                "replace_element expects exactly one list item and no content outside it. " +
                 "Use replace_subtree to replace the entire list subtree.");
+    }
+
+    private static string NormalizeListFragment(string markdown, int indentation)
+    {
+        if (indentation == 0)
+        {
+            return markdown;
+        }
+
+        var result = new System.Text.StringBuilder(markdown.Length);
+        var start = 0;
+        while (start < markdown.Length)
+        {
+            var lineEnd = start;
+            while (lineEnd < markdown.Length && markdown[lineEnd] is not ('\r' or '\n'))
+            {
+                lineEnd++;
+            }
+
+            var line = markdown.AsSpan(start, lineEnd - start);
+            if (line.Length >= indentation
+                && IsIndentation(line[..indentation]))
+            {
+                result.Append(line[indentation..]);
+            }
+            else
+            {
+                result.Append(line);
+            }
+
+            if (lineEnd < markdown.Length)
+            {
+                if (markdown[lineEnd] == '\r'
+                    && lineEnd + 1 < markdown.Length
+                    && markdown[lineEnd + 1] == '\n')
+                {
+                    result.Append("\r\n");
+                    lineEnd++;
+                }
+                else
+                {
+                    result.Append(markdown[lineEnd]);
+                }
+            }
+
+            start = lineEnd + 1;
+        }
+
+        return result.ToString();
+    }
+
+    private static bool IsIndentation(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value)
+        {
+            if (character is not (' ' or '\t'))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void ValidateListFragment(string source, MarkdownElement target, string? markdown)
@@ -451,8 +524,12 @@ public sealed class WorkspaceMutationService(
             .Split(['\r', '\n'], 2)[0];
         var newLine = markdown.Split(['\r', '\n'], 2)[0];
         if (!MarkdownListMarker.TryParse(newLine, out var marker)
-            || !MarkdownListMarker.TryParse(originalLine, out var originalMarker)
-            || marker.Indentation != originalMarker.Indentation
+            || !MarkdownListMarker.TryParse(originalLine, out var originalMarker))
+            throw new WorkspaceMutationException(
+                $"Invalid list fragment at '{target.Pointer.Value}': expected indent " +
+                $"'{map.Indent}' and marker style '{map.MarkerStyle}'.");
+
+        if (marker.Indentation != originalMarker.Indentation
             || marker.MarkerStyle != map.MarkerStyle)
             throw new WorkspaceMutationException(
                 $"Invalid list fragment at '{target.Pointer.Value}': expected indent " +

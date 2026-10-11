@@ -30,6 +30,81 @@ public sealed class ListItemPatchIntegrationTests
             await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
     }
 
+    [Theory]
+    [InlineData(PatchOperationKind.ReplaceElement)]
+    [InlineData(PatchOperationKind.Replace)]
+    public async Task ReplaceOwnText_AtEverySupportedNestedDepth_PreservesFormatting(
+        PatchOperationKind operation)
+    {
+        for (var depth = 1; depth <= 6; depth++)
+        {
+            var lines = Enumerable.Range(1, depth)
+                .Select(level => $"{new string(' ', (level - 1) * 2)}- Level {level}")
+                .Append("- Sibling")
+                .ToArray();
+            var source = string.Join("\n", lines) + "\n";
+            var replacement = $"{new string(' ', (depth - 1) * 2)}- Updated level {depth}";
+            var expected = source.Replace(lines[depth - 1], replacement,
+                StringComparison.Ordinal);
+
+            using var temp = new TemporaryDirectory();
+            var file = Path.Combine(temp.Path, "test.md");
+            await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+            var target = Read(temp.Path).Single(element => element.Text.Contains(
+                $"Level {depth}", StringComparison.Ordinal));
+
+            await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+                [new PatchOperation(operation, SemanticAnchor.FromElement(target).ToString(), replacement)]),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(expected, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+        }
+    }
+
+    [Fact]
+    public async Task ReplaceOwnText_AtDeepDepth_RejectsNewChildWithoutWriting()
+    {
+        const string source = "- Parent\n  - Child\n    - Grandchild\n- Sibling\n";
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var target = Read(temp.Path).Single(element => element.Pointer.Value == "li1.li1.li1");
+
+        await Assert.ThrowsAsync<WorkspaceMutationException>(() =>
+            CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+                [new PatchOperation(PatchOperationKind.ReplaceElement,
+                    SemanticAnchor.FromElement(target).ToString(),
+                    "    - Updated grandchild\n      - New child")]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(source, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("- Parent\n  * Child\n    * Grandchild\n", "    * Updated")]
+    [InlineData("- Parent\n  + Child\n    + Grandchild\n", "    + Updated")]
+    [InlineData("1. Parent\n    1. Child\n        1. Grandchild\n", "        1. Updated")]
+    [InlineData("1) Parent\n    1) Child\n        1) Grandchild\n", "        1) Updated")]
+    [InlineData("- [ ] Parent\n  - [x] Child\n    - [ ] Grandchild\n", "    - [ ] Updated")]
+    public async Task ReplaceOwnText_AtDeepDepth_PreservesSupportedListMarkers(
+        string source,
+        string replacement)
+    {
+        using var temp = new TemporaryDirectory();
+        var file = Path.Combine(temp.Path, "test.md");
+        await File.WriteAllTextAsync(file, source, TestContext.Current.CancellationToken);
+        var target = Read(temp.Path).Single(element => element.Text.Contains("Grandchild",
+            StringComparison.Ordinal));
+
+        await CreateService(temp.Path).PatchAsync(new PatchRequest("test.md",
+            [new PatchOperation(PatchOperationKind.ReplaceElement,
+                SemanticAnchor.FromElement(target).ToString(), replacement)]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(source.Replace("Grandchild", "Updated", StringComparison.Ordinal),
+            await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task ReplaceSubtree_OnNestedItem_ReplacesOnlyThatSubtree()
     {

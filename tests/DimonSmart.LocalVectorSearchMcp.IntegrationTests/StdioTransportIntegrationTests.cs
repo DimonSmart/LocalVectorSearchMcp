@@ -36,6 +36,77 @@ public sealed class StdioTransportIntegrationTests
     ];
 
     [Fact]
+    public async Task StdioReplaceElement_UpdatesDeepListItemThroughActualMcpCalls()
+    {
+        const string source = "- Parent\n  - Child\n    - Grandchild\n      - Great-grandchild\n- Sibling\n";
+        const string expected = "- Parent\n  - Child\n    - Updated grandchild\n      - Great-grandchild\n- Sibling\n";
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(temp.Path, cancellationToken, allowWrites: true);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport("deep-list-item-mcp", configPath, temp.Path, stderr);
+        await using var client = await McpClient.CreateAsync(transport,
+            cancellationToken: cancellationToken);
+
+        var created = await client.CallToolAsync("kb_create",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "deep.md", markdown = source }
+            }, cancellationToken: cancellationToken);
+        Assert.False(created.IsError is true, ResultText(created));
+
+        var read = await client.CallToolAsync("kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "deep.md", maxElements = 10 }
+            }, cancellationToken: cancellationToken);
+        Assert.False(read.IsError is true, ResultText(read));
+        string pointer;
+        using (var json = JsonDocument.Parse(ResultText(read)))
+        {
+            pointer = json.RootElement.GetProperty("elements").EnumerateArray()
+                .Single(element => element.GetProperty("pointer").GetString()!
+                    .StartsWith("li1.li1.li1~", StringComparison.Ordinal))
+                .GetProperty("pointer").GetString()!;
+        }
+
+        var patched = await client.CallToolAsync("kb_patch",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    path = "deep.md",
+                    operations = new[]
+                    {
+                        new
+                        {
+                            kind = "replace_element",
+                            pointer,
+                            markdown = "    - Updated grandchild"
+                        }
+                    }
+                }
+            }, cancellationToken: cancellationToken);
+        Assert.False(patched.IsError is true, ResultText(patched));
+        using (var json = JsonDocument.Parse(ResultText(patched)))
+        {
+            Assert.False(string.IsNullOrWhiteSpace(json.RootElement
+                .GetProperty("sourceHash").GetString()));
+        }
+
+        var reread = await client.CallToolAsync("kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "deep.md" }
+            }, cancellationToken: cancellationToken);
+        Assert.False(reread.IsError is true, ResultText(reread));
+        Assert.Equal(expected, await File.ReadAllTextAsync(Path.Combine(temp.Path, "deep.md"),
+            cancellationToken));
+        Assert.DoesNotContain(stderr, line => line.Contains("threw an unhandled exception",
+            StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task StdioTransportReadsAndEditsTableThroughActualMcpCalls()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
