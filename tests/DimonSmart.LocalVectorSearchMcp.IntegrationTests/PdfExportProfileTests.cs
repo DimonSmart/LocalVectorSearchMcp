@@ -111,7 +111,7 @@ public sealed class PdfExportProfileTests
         await File.WriteAllTextAsync(Path.Combine(directory.Path, "book.md"),
             "# Packaged PDF smoke\n\n![photo](photo.jpg)\n", token);
         var configPath = Path.Combine(directory.Path, "config.yml");
-        var root = directory.Path.Replace('\\\\', '/');
+        var root = directory.Path.Replace('\\', '/');
         var yaml = $"knowledgeBase:\n  root: \"{root}\"\n  allowWrites: true\n  watchFiles: false\nstorage:\n  path: \"{root}/index.db\"\n";
         await File.WriteAllTextAsync(configPath, yaml, token);
 
