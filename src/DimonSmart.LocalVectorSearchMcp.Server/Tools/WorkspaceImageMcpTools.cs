@@ -19,10 +19,12 @@ public sealed class WorkspaceImageMcpTools(
     [McpMeta("openai/fileParams", JsonValue = """["file"]""")]
     [Description(
         "Saves a PNG, JPEG, WebP, or GIF supplied through the client-supported OpenAI file-parameter mechanism inside knowledgeBase.root (by default images/). " +
+        "Upload or select the image in the client and pass its resulting file reference; arbitrary text, raw Base64, and data URIs are not supported. " +
         "Requires knowledgeBase.allowWrites=true and never overwrites an existing image.")]
     public async Task<CallToolResult> SaveImageAsync(
         [Description(
-            "Image file reference supplied through the OpenAI file-parameter mechanism. Base64 strings and data URIs are not supported.")]
+            "Actual image file reference supplied through the client's OpenAI file-parameter mechanism. " +
+            "Do not provide arbitrary text, raw Base64, or a data URI.")]
         OpenAiFileParameter file,
         CancellationToken cancellationToken,
         [Description(
