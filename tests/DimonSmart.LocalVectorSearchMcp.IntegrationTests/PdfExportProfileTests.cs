@@ -111,9 +111,13 @@ public sealed class PdfExportProfileTests
         using var bitmap = new SKBitmap(width, height);
         var random = new Random(42);
         for (var y = 0; y < height; y++)
-        for (var x = 0; x < width; x++)
-            bitmap.SetPixel(x, y, new SKColor((byte)random.Next(256),
-                (byte)random.Next(256), (byte)random.Next(256)));
+        {
+            for (var x = 0; x < width; x++)
+            {
+                bitmap.SetPixel(x, y, new SKColor((byte)random.Next(256),
+                    (byte)random.Next(256), (byte)random.Next(256)));
+            }
+        }
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Jpeg, 92);
         return data.ToArray();
