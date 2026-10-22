@@ -2,6 +2,8 @@
 
 <!-- mcp-name: io.github.DimonSmart/local-vector-search-mcp -->
 
+[![Local Vector Search MCP server](https://mcprush.com/badge/local-vector-search-mcp/card.svg)](https://mcprush.com/to/local-vector-search-mcp?ref=badge)
+
 **Give Codex, Claude Code, and ChatGPT a local, editable, project-aware Markdown workbench.**
 
 LocalVectorSearchMcp is a local MCP server that indexes one project's Markdown files into a project-local SQLite database. Agents can search, read focused semantic slices, edit by semantic pointer, manage Markdown files, navigate the workspace, and manage ordinary image assets.
