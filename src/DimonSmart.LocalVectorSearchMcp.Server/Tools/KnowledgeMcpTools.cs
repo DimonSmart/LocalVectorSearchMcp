@@ -128,7 +128,7 @@ public sealed class KnowledgeMcpTools(
         try
         {
             var result = await linkGraph.QueryAsync(
-                new LinksRequest(request.Path, request.Direction, request.Depth,
+                new LinksRequest(request.Path, request.Direction.ToString().ToLowerInvariant(), request.Depth,
                     request.IncludeBroken, request.BrokenOnly, request.PageSize, request.Cursor),
                 cancellationToken);
             return new CallToolResult
