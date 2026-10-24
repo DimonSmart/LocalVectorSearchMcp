@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
@@ -19,7 +20,7 @@ public sealed class WorkspaceIndexSynchronizer(
     IIndexInitializer initializer,
     IIndexManifestService manifest,
     IDocumentIndexStore store,
-    IndexOperationGate? operationGate = null) : IWorkspaceIndexSynchronizer
+    IndexOperationGate? operationGate = null, ILinkGraphService? linkGraph = null) : IWorkspaceIndexSynchronizer
 {
     private readonly IndexOperationGate gate = operationGate ?? new IndexOperationGate();
 
@@ -30,24 +31,21 @@ public sealed class WorkspaceIndexSynchronizer(
         var normalized = pathGuard.ValidateRelativePath(relativePath);
         return gate.RunAsync(async () =>
         {
-            await EnsureCompatibleIndexAsync(cancellationToken);
             var absolutePath = pathGuard.ResolveMarkdownPath(normalized);
-            if (!File.Exists(absolutePath))
-            {
-                return await store.DeleteDocumentAsync(
-                    normalized,
-                    cancellationToken);
-            }
-
-            var document = await loader.LoadFileAsync(
-                config.KnowledgeBase,
-                normalized,
-                cancellationToken);
+            var exists = File.Exists(absolutePath);
+            var document = exists
+                ? await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken)
+                : null;
+            var graphChanged = linkGraph is not null
+                && await linkGraph.ReconcileAsync(normalized, document, cancellationToken);
+            await EnsureCompatibleIndexAsync(cancellationToken);
+            if (document is null)
+                return await store.DeleteDocumentAsync(normalized, cancellationToken) || graphChanged;
             var hashes = await store.GetDocumentHashesAsync(cancellationToken);
             if (hashes.TryGetValue(normalized, out var indexedHash)
                 && indexedHash == document.SourceHash)
             {
-                return false;
+                return graphChanged;
             }
 
             var elements = parser.Parse(document);
