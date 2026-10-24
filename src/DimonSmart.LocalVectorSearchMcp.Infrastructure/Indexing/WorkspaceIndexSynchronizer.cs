@@ -36,15 +36,29 @@ public sealed class WorkspaceIndexSynchronizer(
             var document = exists
                 ? await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken)
                 : null;
-            var graphChanged = linkGraph is not null
-                && await linkGraph.ReconcileAsync(normalized, document, cancellationToken);
+            var graphChanged = false;
+            Exception? graphError = null;
+            try
+            {
+                if (linkGraph is not null)
+                    graphChanged = await linkGraph.ReconcileAsync(normalized, document, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                graphError = exception;
+            }
             await EnsureCompatibleIndexAsync(cancellationToken);
             if (document is null)
-                return await store.DeleteDocumentAsync(normalized, cancellationToken) || graphChanged;
+            {
+                var deleted = await store.DeleteDocumentAsync(normalized, cancellationToken);
+                ThrowGraphError(graphError);
+                return deleted || graphChanged;
+            }
             var hashes = await store.GetDocumentHashesAsync(cancellationToken);
             if (hashes.TryGetValue(normalized, out var indexedHash)
                 && indexedHash == document.SourceHash)
             {
+                ThrowGraphError(graphError);
                 return graphChanged;
             }
 
@@ -67,8 +81,15 @@ public sealed class WorkspaceIndexSynchronizer(
                 chunks,
                 vectors,
                 cancellationToken);
+            ThrowGraphError(graphError);
             return true;
         }, cancellationToken);
+    }
+
+    private static void ThrowGraphError(Exception? error)
+    {
+        if (error is not null)
+            throw new IOException("Markdown link graph reconciliation failed.", error);
     }
 
     private async Task EnsureCompatibleIndexAsync(
