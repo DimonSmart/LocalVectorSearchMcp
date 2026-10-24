@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 namespace DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
 
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
@@ -15,4 +16,5 @@ public sealed record StatusResponse(
     ReindexStatus? Indexing = null,
     string IndexMode = "vector-enabled",
     string EmbeddingProvider = "openai-compatible",
-    IndexCompatibilityResult? Compatibility = null);
+    IndexCompatibilityResult? Compatibility = null,
+    LinkGraphStatus? LinkGraph = null);
