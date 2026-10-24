@@ -20,8 +20,7 @@ public sealed class SqliteLinkGraphService(
     private const int MaxVisitedNodes = 2000;
     private const int MaxExaminedEdges = 30000;
     private readonly MarkdownLinkExtractor extractor = new(guard);
-    private readonly ConcurrentDictionary<string, byte> pending =
-        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> pending = new(guard.PathComparer);
     private string? lastError;
 
     public void MarkPending(string path) => pending[path] = 0;
@@ -34,12 +33,12 @@ public sealed class SqliteLinkGraphService(
             );
             insert or ignore into link_meta(key,value) values('schema','1'),('revision','0');
             create table if not exists link_documents (
-              path text primary key, source_hash text not null, indexed_at_utc text not null
+              path text collate kb_path primary key, source_hash text not null, indexed_at_utc text not null
             );
             create table if not exists link_occurrences (
               id integer primary key,
-              source_path text not null,
-              target_path text not null,
+              source_path text collate kb_path not null,
+              target_path text collate kb_path not null,
               destination text not null,
               fragment text null,
               link_text text not null,
@@ -52,7 +51,7 @@ public sealed class SqliteLinkGraphService(
             create index if not exists ix_link_source on link_occurrences(source_path);
             create index if not exists ix_link_target on link_occurrences(target_path);
             create table if not exists link_anchors (
-              document_path text not null,
+              document_path text collate kb_path not null,
               anchor text not null,
               primary key(document_path, anchor)
             );
@@ -69,8 +68,7 @@ public sealed class SqliteLinkGraphService(
     {
         await using var db = factory.Open();
         await InitializeAsync(db, cancellationToken);
-        var paths = new HashSet<string>(
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var paths = new HashSet<string>(guard.PathComparer);
         foreach (var document in documents)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -328,13 +326,11 @@ public sealed class SqliteLinkGraphService(
                 throw new LinkGraphException("DOCUMENT_NOT_FOUND", "The source Markdown document is not in the link index.");
         }
 
-        var paths = new Dictionary<string, int>(
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var paths = new Dictionary<string, int>(guard.PathComparer);
         var queue = new Queue<string>();
         if (path is not null) { paths[path] = 0; queue.Enqueue(path); }
         var occurrences = new Dictionary<long, LinkOccurrence>();
-        var statusCache = new Dictionary<string, string>(
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var statusCache = new Dictionary<string, string>(guard.PathComparer);
         var examined = 0;
         var truncated = false;
 
@@ -352,7 +348,8 @@ public sealed class SqliteLinkGraphService(
             foreach (var edge in edges)
             {
                 var edgeDirection = current is not null
-                    && current == edge.Target && current != edge.Source ? "incoming" : "outgoing";
+                    && guard.PathComparer.Equals(current, edge.Target)
+                    && !guard.PathComparer.Equals(current, edge.Source) ? "incoming" : "outgoing";
                 if (direction == "incoming") edgeDirection = "incoming";
                 var status = await StatusAsync(db, tx, edge, statusCache, ct);
                 if (normalized.BrokenOnly && status != "missing_document") continue;
