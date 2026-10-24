@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.KnowledgeBases;
@@ -13,7 +14,8 @@ public sealed class SqliteIndexStatusReader(
     LocalVectorSearchMcpConfig config,
     IIndexSynchronizationState? synchronizationState = null,
     IReindexStateReader? reindexStateReader = null,
-    IIndexManifestService? manifestService = null) : IIndexStatusReader
+    IIndexManifestService? manifestService = null,
+    ILinkGraphService? linkGraph = null) : IIndexStatusReader
 {
     private int EffectiveEmbeddingDimensions => config.Embedding.Dimensions ?? 1024;
 
@@ -42,6 +44,7 @@ public sealed class SqliteIndexStatusReader(
             config.Embedding.Provider,
             manifestService is not null && await manifestService.HasManifestAsync(cancellationToken)
                 ? await manifestService.CheckCompatibilityAsync(cancellationToken)
-                : null);
+                : null,
+            linkGraph is null ? null : await linkGraph.GetStatusAsync(cancellationToken));
     }
 }
