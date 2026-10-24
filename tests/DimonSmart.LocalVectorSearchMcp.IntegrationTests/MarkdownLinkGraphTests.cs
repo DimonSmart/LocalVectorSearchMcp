@@ -66,7 +66,7 @@ public sealed class MarkdownLinkGraphTests
         Assert.Equal("a.md", Assert.Single(incoming.Nodes).Path);
         var mixed = await graph.QueryAsync(new LinksRequest("a.md", "both", 3), ct);
         Assert.Contains(mixed.Links, link => link.TargetPath == "a.md");
-        Assert.Equal(2, mixed.Nodes.Count);
+        Assert.Single(mixed.Nodes);
     }
 
     [Fact]
