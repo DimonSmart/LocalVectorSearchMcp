@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
@@ -8,7 +9,7 @@ using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 
-public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IIndexInitializer indexInitializer, IDocumentIndexStore documentIndexStore, IIndexManifestService manifestService, IIndexSynchronizationState? synchronizationState = null, IndexOperationGate? operationGate = null) : IKnowledgeBaseIndexer
+public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMarkdownDocumentLoader loader, IMarkdownElementParser parser, IMarkdownChunker chunker, IEmbeddingProvider embeddingProvider, IIndexInitializer indexInitializer, IDocumentIndexStore documentIndexStore, IIndexManifestService manifestService, IIndexSynchronizationState? synchronizationState = null, IndexOperationGate? operationGate = null, ILinkGraphService? linkGraph = null) : IKnowledgeBaseIndexer
 {
     private readonly IndexOperationGate gate = operationGate ?? new IndexOperationGate();
 
@@ -26,6 +27,10 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
         IProgress<ReindexProgress>? progress)
     {
         var destructiveRebuild = false;
+        // The graph has an independent schema and must survive search compatibility or embedding failures.
+        var documents = await loader.LoadAsync(config.KnowledgeBase, cancellationToken);
+        if (linkGraph is not null)
+            await linkGraph.SynchronizeAsync(documents, request.Scope == ReindexScope.All, cancellationToken);
         await indexInitializer.InitializeAsync(cancellationToken);
         if (await manifestService.HasManifestAsync(cancellationToken))
         {
@@ -58,9 +63,6 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
         var indexed = 0;
         var skipped = 0;
         var chunksIndexed = 0;
-        var documents = await loader.LoadAsync(
-            config.KnowledgeBase,
-            cancellationToken);
         var scanned = documents.Count;
         var processed = 0;
         progress?.Report(new ReindexProgress(
