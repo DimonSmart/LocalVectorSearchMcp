@@ -73,8 +73,18 @@ public sealed class SqliteLinkGraphService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             paths.Add(document.RelativePath);
-            await ReconcileInDatabaseAsync(db, document.RelativePath, document,
-                rebuild, cancellationToken);
+            try
+            {
+                await ReconcileInDatabaseAsync(db, document.RelativePath, document,
+                    rebuild, cancellationToken);
+                pending.TryRemove(document.RelativePath, out _);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                pending[document.RelativePath] = 0;
+                Volatile.Write(ref lastError, exception.GetType().Name);
+                throw;
+            }
         }
 
         var oldPaths = new List<string>();
@@ -88,6 +98,7 @@ public sealed class SqliteLinkGraphService(
         await db.ExecuteAsync(
             "insert or replace into link_meta(key,value) values('ready','1')",
             cancellationToken);
+        if (pending.IsEmpty) Volatile.Write(ref lastError, null);
     }
 
     public async Task<bool> ReconcileAsync(string relativePath,
