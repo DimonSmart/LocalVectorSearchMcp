@@ -382,7 +382,7 @@ public sealed class SqliteLinkGraphService(
         if (offset > sorted.Count)
             throw new LinkGraphException("INVALID_ARGUMENT", "Cursor offset is outside the result.");
         var page = sorted.Skip(offset).Take(request.PageSize).ToArray();
-        var next = offset + page.Length < sorted.Count
+        var next = !truncated && offset + page.Length < sorted.Count
             ? Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
                 new LinkCursor(revision, signature, offset + page.Length)))
             : null;
