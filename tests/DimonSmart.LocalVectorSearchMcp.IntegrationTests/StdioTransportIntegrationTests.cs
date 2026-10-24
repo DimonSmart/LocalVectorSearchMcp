@@ -1286,6 +1286,11 @@ public sealed class StdioTransportIntegrationTests
             "replace_section", "delete_section", "insert_before",
             "insert_after", "delete");
 
+        var links = Assert.Single(tools, tool => tool.Name == "kb_links");
+        AssertStringEnum(
+            SchemaProperty(links.JsonSchema, "request", "direction"),
+            links.JsonSchema, "outgoing", "incoming", "both");
+
         var files = Assert.Single(tools, tool => tool.Name == "kb_list_files");
         var filesOutput = files.ProtocolTool.OutputSchema!.Value;
         AssertStringEnum(
