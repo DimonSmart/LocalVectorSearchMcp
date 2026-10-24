@@ -29,8 +29,18 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
         var destructiveRebuild = false;
         // The graph has an independent schema and must survive search compatibility or embedding failures.
         var documents = await loader.LoadAsync(config.KnowledgeBase, cancellationToken);
+        string? linkGraphError = null;
         if (linkGraph is not null)
-            await linkGraph.SynchronizeAsync(documents, request.Scope == ReindexScope.All, cancellationToken);
+        {
+            try
+            {
+                await linkGraph.SynchronizeAsync(documents, request.Scope == ReindexScope.All, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                linkGraphError = exception.GetType().Name;
+            }
+        }
         await indexInitializer.InitializeAsync(cancellationToken);
         if (await manifestService.HasManifestAsync(cancellationToken))
         {
@@ -55,7 +65,17 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
                 await manifestService.WriteCurrentManifestAsync(cancellationToken);
                 // Lexical forced rebuild can replace the entire database: restore the graph independently.
                 if (linkGraph is not null)
-                    await linkGraph.SynchronizeAsync(documents, true, cancellationToken);
+                {
+                    try
+                    {
+                        await linkGraph.SynchronizeAsync(documents, true, cancellationToken);
+                        linkGraphError = null;
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        linkGraphError = exception.GetType().Name;
+                    }
+                }
             }
         }
         else
@@ -130,7 +150,8 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
                     deleted,
                     chunksIndexed,
                     $"Vector embeddings are unavailable: {exception.Message} " +
-                    "Reindex stopped; successfully indexed content remains available for lexical search.");
+                    "Reindex stopped; successfully indexed content remains available for lexical search.",
+                    linkGraphError);
             }
 
             await documentIndexStore.SaveDocumentIndexAsync(
@@ -170,6 +191,7 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             skipped,
             deleted,
             chunksIndexed,
-            null);
+            null,
+            linkGraphError);
     }
 }
