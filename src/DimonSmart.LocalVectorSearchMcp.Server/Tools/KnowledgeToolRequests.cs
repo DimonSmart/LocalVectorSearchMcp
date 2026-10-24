@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
@@ -66,7 +67,7 @@ public sealed record CreatePdfBookToolRequest(
 
 public sealed record LinksToolRequest(
     string? Path = null,
-    string Direction = "both",
+    LinkDirection Direction = LinkDirection.Both,
     int Depth = 1,
     bool IncludeBroken = false,
     bool BrokenOnly = false,
