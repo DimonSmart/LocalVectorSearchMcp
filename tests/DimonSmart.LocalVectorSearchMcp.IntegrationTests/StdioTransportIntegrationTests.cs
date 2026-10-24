@@ -23,6 +23,7 @@ public sealed class StdioTransportIntegrationTests
         "kb_delete_image",
         "kb_download_file",
         "kb_edit_table",
+        "kb_links",
         "kb_list_files",
         "kb_list_images",
         "kb_load_image",
