@@ -286,8 +286,12 @@ public sealed class SqliteLinkGraphService(
                 throw new LinkGraphException("INVALID_PATH", "The requested Markdown path is unsafe.");
             }
         }
-        var normalized = request with { Path = path, Direction = direction,
-            IncludeBroken = request.IncludeBroken || request.BrokenOnly };
+        var normalized = request with
+        {
+            Path = path,
+            Direction = direction,
+            IncludeBroken = request.IncludeBroken || request.BrokenOnly
+        };
         var signature = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             JsonSerializer.Serialize(normalized with { Cursor = null, PageSize = 0 }))));
 
