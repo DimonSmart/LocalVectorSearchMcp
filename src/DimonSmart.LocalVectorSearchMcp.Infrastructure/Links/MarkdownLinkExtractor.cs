@@ -20,7 +20,7 @@ internal sealed class MarkdownLinkExtractor(KnowledgeBasePathGuard guard)
 {
     public ParsedGraphDocument Parse(MarkdownSourceDocument document)
     {
-        var syntax = Markdown.Parse(document.Markdown,
+        var syntax = Markdig.Markdown.Parse(document.Markdown,
             DimonSmart.LocalVectorSearchMcp.Infrastructure.Markdown.MarkdownPipelines.Tables);
         var anchors = new List<string>();
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
