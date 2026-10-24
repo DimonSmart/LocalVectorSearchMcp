@@ -47,10 +47,10 @@ public sealed class MarkdownLinkGraphTests
         var outgoing = await graph.QueryAsync(new LinksRequest("a.md", "outgoing",
             IncludeBroken: true), ct);
         Assert.Equal(4, outgoing.Links.Count);
-        Assert.Equal(1, outgoing.Nodes.Count);
+        Assert.Single(outgoing.Nodes);
         Assert.Equal("b.md", outgoing.Nodes[0].Path);
         Assert.Equal(3, outgoing.Links.Count(link => link.Status == "resolved"));
-        Assert.Single(outgoing.Links.Where(link => link.Status == "missing_document"));
+        Assert.Single(outgoing.Links, link => link.Status == "missing_document");
         Assert.All(outgoing.Links, link => Assert.Equal("a.md", link.SourcePath));
         Assert.Contains(outgoing.Links, link => link.Kind == "reference");
         Assert.All(outgoing.Links, link =>
@@ -96,7 +96,7 @@ public sealed class MarkdownLinkGraphTests
         await File.WriteAllTextAsync(target, "# Changed\n", ct);
         await graph.ReconcileAsync("new.md", await loader.LoadFileAsync(config.KnowledgeBase, "new.md", ct), ct);
         var anchors = await graph.QueryAsync(new LinksRequest("a.md", "outgoing", IncludeBroken: true), ct);
-        Assert.Single(anchors.Links.Where(link => link.Status == "anchor_not_found"));
+        Assert.Single(anchors.Links, link => link.Status == "anchor_not_found");
 
         File.Delete(target);
         await graph.ReconcileAsync("new.md", null, ct);
