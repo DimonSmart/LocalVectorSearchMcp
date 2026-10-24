@@ -53,6 +53,9 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
                     IsDestructiveRebuild: true));
                 await manifestService.ResetIndexAsync(cancellationToken);
                 await manifestService.WriteCurrentManifestAsync(cancellationToken);
+                // Lexical forced rebuild can replace the entire database: restore the graph independently.
+                if (linkGraph is not null)
+                    await linkGraph.SynchronizeAsync(documents, true, cancellationToken);
             }
         }
         else
