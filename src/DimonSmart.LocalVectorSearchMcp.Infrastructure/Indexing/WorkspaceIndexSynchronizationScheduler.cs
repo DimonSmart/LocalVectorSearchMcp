@@ -1,6 +1,7 @@
 using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -74,6 +75,14 @@ public sealed class WorkspaceIndexSynchronizationScheduler(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 return;
+            }
+            catch (EmbeddingProviderException exception)
+            {
+                error = exception.Message;
+                logger.LogWarning(
+                    "Could not synchronize committed Markdown file {Path}: {Error}",
+                    path,
+                    error);
             }
             catch (Exception exception)
             {
