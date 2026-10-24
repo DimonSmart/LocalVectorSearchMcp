@@ -1,4 +1,16 @@
+using System.Text.Json.Serialization;
+using DimonSmart.LocalVectorSearchMcp.Core.Serialization;
+
 namespace DimonSmart.LocalVectorSearchMcp.Core.Links;
+
+[JsonConverter(typeof(StrictJsonStringEnumConverter<LinkDirection>))]
+public enum LinkDirection
+{
+    Outgoing,
+    Incoming,
+    Both
+}
+
 
 /// <summary>One occurrence in the exact indexed Markdown revision.</summary>
 public sealed record LinkOccurrence(
