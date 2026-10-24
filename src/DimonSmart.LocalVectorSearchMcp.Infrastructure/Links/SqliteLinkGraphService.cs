@@ -233,7 +233,10 @@ public sealed class SqliteLinkGraphService(
         if (!cache.TryGetValue(path, out var status))
         {
             string absolute;
-            try { absolute = guard.ResolveMarkdownPath(path); }
+            try
+            {
+                absolute = guard.ResolveMarkdownPath(path);
+            }
             catch (KnowledgeBaseAccessException)
             {
                 return "target_not_indexed";
