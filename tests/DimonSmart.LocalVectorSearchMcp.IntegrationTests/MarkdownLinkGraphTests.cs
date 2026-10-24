@@ -156,6 +156,49 @@ public sealed class MarkdownLinkGraphTests
         Assert.True((await graph.GetStatusAsync(ct)).Ready);
     }
 
+    [Fact]
+    public async Task Resolves_safe_relative_percent_and_self_links_but_not_excluded_targets()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(directory.Path, "docs"));
+        await File.WriteAllTextAsync(Path.Combine(directory.Path, "docs", "source.md"), """
+            # Local
+            [self](#local)
+            [up](../Other.md)
+            [percent](../My%20Document.md)
+            [excluded](../excluded.md)
+            [unsafe](../../outside.md)
+            [encoded](..%2F..%2Foutside.md)
+            [absolute](/absolute.md)
+            [external](https://example.com/a.md)
+            [extensionless](../other)
+            """, ct);
+        await File.WriteAllTextAsync(Path.Combine(directory.Path, "Other.md"), "# Other", ct);
+        await File.WriteAllTextAsync(Path.Combine(directory.Path, "My Document.md"), "# Document", ct);
+        await File.WriteAllTextAsync(Path.Combine(directory.Path, "excluded.md"), "# Excluded", ct);
+        var (initial, _) = Create(directory.Path);
+        var config = initial with
+        {
+            KnowledgeBase = initial.KnowledgeBase with { Exclude = ["excluded.md"] }
+        };
+        var graph = new SqliteLinkGraphService(new SqliteConnectionFactory(config),
+            new KnowledgeBasePathGuard(config));
+        await graph.SynchronizeAsync(
+            await new MarkdownDocumentLoader().LoadAsync(config.KnowledgeBase, ct), false, ct);
+
+        var links = await graph.QueryAsync(new LinksRequest("docs/source.md", "outgoing",
+            IncludeBroken: true), ct);
+        Assert.Equal(4, links.Links.Count);
+        Assert.Contains(links.Links, item => item.TargetPath == "docs/source.md");
+        Assert.Contains(links.Links, item => item.TargetPath == "My Document.md");
+        Assert.Single(links.Links, item => item.Status == "target_not_indexed");
+
+        var error = await Assert.ThrowsAsync<LinkGraphException>(() =>
+            graph.QueryAsync(new LinksRequest("../escape.md", "incoming"), ct));
+        Assert.Equal("INVALID_PATH", error.Code);
+    }
+
     private static (LocalVectorSearchMcpConfig Config, SqliteLinkGraphService Graph) Create(string root)
     {
         var config = new LocalVectorSearchMcpConfig
