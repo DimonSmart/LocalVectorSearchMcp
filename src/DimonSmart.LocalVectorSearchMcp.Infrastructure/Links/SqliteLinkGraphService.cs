@@ -357,14 +357,13 @@ public sealed class SqliteLinkGraphService(
                     edge.Text, edge.Kind, edge.Line, edge.Column, edge.Offset,
                     edge.Length, edge.Hash, distance + 1, edgeDirection, status));
 
-                if (current is null || normalized.BrokenOnly || distance + 1 >= normalized.Depth)
-                    continue;
+                if (current is null || normalized.BrokenOnly) continue;
                 var next = edgeDirection == "incoming" ? edge.Source : edge.Target;
                 if (status != "resolved" && edgeDirection == "outgoing") continue;
                 if (paths.ContainsKey(next)) continue;
                 if (paths.Count >= MaxVisitedNodes) { truncated = true; continue; }
                 paths[next] = distance + 1;
-                queue.Enqueue(next);
+                if (distance + 1 < normalized.Depth) queue.Enqueue(next);
             }
             if (truncated) break;
         }
