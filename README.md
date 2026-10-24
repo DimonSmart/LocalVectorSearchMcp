@@ -439,3 +439,7 @@ Prefer `where` when a row value is unique and `column` when the header is unique
 Successful responses contain the new table `pointer`, updated `sourceHash` and index synchronization status. Reuse the returned pointer to chain edits; on `CONFLICT`, reread the table. Edits reject tables with extra ignored physical cells, preserve unrelated Markdown, and use the existing atomic workspace writer. Tables inside code, lists or block quotes have no independent table pointers. To remove a table entirely, use `kb_patch`.
 
 Table parsing changes the derived index format to chunker version 6. Rebuild incompatible indexes via `kb_reindex(force=true)` or CLI `--reindex --force`; no Markdown-file migration is needed.
+
+## Markdown link graph
+
+After `kb_reindex`, use `kb_links` to browse explicit Markdown references in either direction (or perform a depth-limited graph walk) and to diagnose missing linked documents. The graph does not infer semantic relationships and operates without embeddings. See [Markdown link graph and MCP examples](docs/markdown-link-graph.md).
