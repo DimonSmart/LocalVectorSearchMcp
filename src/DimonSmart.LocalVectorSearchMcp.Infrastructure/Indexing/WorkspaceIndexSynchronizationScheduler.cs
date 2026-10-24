@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
@@ -9,7 +10,8 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Indexing;
 public sealed class WorkspaceIndexSynchronizationScheduler(
     IWorkspaceIndexSynchronizer synchronizer,
     IIndexSynchronizationState state,
-    ILogger<WorkspaceIndexSynchronizationScheduler> logger)
+    ILogger<WorkspaceIndexSynchronizationScheduler> logger,
+    ILinkGraphService? linkGraph = null)
     : BackgroundService, IWorkspaceIndexSynchronizationScheduler
 {
     private const string PendingMessage = "Index synchronization is pending.";
@@ -21,6 +23,7 @@ public sealed class WorkspaceIndexSynchronizationScheduler(
     public void Schedule(string relativePath)
     {
         var generation = state.MarkDirty(relativePath, PendingMessage);
+        linkGraph?.MarkPending(relativePath);
         var pathState = paths.GetOrAdd(
             relativePath,
             _ => new PathWorkState());

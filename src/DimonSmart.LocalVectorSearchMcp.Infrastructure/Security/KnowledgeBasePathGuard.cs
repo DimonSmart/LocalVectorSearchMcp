@@ -5,6 +5,25 @@ namespace DimonSmart.LocalVectorSearchMcp.Infrastructure.Security;
 
 public sealed class KnowledgeBasePathGuard(LocalVectorSearchMcpConfig config)
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, StringComparer> Comparers = new(StringComparer.Ordinal);
+
+    public StringComparer PathComparer => GetPathComparer(config.KnowledgeBase.Root);
+
+    public static StringComparer GetPathComparer(string root)
+        => Comparers.GetOrAdd(Path.GetFullPath(root), absolute =>
+        {
+            if (OperatingSystem.IsWindows()) return StringComparer.OrdinalIgnoreCase;
+            // Detect a case-insensitive volume without writing to the workspace.
+            for (var i = 0; i < absolute.Length; i++)
+            {
+                var c = absolute[i];
+                if (c is not (>= 'a' and <= 'z' or >= 'A' and <= 'Z')) continue;
+                var alternate = absolute[..i] + (char.IsLower(c) ? char.ToUpperInvariant(c) : char.ToLowerInvariant(c)) + absolute[(i + 1)..];
+                if (Directory.Exists(alternate)) return StringComparer.OrdinalIgnoreCase;
+            }
+            return StringComparer.Ordinal;
+        });
+
     private static readonly char[] InvalidPortableCharacters =
         ['<', '>', ':', '"', '|', '?', '*'];
 

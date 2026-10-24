@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Exceptions;
@@ -19,7 +20,7 @@ public sealed class WorkspaceIndexSynchronizer(
     IIndexInitializer initializer,
     IIndexManifestService manifest,
     IDocumentIndexStore store,
-    IndexOperationGate? operationGate = null) : IWorkspaceIndexSynchronizer
+    IndexOperationGate? operationGate = null, ILinkGraphService? linkGraph = null) : IWorkspaceIndexSynchronizer
 {
     private readonly IndexOperationGate gate = operationGate ?? new IndexOperationGate();
 
@@ -30,24 +31,35 @@ public sealed class WorkspaceIndexSynchronizer(
         var normalized = pathGuard.ValidateRelativePath(relativePath);
         return gate.RunAsync(async () =>
         {
-            await EnsureCompatibleIndexAsync(cancellationToken);
             var absolutePath = pathGuard.ResolveMarkdownPath(normalized);
-            if (!File.Exists(absolutePath))
+            var exists = File.Exists(absolutePath);
+            var document = exists
+                ? await loader.LoadFileAsync(config.KnowledgeBase, normalized, cancellationToken)
+                : null;
+            var graphChanged = false;
+            Exception? graphError = null;
+            try
             {
-                return await store.DeleteDocumentAsync(
-                    normalized,
-                    cancellationToken);
+                if (linkGraph is not null)
+                    graphChanged = await linkGraph.ReconcileAsync(normalized, document, cancellationToken);
             }
-
-            var document = await loader.LoadFileAsync(
-                config.KnowledgeBase,
-                normalized,
-                cancellationToken);
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                graphError = exception;
+            }
+            await EnsureCompatibleIndexAsync(cancellationToken);
+            if (document is null)
+            {
+                var deleted = await store.DeleteDocumentAsync(normalized, cancellationToken);
+                ThrowGraphError(graphError);
+                return deleted || graphChanged;
+            }
             var hashes = await store.GetDocumentHashesAsync(cancellationToken);
             if (hashes.TryGetValue(normalized, out var indexedHash)
                 && indexedHash == document.SourceHash)
             {
-                return false;
+                ThrowGraphError(graphError);
+                return graphChanged;
             }
 
             var elements = parser.Parse(document);
@@ -69,8 +81,15 @@ public sealed class WorkspaceIndexSynchronizer(
                 chunks,
                 vectors,
                 cancellationToken);
+            ThrowGraphError(graphError);
             return true;
         }, cancellationToken);
+    }
+
+    private static void ThrowGraphError(Exception? error)
+    {
+        if (error is not null)
+            throw new IOException("Markdown link graph reconciliation failed.", error);
     }
 
     private async Task EnsureCompatibleIndexAsync(

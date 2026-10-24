@@ -23,6 +23,7 @@ public sealed class StdioTransportIntegrationTests
         "kb_delete_image",
         "kb_download_file",
         "kb_edit_table",
+        "kb_links",
         "kb_list_files",
         "kb_list_images",
         "kb_load_image",
@@ -1284,6 +1285,11 @@ public sealed class StdioTransportIntegrationTests
             "replace", "replace_element", "replace_subtree",
             "replace_section", "delete_section", "insert_before",
             "insert_after", "delete");
+
+        var links = Assert.Single(tools, tool => tool.Name == "kb_links");
+        AssertStringEnum(
+            SchemaProperty(links.JsonSchema, "request", "direction"),
+            links.JsonSchema, "outgoing", "incoming", "both");
 
         var files = Assert.Single(tools, tool => tool.Name == "kb_list_files");
         var filesOutput = files.ProtocolTool.OutputSchema!.Value;

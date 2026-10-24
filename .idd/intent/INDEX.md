@@ -16,3 +16,4 @@ Git history is the source for deleted or previous document versions.
 | 0004.spec-index-storage-and-search.md | spec | Index, storage, and search | SQLite, FTS5, sqlite-vec, reindexing, embeddings, and hybrid ranking | |
 | 0005.spec-mcp-and-cli.md | spec | MCP and CLI | Official MCP stdio tools and maintenance commands | |
 | 0006.adr-mcp-sqlite-hybrid-architecture.md | adr | Architecture | Accepted SDK, SQLite, sqlite-vec, FTS5, and RRF decisions | |
+| 0007.spec-markdown-link-graph.md | spec | Markdown links | Explicit, embedding-independent document link graph and kb_links navigation | |

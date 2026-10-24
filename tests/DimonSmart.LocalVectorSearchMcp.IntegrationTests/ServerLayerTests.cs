@@ -30,6 +30,7 @@ public sealed class ServerLayerTests
                 "kb_create_pdf_book",
                 "kb_delete",
                 "kb_edit_table",
+                "kb_links",
                 "kb_list_files",
                 "kb_move",
                 "kb_outline",

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using DimonSmart.LocalVectorSearchMcp.Core.Search;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
@@ -63,3 +64,12 @@ public sealed record CreatePdfBookToolRequest(
     PdfBookStyle Style = PdfBookStyle.Compact,
     [property: Description("Image optimization: screen (96 DPI, JPEG 65), standard (150 DPI, JPEG 82; default), print (300 DPI, JPEG 95). Print is not PDF/X; original images may be retained.")]
     PdfExportProfile Profile = PdfExportProfile.Standard);
+
+public sealed record LinksToolRequest(
+    string? Path = null,
+    LinkDirection Direction = LinkDirection.Both,
+    int Depth = 1,
+    bool IncludeBroken = false,
+    bool BrokenOnly = false,
+    int PageSize = 100,
+    string? Cursor = null);

@@ -1,3 +1,5 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
+using DimonSmart.LocalVectorSearchMcp.Infrastructure.Links;
 using DimonSmart.LocalVectorSearchMcp.Core.Configuration;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
 using DimonSmart.LocalVectorSearchMcp.Core.Markdown;
@@ -40,6 +42,7 @@ public static class ServiceRegistration
         services.AddSingleton<IIndexSynchronizationState>(
             sp => sp.GetRequiredService<InMemoryIndexSynchronizationState>());
         services.AddSingleton<SqliteConnectionFactory>();
+        services.AddSingleton<ILinkGraphService, SqliteLinkGraphService>();
         services.AddSingleton<SqliteSchemaInitializer>();
         services.AddSingleton<IIndexInitializer>(
             sp => sp.GetRequiredService<SqliteSchemaInitializer>());
