@@ -1,3 +1,4 @@
+using DimonSmart.LocalVectorSearchMcp.Core.Links;
 using System.ComponentModel;
 using DimonSmart.LocalVectorSearchMcp.Core;
 using DimonSmart.LocalVectorSearchMcp.Core.Embeddings;
@@ -21,7 +22,8 @@ public sealed class KnowledgeMcpTools(
     ISemanticPointerReader reader,
     IWorkspaceMutationService mutations,
     IWorkspaceNavigationService navigation,
-    IPdfBookService pdfBooks)
+    IPdfBookService pdfBooks,
+    ILinkGraphService? linkGraph = null)
 {
     [McpServerTool(
         Name = "kb_reindex",
@@ -107,6 +109,44 @@ public sealed class KnowledgeMcpTools(
         }
         catch (Exception exception) when (
             exception is ArgumentException or IOException)
+        {
+            return ToolErrors.FromException(exception);
+        }
+    }
+
+
+    [McpServerTool(
+        Name = "kb_links",
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(LinksResponse))]
+    [Description("Navigates explicit Markdown document links in the independent SQLite link graph. Supports incoming/outgoing/both, BFS depth 1-5, individual link occurrences, GFM heading fragments, cursor pagination, and brokenOnly for missing-document diagnostics. No embeddings or filesystem writes are required. A graph must first be built using kb_reindex.")]
+    public async Task<CallToolResult> LinksAsync(
+        LinksToolRequest request, CancellationToken cancellationToken)
+    {
+        if (linkGraph is null)
+            return ToolErrors.Create("LINK_INDEX_NOT_READY", "Link graph is not configured.");
+        try
+        {
+            var result = await linkGraph.QueryAsync(
+                new LinksRequest(request.Path, request.Direction, request.Depth,
+                    request.IncludeBroken, request.BrokenOnly, request.PageSize, request.Cursor),
+                cancellationToken);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock
+                {
+                    Text = System.Text.Json.JsonSerializer.Serialize(result, JsonOptions.Default)
+                }],
+                StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(
+                    result, JsonOptions.Default)
+            };
+        }
+        catch (LinkGraphException exception)
+        {
+            return ToolErrors.Create(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
         {
             return ToolErrors.FromException(exception);
         }
