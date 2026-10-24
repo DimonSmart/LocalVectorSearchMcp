@@ -26,6 +26,7 @@ public sealed class MarkdownLinkGraphTests
             # Overview
             [one](b.md#target)
             [two][ref]
+
             [ref]: b.md#target
 
             - [three](b.md#target-1)
