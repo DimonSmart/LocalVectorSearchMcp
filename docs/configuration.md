@@ -12,7 +12,7 @@ Effective configuration is built in this order:
 built-in defaults
 explicit --config YAML, when provided
 CLI options
-path resolution
+path resolution (project-root by default, or config-relative for YAML paths when requested)
 validation
 ```
 
@@ -209,10 +209,41 @@ The storage path is selected in this order:
 2. YAML `storage.path`.
 3. `<project-root>/.local-vector-search-mcp/index.db`.
 
-Relative `knowledgeBase.root` and `storage.path` are resolved against the selected
-project root. A relative `--config` path stays relative to the **process working
-directory** unless `--project-root` is explicitly passed, in which case it is
-resolved against that explicit root.
+By default (`paths.relativeTo: project`), relative `knowledgeBase.root` and
+`storage.path` are resolved against the selected project root. To opt in to
+resolving paths from the **YAML file's directory**, set:
+
+```yaml
+paths:
+  relativeTo: config
+```
+
+This applies to relative YAML knowledge-base and storage paths, including the
+built-in relative storage default when no YAML storage path is specified.
+When `knowledgeBase.root` is omitted, the fallback remains the project root.
+Absolute YAML paths are unchanged. CLI `--root` and `--storage-path`
+overrides still resolve relative to the project root, even in config mode.
+Only `project` and `config` are supported.
+
+For example, with `/work/app/settings/search.yml`:
+
+```yaml
+paths:
+  relativeTo: config
+storage:
+  path: ../.local-vector-search-mcp/index.db
+knowledgeBase:
+  root: ../.idd/intent
+```
+
+The resulting knowledge-base root is `/work/app/.idd/intent` and the index
+is `/work/app/.local-vector-search-mcp/index.db`, independently of the MCP
+process's working directory (provided the YAML file itself is found).
+
+A relative `--config` path still resolves against the **process working
+directory** unless `--project-root` is explicitly passed, in which case it
+resolves against that explicit root. This change does not add automatic YAML
+discovery.
 
 The knowledge-base root is not the same as the project root: file access through
 MCP tools is guarded to the configured knowledge-base directory. Traversal and

@@ -9,6 +9,9 @@ The examples below index only `.idd/intent/**/*.md`, with the SQLite database ou
 Create `local-vector-search-mcp.yml` at the project root:
 
 ```yaml
+paths:
+  relativeTo: config
+
 storage:
   path: .local-vector-search-mcp/index.db
 
@@ -51,7 +54,7 @@ local-vector-search-mcp \
   --watch-files
 ```
 
-The `--config` path is resolved relative to the explicit project root when `--project-root` is supplied. In its absence, `--config` remains relative to the process working directory for compatibility. Relative `knowledgeBase.root` and `storage.path` resolve against the chosen project root.
+The `--config` path is resolved relative to the explicit project root when `--project-root` is supplied. In its absence, `--config` remains relative to the process working directory for compatibility. With `paths.relativeTo: config`, relative YAML `knowledgeBase.root` and `storage.path` resolve against the YAML file's directory. This is equivalent to the previous project-root behavior when the YAML lives at the project root. CLI path overrides remain project-relative. Without the opt-in setting, YAML paths still resolve against the project root.
 
 ## One-shot NuGet runner
 

@@ -305,6 +305,140 @@ public sealed class ConfigLoaderTests
         Assert.False(config.KnowledgeBase.WatchFiles);
     }
 
+
+    [Fact]
+    public void Config_relative_paths_use_config_directory_with_different_cwd_and_project_root()
+    {
+        using var cwd = new TemporaryDirectory();
+        using var project = new TemporaryDirectory();
+        using var otherProject = new TemporaryDirectory();
+        var configDirectory = Path.Combine(project.Path, "settings");
+        Directory.CreateDirectory(configDirectory);
+        var intentDirectory = Path.Combine(project.Path, ".idd", "intent");
+        Directory.CreateDirectory(intentDirectory);
+        var yaml = Path.Combine(configDirectory, "search.yml");
+        File.WriteAllText(yaml, """
+            paths:
+              relativeTo: config
+            storage:
+              path: ../.local-vector-search-mcp/index.db
+            knowledgeBase:
+              root: ../.idd/intent
+            """);
+
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--config", yaml], cwd.Path, otherProject.Path);
+
+        Assert.Equal(intentDirectory, config.KnowledgeBase.Root);
+        Assert.Equal(Path.Combine(project.Path, ".local-vector-search-mcp", "index.db"), config.Storage.Path);
+    }
+
+    [Fact]
+    public void Project_relative_paths_remain_default_even_when_config_is_nested()
+    {
+        using var project = new TemporaryDirectory();
+        var configDirectory = Path.Combine(project.Path, "settings");
+        Directory.CreateDirectory(configDirectory);
+        Directory.CreateDirectory(Path.Combine(project.Path, "docs"));
+        File.WriteAllText(Path.Combine(configDirectory, "search.yml"), """
+            storage:
+              path: .cache/index.db
+            knowledgeBase:
+              root: docs
+            """);
+
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--project-root", project.Path, "--config", "settings/search.yml"],
+            project.Path, "");
+
+        Assert.Equal(Path.Combine(project.Path, "docs"), config.KnowledgeBase.Root);
+        Assert.Equal(Path.Combine(project.Path, ".cache", "index.db"), config.Storage.Path);
+    }
+
+    [Fact]
+    public void Config_relative_mode_keeps_cli_paths_project_relative()
+    {
+        using var cwd = new TemporaryDirectory();
+        using var project = new TemporaryDirectory();
+        var configDirectory = Path.Combine(project.Path, "settings");
+        Directory.CreateDirectory(configDirectory);
+        Directory.CreateDirectory(Path.Combine(project.Path, "cli-docs"));
+        File.WriteAllText(Path.Combine(configDirectory, "search.yml"), """
+            paths:
+              relativeTo: config
+            storage:
+              path: yaml-cache/index.db
+            knowledgeBase:
+              root: .
+            """);
+
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--project-root", project.Path, "--config", "settings/search.yml",
+             "--root", "cli-docs", "--storage-path", "cli-cache/index.db"],
+            cwd.Path, "");
+
+        Assert.Equal(Path.Combine(project.Path, "cli-docs"), config.KnowledgeBase.Root);
+        Assert.Equal(Path.Combine(project.Path, "cli-cache", "index.db"), config.Storage.Path);
+    }
+
+    [Fact]
+    public void Config_relative_mode_keeps_explicit_absolute_yaml_paths()
+    {
+        using var project = new TemporaryDirectory();
+        using var elsewhere = new TemporaryDirectory();
+        var yaml = Path.Combine(project.Path, "search.yml");
+        File.WriteAllText(yaml, $"""
+            paths:
+              relativeTo: config
+            storage:
+              path: {Path.Combine(elsewhere.Path, "index.db").Replace('\\', '/')}
+            knowledgeBase:
+              root: {elsewhere.Path.Replace('\\', '/')}
+            """);
+
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--config", yaml], project.Path, "");
+
+        Assert.Equal(elsewhere.Path, config.KnowledgeBase.Root);
+        Assert.Equal(Path.Combine(elsewhere.Path, "index.db"), config.Storage.Path);
+    }
+
+    [Fact]
+    public void Config_relative_mode_without_explicit_knowledge_base_root_uses_project_root()
+    {
+        using var project = new TemporaryDirectory();
+        var configDirectory = Path.Combine(project.Path, "settings");
+        Directory.CreateDirectory(configDirectory);
+        var yaml = Path.Combine(configDirectory, "search.yml");
+        File.WriteAllText(yaml, """
+            paths:
+              relativeTo: config
+            embedding:
+              provider: none
+            """);
+
+        var config = LocalVectorSearchConfigLoader.Load(
+            ["--config", yaml], project.Path, "");
+
+        Assert.Equal(project.Path, config.KnowledgeBase.Root);
+        Assert.Equal(Path.Combine(configDirectory, ".local-vector-search-mcp", "index.db"), config.Storage.Path);
+    }
+
+    [Theory]
+    [InlineData("other")]
+    [InlineData("")]
+    public void Invalid_paths_relative_to_is_rejected(string value)
+    {
+        using var project = new TemporaryDirectory();
+        var yaml = Path.Combine(project.Path, "search.yml");
+        File.WriteAllText(yaml, $"paths:\n  relativeTo: '{value}'\n");
+
+        var exception = Assert.Throws<ConfigurationException>(() =>
+            LocalVectorSearchConfigLoader.Load(["--config", yaml], project.Path, ""));
+
+        Assert.Contains("paths.relativeTo must be project or config", exception.Message);
+    }
+
     [Fact]
     public void Invalid_search_mode_is_rejected()
     {

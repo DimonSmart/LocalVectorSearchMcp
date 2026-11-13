@@ -19,14 +19,21 @@ public static class LocalVectorSearchConfigLoader
         var baseCurrentDirectory = Path.GetFullPath(currentDirectory ?? Directory.GetCurrentDirectory());
         var projectRoot = ResolveProjectRoot(baseCurrentDirectory, claudeProjectDirectory ?? Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"), options.ProjectRoot);
 
-        var config = new LocalVectorSearchMcpConfig();
-        if (!string.IsNullOrWhiteSpace(options.ConfigPath))
+        var configPath = string.IsNullOrWhiteSpace(options.ConfigPath)
+            ? null
+            : ResolveConfigPath(options.ConfigPath, options.ProjectRoot is null ? baseCurrentDirectory : projectRoot);
+        var config = configPath is null ? new LocalVectorSearchMcpConfig() : LoadYaml(configPath);
+
+        var yamlBaseDirectory = config.Paths.RelativeTo switch
         {
-            config = LoadYaml(ResolveConfigPath(options.ConfigPath, options.ProjectRoot is null ? baseCurrentDirectory : projectRoot));
-        }
+            "project" => projectRoot,
+            "config" when configPath is not null => Path.GetDirectoryName(configPath)!,
+            "config" => throw new ConfigurationException("paths.relativeTo: config requires --config."),
+            _ => throw new ConfigurationException("paths.relativeTo must be project or config.")
+        };
 
         config = ApplyCliOverrides(config, options);
-        config = ResolvePaths(config, projectRoot);
+        config = ResolvePaths(config, projectRoot, yamlBaseDirectory, options);
         ConfigValidator.Validate(config);
         return config;
     }
@@ -66,6 +73,7 @@ public static class LocalVectorSearchConfigLoader
         => config with
         {
             Server = config.Server ?? new(),
+            Paths = config.Paths ?? new(),
             Storage = config.Storage ?? new(),
             Embedding = config.Embedding ?? new(),
             Chunking = config.Chunking ?? new(),
@@ -132,11 +140,23 @@ public static class LocalVectorSearchConfigLoader
             _ => throw new ConfigurationException("--search-mode must be lexical, semantic or hybrid.")
         };
 
-    private static LocalVectorSearchMcpConfig ResolvePaths(LocalVectorSearchMcpConfig config, string projectRoot)
+    private static LocalVectorSearchMcpConfig ResolvePaths(
+        LocalVectorSearchMcpConfig config,
+        string projectRoot,
+        string yamlBaseDirectory,
+        CommandLineConfigOptions options)
         => config with
         {
-            Storage = config.Storage with { Path = ToAbsolute(DefaultStoragePath(config.Storage.Path, projectRoot), projectRoot) },
-            KnowledgeBase = config.KnowledgeBase with { Root = ToAbsolute(DefaultRoot(config.KnowledgeBase.Root, projectRoot), projectRoot) }
+            Storage = config.Storage with
+            {
+                Path = ToAbsolute(DefaultStoragePath(config.Storage.Path, projectRoot),
+                    options.StoragePath is null ? yamlBaseDirectory : projectRoot)
+            },
+            KnowledgeBase = config.KnowledgeBase with
+            {
+                Root = ToAbsolute(DefaultRoot(config.KnowledgeBase.Root, projectRoot),
+                    options.Root is null ? yamlBaseDirectory : projectRoot)
+            }
         };
 
     private static string DefaultRoot(string root, string projectRoot)
