@@ -199,12 +199,14 @@ public sealed class WorkbenchIntegrationTests
         Assert.False(response.IndexSynchronized);
         Assert.True(File.Exists(Path.Combine(temp.Path, "source.md")));
         Assert.Equal(1, services.State.GetStatus().PendingFiles);
-        Assert.Contains("embedding unavailable", services.State.GetStatus().LastError);
+        Assert.Contains("embedding unavailable", services.State.GetStatus().LastError,
+            StringComparison.OrdinalIgnoreCase);
         var status = await new SqliteIndexStatusReader(
             new SqliteConnectionFactory(services.Config),
             services.Config,
             services.State).GetStatusAsync(cancellationToken);
         Assert.Equal(1, status.Synchronization!.PendingFiles);
+        Assert.Equal("Index synchronization failed.", status.Synchronization.LastError);
     }
 
     [Fact]
@@ -264,9 +266,7 @@ public sealed class WorkbenchIntegrationTests
         Assert.Equal(created.SourceHash, staleResult.IndexedSourceHash);
         Assert.Empty(newSearch.Results);
         Assert.Equal(1, services.State.GetStatus().PendingFiles);
-        Assert.Contains(
-            "embedding unavailable",
-            services.State.GetStatus().LastError,
+        Assert.Contains("embedding unavailable", services.State.GetStatus().LastError,
             StringComparison.OrdinalIgnoreCase);
     }
 

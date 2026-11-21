@@ -87,8 +87,7 @@ public sealed class WorkspaceMutationService(
                 or WorkspaceMutationException)
             {
                 throw new WorkspaceMutationException(
-                    "The table edit could not preserve the expected Markdown structure: " +
-                    exception.Message);
+                    "The table edit could not preserve the expected Markdown structure.");
             }
 
             string updatedHash;
@@ -139,10 +138,10 @@ public sealed class WorkspaceMutationService(
             {
                 parseResult = parser.ParseDetailed(document);
             }
-            catch (InvalidOperationException exception)
+            catch (InvalidOperationException)
             {
                 throw new WorkspaceMutationException(
-                    $"Unsupported Markdown source structure: {exception.Message}");
+                    "Unsupported Markdown source structure.");
             }
             var elements = parseResult.Elements;
             var resolvedOperations = ResolvePatchOperations(
@@ -189,7 +188,7 @@ public sealed class WorkspaceMutationService(
                 catch (InvalidOperationException exception)
                 {
                     throw new WorkspaceMutationException(
-                        $"Unsupported Markdown structure after patch: {exception.Message}");
+                        "Unsupported Markdown structure after patch.");
                 }
             }
 

@@ -77,7 +77,7 @@ Ask:
 Use kb_status to inspect the documentation index.
 If no documents are indexed, call kb_reindex.
 Poll kb_status until indexing.isRunning is false.
-Then report indexing.last.result, the indexed document count, and index path.
+Then report indexing.last.result and the indexed document count (do not expose the physical index path through MCP).
 ```
 
 Alternatively:

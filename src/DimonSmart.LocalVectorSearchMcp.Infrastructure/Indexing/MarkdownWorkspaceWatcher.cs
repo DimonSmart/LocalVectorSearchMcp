@@ -73,7 +73,7 @@ public sealed class MarkdownWorkspaceWatcher(
     private void OnError(object sender, ErrorEventArgs args)
     {
         var message = args.GetException().Message;
-        state.MarkDirty("<watcher>", message);
+        state.MarkDirty("<watcher>", "Markdown file watcher failed.");
         logger.LogWarning("Markdown file watcher error: {Error}", message);
     }
 

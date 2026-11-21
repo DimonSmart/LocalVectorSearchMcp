@@ -46,7 +46,10 @@ public sealed class WorkspaceIndexSynchronizationSchedulerTests
             var status = state.GetStatus();
             Assert.Equal(1, status.PendingFiles);
             Assert.Contains(path, status.Paths);
-            Assert.Equal(failure.Message, status.LastError);
+            Assert.Equal(embeddingFailure
+                ? "Embedding provider is unavailable."
+                : "Index synchronization failed.", status.LastError);
+            Assert.DoesNotContain(failure.Message, status.LastError!, StringComparison.Ordinal);
         }
         finally
         {

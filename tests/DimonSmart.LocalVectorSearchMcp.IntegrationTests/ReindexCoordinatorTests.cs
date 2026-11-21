@@ -75,7 +75,7 @@ public sealed class ReindexCoordinatorTests
             var failed = coordinator.GetStatus();
             Assert.False(failed.IsRunning);
             Assert.Equal(ReindexOutcome.Failed, failed.Last!.Outcome);
-            Assert.Equal("boom", failed.Last.Error);
+            Assert.Equal("Reindex failed. Check server logs for details.", failed.Last.Error);
 
             var retry = coordinator.TryStart(
                 new ReindexRequest(ReindexScope.All, false));

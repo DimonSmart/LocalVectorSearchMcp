@@ -5,7 +5,6 @@ using DimonSmart.LocalVectorSearchMcp.Core.Reindexing;
 using DimonSmart.LocalVectorSearchMcp.Core.Workspaces;
 
 public sealed record StatusResponse(
-    string DatabasePath,
     string SchemaVersion,
     string ChunkerVersion,
     string EmbeddingTextBuilderVersion,

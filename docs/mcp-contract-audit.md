@@ -67,6 +67,9 @@ literal pipes. The `markdown` slice is the source of original markup.
 
 ### `kb_status`
 
+The public status payload excludes `databasePath` and `project.root`; both previously revealed physical local paths. MCP error, warning, and background operation status messages are safe summaries rather than arbitrary exception messages. The local server logs retain implementation diagnostics.
+
+
 All nested status DTOs were already published through the output schema. The
 only confirmed missing constraint was terminal reindex outcome; it is now the
 closed `ReindexOutcome` enum (`succeeded`, `failed`, `cancelled`). `indexMode`

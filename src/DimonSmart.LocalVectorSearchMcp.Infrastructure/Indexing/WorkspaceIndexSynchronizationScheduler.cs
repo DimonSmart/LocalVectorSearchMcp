@@ -78,15 +78,15 @@ public sealed class WorkspaceIndexSynchronizationScheduler(
             }
             catch (EmbeddingProviderException exception)
             {
-                error = exception.Message;
+                error = "Embedding provider is unavailable.";
                 logger.LogWarning(
                     "Could not synchronize committed Markdown file {Path}: {Error}",
                     path,
-                    error);
+                    exception.Message);
             }
             catch (Exception exception)
             {
-                error = exception.Message;
+                error = "Index synchronization failed.";
                 logger.LogWarning(
                     exception,
                     "Could not synchronize committed Markdown file {Path}",

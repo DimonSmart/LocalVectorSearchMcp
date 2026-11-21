@@ -147,7 +147,7 @@ public sealed class ReindexCoordinator(
                 completedAtUtc,
                 ReindexOutcome.Failed,
                 null,
-                exception.Message);
+                "Reindex failed. Check server logs for details.");
             logger.LogError(
                 exception,
                 "Reindex failed. Scope={Scope}, Force={Force}, DurationMs={DurationMs}",
