@@ -228,7 +228,7 @@ public sealed class PdfBookService(
             and not OutOfMemoryException and not StackOverflowException
             and not KnowledgeBaseAccessException)
         {
-            warnings.Add($"Image '{source}' could not be loaded: {exception.Message}");
+            warnings.Add($"Image '{source}' could not be loaded.");
             paragraph.Add(new Text($"[Image unavailable: {description}]").SetFontColor(ColorConstants.RED));
         }
     }

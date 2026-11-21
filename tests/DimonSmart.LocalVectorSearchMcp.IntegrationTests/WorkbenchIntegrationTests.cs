@@ -199,7 +199,7 @@ public sealed class WorkbenchIntegrationTests
         Assert.False(response.IndexSynchronized);
         Assert.True(File.Exists(Path.Combine(temp.Path, "source.md")));
         Assert.Equal(1, services.State.GetStatus().PendingFiles);
-        Assert.Contains("embedding unavailable", services.State.GetStatus().LastError);
+        Assert.Equal("Embedding provider is unavailable.", services.State.GetStatus().LastError);
         var status = await new SqliteIndexStatusReader(
             new SqliteConnectionFactory(services.Config),
             services.Config,
@@ -264,10 +264,7 @@ public sealed class WorkbenchIntegrationTests
         Assert.Equal(created.SourceHash, staleResult.IndexedSourceHash);
         Assert.Empty(newSearch.Results);
         Assert.Equal(1, services.State.GetStatus().PendingFiles);
-        Assert.Contains(
-            "embedding unavailable",
-            services.State.GetStatus().LastError,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Embedding provider is unavailable.", services.State.GetStatus().LastError);
     }
 
     [Fact]

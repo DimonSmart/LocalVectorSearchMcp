@@ -23,6 +23,7 @@ public sealed class KnowledgeSearchFallbackTests
             "Falling back to lexical search",
             response.Warning,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("embedding unavailable", response.Warning!, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -67,11 +67,11 @@ public sealed class KnowledgeSearchService(
                     scope,
                     cancellationToken));
             }
-            catch (EmbeddingProviderException exception) when (mode == SearchMode.Hybrid)
+            catch (EmbeddingProviderException) when (mode == SearchMode.Hybrid)
             {
                 effectiveMode = SearchMode.Lexical;
                 warning =
-                    $"Semantic search is unavailable: {exception.Message} Falling back to lexical search.";
+                    "Semantic search is unavailable. Falling back to lexical search.";
             }
         }
 
