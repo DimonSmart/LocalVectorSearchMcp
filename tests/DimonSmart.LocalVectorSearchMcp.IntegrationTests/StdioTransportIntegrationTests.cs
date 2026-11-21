@@ -38,6 +38,59 @@ public sealed class StdioTransportIntegrationTests
         "kb_status"
     ];
 
+
+    [Fact]
+    public async Task StdioPublicResults_HidePhysicalWorkspacePaths()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TemporaryDirectory();
+        var configPath = await CreateConfigAsync(temp.Path, cancellationToken, allowWrites: true);
+        var stderr = new ConcurrentQueue<string>();
+        var transport = CreateTransport("mcp-path-privacy", configPath, temp.Path, stderr);
+        await using var client = await McpClient.CreateAsync(transport,
+            cancellationToken: cancellationToken);
+
+        var status = await client.CallToolAsync("kb_status",
+            new Dictionary<string, object?>(), cancellationToken: cancellationToken);
+        var created = await client.CallToolAsync("kb_create",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "chapters/note.md", markdown = "# Note" }
+            }, cancellationToken: cancellationToken);
+        var invalid = await client.CallToolAsync("kb_read",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new { path = "../outside.md" }
+            }, cancellationToken: cancellationToken);
+
+        Assert.False(status.IsError is true, ResultText(status));
+        Assert.False(created.IsError is true, ResultText(created));
+        Assert.True(invalid.IsError is true);
+        using (var statusJson = JsonDocument.Parse(ResultText(status)))
+        {
+            Assert.False(statusJson.RootElement.TryGetProperty("databasePath", out _));
+            Assert.False(statusJson.RootElement.GetProperty("project")
+                .TryGetProperty("root", out _));
+        }
+
+        using (var createdJson = JsonDocument.Parse(ResultText(created)))
+        {
+            Assert.Equal("chapters/note.md",
+                createdJson.RootElement.GetProperty("path").GetString());
+        }
+
+        foreach (var result in new[] { status, created, invalid })
+        {
+            Assert.DoesNotContain(temp.Path, ResultText(result),
+                StringComparison.OrdinalIgnoreCase);
+            if (result.StructuredContent is { } structured)
+            {
+                Assert.DoesNotContain(temp.Path, structured.GetRawText(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
     [Fact]
     public async Task StdioReplaceElement_UpdatesDeepListItemThroughActualMcpCalls()
     {
