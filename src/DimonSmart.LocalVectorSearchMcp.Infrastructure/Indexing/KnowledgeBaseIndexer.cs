@@ -142,15 +142,15 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
             {
                 synchronizationState?.MarkDirty(
                     document.RelativePath,
-                    exception.Message);
+                    "Embedding provider is unavailable.");
                 return new ReindexResponse(
                     scanned,
                     indexed,
                     skipped,
                     deleted,
                     chunksIndexed,
-                    $"Vector embeddings are unavailable: {exception.Message} " +
-                    "Reindex stopped; successfully indexed content remains available for lexical search.",
+                    "Vector embeddings are unavailable. Reindex stopped; " +
+                    "successfully indexed content remains available for lexical search.",
                     linkGraphError);
             }
 
