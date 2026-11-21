@@ -29,6 +29,8 @@ public sealed class SqliteIndexStatusReader(
             (int)documentCount,
             (int)chunkCount,
             DateTimeOffset.TryParse(lastIndexed, out var value) ? value : null);
+        var synchronization = synchronizationState?.GetStatus()
+            ?? new IndexSynchronizationStatus(0, [], null);
         return new StatusResponse(
             SqliteSchema.Version,
             MarkdownChunker.Version,
@@ -36,7 +38,7 @@ public sealed class SqliteIndexStatusReader(
             config.Embedding.Enabled ? config.Embedding.Model : "none",
             config.Embedding.Enabled ? EffectiveEmbeddingDimensions : null,
             project,
-            synchronizationState?.GetStatus() ?? new IndexSynchronizationStatus(0, [], null),
+            synchronization with { LastError = SafeSynchronizationError(synchronization.LastError) },
             reindexStateReader?.GetStatus(),
             config.Embedding.Enabled ? "vector-enabled" : "lexical",
             config.Embedding.Provider,
@@ -45,4 +47,15 @@ public sealed class SqliteIndexStatusReader(
                 : null,
             linkGraph is null ? null : await linkGraph.GetStatusAsync(cancellationToken));
     }
+
+    private static string? SafeSynchronizationError(string? error)
+        => error switch
+        {
+            null => null,
+            "Index synchronization is pending."
+                or "Embedding provider is unavailable."
+                or "Index synchronization failed."
+                or "Markdown file watcher failed." => error,
+            _ => "Index synchronization failed."
+        };
 }
