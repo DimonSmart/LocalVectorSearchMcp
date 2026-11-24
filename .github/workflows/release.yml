@@ -159,7 +159,7 @@ jobs:
           "$hash  $asset" | Set-Content -Path "$archivePath.sha256" -NoNewline
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LocalVectorSearchMcp-${{ github.ref_name }}-${{ matrix.runtime }}
           path: |
@@ -275,7 +275,7 @@ jobs:
             --skip-duplicate
 
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: DimonSmart.LocalVectorSearchMcp-${{ github.ref_name }}-nuget
           path: ${{ runner.temp }}/packages/*.nupkg
@@ -318,7 +318,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
