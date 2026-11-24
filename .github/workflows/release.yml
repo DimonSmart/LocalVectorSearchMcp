@@ -128,9 +128,8 @@ jobs:
             throw "Published binary not found: $publishedBinary"
           }
           Move-Item -LiteralPath $publishedBinary -Destination $binary
-          if (Get-ChildItem -Path $publishDir -Filter "*.pdb" -Recurse) {
-            throw "Publish output contains PDB files."
-          }
+          Get-ChildItem -Path $publishDir -Filter "*.pdb" -Recurse |
+            Remove-Item -Force
           if (-not $IsWindows) {
             chmod +x $binary
           }
