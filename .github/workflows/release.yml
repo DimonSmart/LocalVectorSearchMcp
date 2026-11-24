@@ -235,17 +235,33 @@ jobs:
           set -euo pipefail
           workdir="$(mktemp -d)"
           cd "$workdir"
-          mkdir -p docs
-          printf '# Smoke test\nLocal tool smoke marker.\n' > docs/smoke.md
+          mkdir -p .idd/intent
+          printf '# IDD smoke test\nPackaged integration marker.\n' > .idd/intent/IDD-0001.spec-smoke.md
+          cat > .idd/local-vector-search-mcp.yml <<'YAML'
+          paths:
+            relativeTo: config
+          storage:
+            path: ../.local-vector-search-mcp/index.db
+          embedding:
+            provider: none
+          search:
+            defaultMode: lexical
+          knowledgeBase:
+            root: intent
+            allowWrites: false
+            watchFiles: true
+            include:
+              - "IDD-*.md"
+            exclude:
+              - "**/*.cosmic.md"
+          YAML
           dotnet new tool-manifest
           dotnet tool install DimonSmart.LocalVectorSearchMcp --version "$VERSION" --add-source "$RUNNER_TEMP/packages"
           dotnet tool restore --add-source "$RUNNER_TEMP/packages"
           dotnet tool run local-vector-search-mcp -- \
-            --project-root "$workdir" --root docs \
-            --embedding-provider none --search-mode lexical --reindex
+            --project-root "$workdir" --config .idd/local-vector-search-mcp.yml --reindex
           dnx "DimonSmart.LocalVectorSearchMcp@$VERSION" --add-source "$RUNNER_TEMP/packages" --yes -- \
-            --project-root "$workdir" --root docs \
-            --embedding-provider none --search-mode lexical --status
+            --project-root "$workdir" --config .idd/local-vector-search-mcp.yml --status
 
       - name: NuGet login
         uses: NuGet/login@v1
