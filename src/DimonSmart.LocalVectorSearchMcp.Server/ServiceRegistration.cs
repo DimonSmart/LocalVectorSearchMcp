@@ -91,6 +91,7 @@ public static class ServiceRegistration
         services.AddHostedService<MarkdownWorkspaceWatcher>();
         services.AddHostedService(sp => sp.GetRequiredService<WorkspaceIndexSynchronizationScheduler>());
         services.AddHostedService(sp => sp.GetRequiredService<ReindexCoordinator>());
+        services.AddHostedService<StartupIndexReconciliationService>();
 
         if (config.Embedding.Enabled)
         {
