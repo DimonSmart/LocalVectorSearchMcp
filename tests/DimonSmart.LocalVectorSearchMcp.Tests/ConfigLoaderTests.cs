@@ -440,6 +440,49 @@ public sealed class ConfigLoaderTests
     }
 
     [Fact]
+    public void Idd_config_relative_layout_resolves_from_arbitrary_cwd_with_spaces_and_unicode()
+    {
+        using var temp = new TemporaryDirectory();
+        using var cwd = new TemporaryDirectory();
+        var project = Path.Combine(temp.Path, "Проект с пробелами");
+        var intent = Path.Combine(project, ".idd", "intent");
+        Directory.CreateDirectory(intent);
+        var configPath = Path.Combine(project, ".idd", "local-vector-search-mcp.yml");
+        File.WriteAllText(configPath, """
+            paths:
+              relativeTo: config
+            storage:
+              path: ../.local-vector-search-mcp/index.db
+            embedding:
+              provider: none
+            search:
+              defaultMode: lexical
+            knowledgeBase:
+              root: intent
+              allowWrites: false
+              watchFiles: true
+              include:
+                - "IDD-*.md"
+              exclude:
+                - "**/*.cosmic.md"
+            """);
+
+        var loaded = LocalVectorSearchConfigLoader.Load(
+            ["--project-root", project, "--config", ".idd/local-vector-search-mcp.yml"],
+            cwd.Path,
+            "");
+
+        Assert.Equal(intent, loaded.KnowledgeBase.Root);
+        Assert.Equal(Path.Combine(project, ".local-vector-search-mcp", "index.db"), loaded.Storage.Path);
+        Assert.False(loaded.KnowledgeBase.AllowWrites);
+        Assert.True(loaded.KnowledgeBase.WatchFiles);
+        Assert.Equal(["IDD-*.md"], loaded.KnowledgeBase.Include);
+        Assert.Equal(["**/*.cosmic.md"], loaded.KnowledgeBase.Exclude);
+        Assert.Equal("none", loaded.Embedding.Provider);
+        Assert.Equal(SearchMode.Lexical, loaded.Search.DefaultMode);
+    }
+
+    [Fact]
     public void Invalid_search_mode_is_rejected()
     {
         using var project = new TemporaryDirectory();
