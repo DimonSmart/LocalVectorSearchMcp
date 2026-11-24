@@ -91,6 +91,34 @@ public sealed class MarkdownDocumentLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_IddRootPatterns_IncludeDirectIntentDocumentsAndExcludeCosmic()
+    {
+        using var temp = new TemporaryDirectory();
+        await CreateFilesAsync(temp.Path,
+        [
+            "IDD-0001.spec-app.md",
+            "IDD-0002.adr-storage.md",
+            "IDD-0003.cosmic.md",
+            "nested/IDD-0004.spec-nested.md",
+            "README.md"
+        ]);
+        var config = new KnowledgeBaseConfig
+        {
+            Root = temp.Path,
+            Include = ["IDD-*.md"],
+            Exclude = ["**/*.cosmic.md"]
+        };
+
+        var documents = await new MarkdownDocumentLoader().LoadAsync(
+            config,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            ["IDD-0001.spec-app.md", "IDD-0002.adr-storage.md"],
+            Paths(documents));
+    }
+
+    [Fact]
     public async Task LoadAsync_ReturnsNormalizedPathsInStableOrdinalIgnoreCaseOrder()
     {
         using var temp = new TemporaryDirectory();
