@@ -9,6 +9,10 @@ on:
 env:
   HUSKY: 0
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate-mcp-registry:
     name: Validate MCP Registry metadata
