@@ -185,7 +185,7 @@ public sealed class WorkspaceMutationService(
                             .Where(element => element?.Kind == MarkdownElementKind.Table)
                             .Select(element => element!.SourceStart).ToHashSet());
                 }
-                catch (InvalidOperationException exception)
+                catch (InvalidOperationException)
                 {
                     throw new WorkspaceMutationException(
                         "Unsupported Markdown structure after patch.");

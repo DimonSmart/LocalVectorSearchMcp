@@ -138,7 +138,7 @@ public sealed class KnowledgeBaseIndexer(LocalVectorSearchMcpConfig config, IMar
                     }
                 }
             }
-            catch (EmbeddingProviderException exception)
+            catch (EmbeddingProviderException)
             {
                 synchronizationState?.MarkDirty(
                     document.RelativePath,
