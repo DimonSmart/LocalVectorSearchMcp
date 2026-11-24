@@ -18,11 +18,11 @@ LocalVectorSearchMcp uses the current working directory as the project root when
 ## Offline lexical-only using dnx
 
 With the .NET 10 SDK, run the published NuGet package without installing
-a global tool. Replace `0.2.0` with the available published version:
+a global tool. Replace `VERSION` with a version that is actually published on NuGet:
 
 ```bash
 codex mcp add local-vector-search -- \
-  dnx DimonSmart.LocalVectorSearchMcp@0.2.0 --yes -- \
+  dnx DimonSmart.LocalVectorSearchMcp@VERSION --yes -- \
   --project-root /absolute/path/to/project \
   --root .idd/intent \
   --embedding-provider none \
