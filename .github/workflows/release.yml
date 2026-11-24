@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-14, macos-15-intel]
+        os: [ubuntu-latest, windows-latest, macos-15]
     steps:
       - name: Checkout with tags
         uses: actions/checkout@v4
@@ -79,14 +79,10 @@ jobs:
             runtime: linux-x64
             binary: local-vector-search-mcp
             asset-suffix: linux-x64.tar.gz
-          - os: macos-14
+          - os: macos-15
             runtime: osx-arm64
             binary: local-vector-search-mcp
             asset-suffix: osx-arm64.tar.gz
-          - os: macos-15-intel
-            runtime: osx-x64
-            binary: local-vector-search-mcp
-            asset-suffix: osx-x64.tar.gz
     steps:
       - name: Set version
         shell: bash
