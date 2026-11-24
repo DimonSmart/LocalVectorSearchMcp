@@ -354,7 +354,6 @@ jobs:
           * Windows x64: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-win-x64.zip\`
           * Linux x64: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-linux-x64.tar.gz\`
           * macOS Apple Silicon: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-osx-arm64.tar.gz\`
-          * macOS Intel: \`LocalVectorSearchMcp-${GITHUB_REF_NAME}-osx-x64.tar.gz\`
 
           ### Changes
 
