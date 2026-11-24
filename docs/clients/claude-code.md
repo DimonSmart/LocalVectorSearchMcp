@@ -18,12 +18,12 @@ Claude Code supplies `CLAUDE_PROJECT_DIR`; LocalVectorSearchMcp uses it as the p
 ## Offline lexical-only, without a globally installed tool
 
 With a .NET 10 SDK, use the one-shot NuGet runner, pinned to a published
-version (replace `0.2.0` with the version you actually install):
+version (replace `VERSION` with a version that is actually published on NuGet):
 
 ```bash
 claude mcp add local-vector-search \
   --scope local --transport stdio -- \
-  dnx DimonSmart.LocalVectorSearchMcp@0.2.0 --yes -- \
+  dnx DimonSmart.LocalVectorSearchMcp@VERSION --yes -- \
   --project-root /absolute/path/to/project \
   --root .idd/intent \
   --embedding-provider none \
